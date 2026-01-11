@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(timeout 5 npm run:*)",
+      "Bash(node:*)",
+      "Bash(timeout:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(npm run seed:*)",
+      "Bash(cat:*)",
+      "Bash(npm run seed:conversations:*)",
+      "Bash(npm run dev:*)",
+      "Bash(del Conversations.js)",
+      "Bash(ren:*)",
+      "Bash(dir:*)",
+      "Bash(git init:*)",
+      "Bash(git config:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}
