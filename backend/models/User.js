@@ -21,7 +21,7 @@ const userSchema = new mongoose.Schema({
     },
     password: {
         type: String,
-        required: [true, 'كلمة المرور مطلوبة'],
+        required: false, // غير مطلوبة للتسجيل عبر Google/Apple
         minlength: [6, 'كلمة المرور يجب أن تكون 6 أحرف على الأقل'],
         select: false // لا نرجع كلمة المرور في الاستعلامات العادية
     },
@@ -36,7 +36,103 @@ const userSchema = new mongoose.Schema({
     },
     lastLogin: {
         type: Date
-    }
+    },
+    // حقول إعادة تعيين كلمة المرور
+    resetPasswordToken: {
+        type: String,
+        select: false
+    },
+    resetPasswordExpire: {
+        type: Date,
+        select: false
+    },
+    // حقول الملف الشخصي
+    profileImage: {
+        type: String,
+        default: null
+    },
+    birthDate: {
+        type: Date,
+        default: null
+    },
+    gender: {
+        type: String,
+        enum: ['male', 'female', null],
+        default: null
+    },
+    country: {
+        type: String,
+        default: null,
+        trim: true
+    },
+    bio: {
+        type: String,
+        default: null,
+        maxlength: [500, 'النبذة يجب أن لا تتجاوز 500 حرف']
+    },
+    // نوع التسجيل (app, google, apple)
+    authProvider: {
+        type: String,
+        enum: ['app', 'google', 'apple'],
+        default: 'app'
+    },
+    // معرفات التسجيل الخارجية
+    googleId: {
+        type: String,
+        default: null,
+        sparse: true
+    },
+    appleId: {
+        type: String,
+        default: null,
+        sparse: true
+    },
+    // Device Token للإشعارات
+    deviceToken: {
+        type: String,
+        default: null
+    },
+    // معلومات الجهاز
+    deviceInfo: {
+        platform: { type: String, default: null },
+        osVersion: { type: String, default: null },
+        appVersion: { type: String, default: null }
+    },
+    // إعدادات الخصوصية
+    privacySettings: {
+        // إخفاء الملف الشخصي: public (للجميع), contacts (جهات الاتصال فقط), private (مخفي)
+        profileVisibility: {
+            type: String,
+            enum: ['public', 'contacts', 'private'],
+            default: 'public'
+        },
+        // إخفاء آخر ظهور
+        showLastSeen: {
+            type: Boolean,
+            default: true
+        },
+        // صوت الإشعارات
+        notificationSound: {
+            type: Boolean,
+            default: true
+        }
+    },
+    // قائمة المستخدمين المحظورين
+    blockedUsers: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    }],
+    // قائمة المحادثات المكتومة
+    mutedConversations: [{
+        conversationId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Conversation'
+        },
+        mutedUntil: {
+            type: Date,
+            default: null // null = مكتوم للأبد
+        }
+    }]
 }, {
     timestamps: true // يضيف createdAt و updatedAt تلقائياً
 });
@@ -45,6 +141,11 @@ const userSchema = new mongoose.Schema({
 userSchema.pre('save', async function() {
     // إذا لم تتغير كلمة المرور، تخطى
     if (!this.isModified('password')) {
+        return;
+    }
+
+    // لا تشفر كلمة المرور إذا كانت فارغة (للتسجيل عبر Google/Apple)
+    if (!this.password) {
         return;
     }
 
@@ -66,7 +167,27 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
 userSchema.methods.toJSON = function() {
     const user = this.toObject();
     delete user.password;
+    delete user.resetPasswordToken;
+    delete user.resetPasswordExpire;
     return user;
+};
+
+// دالة لتوليد رمز إعادة تعيين كلمة المرور
+userSchema.methods.generateResetToken = function() {
+    // توليد رمز عشوائي مكون من 6 أرقام
+    const resetToken = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // حفظ الرمز مشفر في قاعدة البيانات
+    const crypto = require('crypto');
+    this.resetPasswordToken = crypto
+        .createHash('sha256')
+        .update(resetToken)
+        .digest('hex');
+
+    // تعيين صلاحية الرمز لمدة 10 دقائق
+    this.resetPasswordExpire = Date.now() + 10 * 60 * 1000;
+
+    return resetToken;
 };
 
 const User = mongoose.model('User', userSchema);

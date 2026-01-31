@@ -6,6 +6,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const helmet = require('helmet');
+const compression = require('compression'); // gzip compression
 const rateLimit = require('express-rate-limit');
 const mongoSanitize = require('express-mongo-sanitize');
 const hpp = require('hpp');
@@ -78,13 +79,26 @@ const PORT = process.env.PORT || 5000;
 // 1. Helmet - حماية HTTP headers
 app.use(helmet());
 
-// 2. CORS - السماح بالطلبات من Frontend فقط
+// 2. Compression - ضغط gzip للردود
+app.use(compression({
+    level: 6, // مستوى الضغط (1-9)
+    threshold: 1024, // ضغط الردود أكبر من 1KB فقط
+    filter: (req, res) => {
+        // لا تضغط إذا كان الطلب يحتوي على no-compression header
+        if (req.headers['x-no-compression']) {
+            return false;
+        }
+        return compression.filter(req, res);
+    }
+}));
+
+// 3. CORS - السماح بالطلبات من Frontend فقط
 app.use(cors({
     origin: process.env.FRONTEND_URL || 'http://localhost:3000',
     credentials: true
 }));
 
-// 3. Rate Limiting - منع الهجمات بالطلبات المتكررة
+// 4. Rate Limiting - منع الهجمات بالطلبات المتكررة
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 دقيقة
     max: 100, // 100 طلب كحد أقصى
@@ -111,19 +125,22 @@ const authLimiter = rateLimit({
 });
 app.use('/api/auth/login', authLimiter);
 
-// 4. Body parser
+// 5. Body parser
 app.use(express.json({ limit: '10mb' })); // تحديد حجم الطلبات
 app.use(express.urlencoded({ extended: true }));
 
-// 5. Data Sanitization - حماية من NoSQL Injection
+// 6. Data Sanitization - حماية من NoSQL Injection
 app.use(mongoSanitize());
 
-// 6. Prevent Parameter Pollution
+// 7. Prevent Parameter Pollution
 app.use(hpp());
+
+// 8. Static Files - تقديم الملفات المرفوعة
+app.use('/uploads', express.static('uploads'));
 
 // Route تجريبي للتأكد من عمل السيرفر
 app.get('/', (req, res) => {
-    res.json({ 
+    res.json({
         message: 'مرحباً بك في HalaChat Dashboard API',
         status: 'working',
         version: '2.0'
@@ -150,6 +167,9 @@ app.use('/api/settings', require('./routes/settings'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/chat-rooms', require('./routes/chatRooms'));
 app.use('/api/activity-logs', require('./routes/activityLogs'));
+app.use('/api/banned-words', require('./routes/bannedWords'));
+app.use('/api/mobile', require('./routes/mobile'));
+app.use('/api/privacy', require('./routes/privacy'));
 
 // Error Handlers - يجب أن تكون في النهاية
 app.use(notFound); // 404 Handler
