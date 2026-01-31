@@ -1,0 +1,738 @@
+{
+	"info": {
+		"_postman_id": "halachat-account-api-2024",
+		"name": "HalaChat - Account & Privacy API",
+		"description": "مجموعة شاملة لإدارة الحساب والخصوصية في HalaChat\n\n## الميزات:\n- تسجيل الدخول وحفظ Token تلقائياً\n- تعديل الحساب والملف الشخصي\n- تغيير كلمة المرور\n- إعدادات الخصوصية والأمان\n- حذف الحساب\n\n## كيفية الاستخدام:\n1. ابدأ بـ Login لحفظ Token تلقائياً\n2. جميع الطلبات الأخرى ستستخدم Token المحفوظ",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "https://srv1106665.hstgr.cloud/api",
+			"type": "string"
+		},
+		{
+			"key": "token",
+			"value": "",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "🔐 المصادقة - Authentication",
+			"item": [
+				{
+					"name": "تسجيل الدخول (Login)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData.data && jsonData.data.token) {",
+									"        pm.collectionVariables.set('token', jsonData.data.token);",
+									"        console.log('✅ Token saved successfully!');",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"test@example.com\",\n    \"password\": \"123456\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "login"]
+						},
+						"description": "تسجيل الدخول - يحفظ Token تلقائياً للاستخدام في باقي الطلبات"
+					},
+					"response": []
+				},
+				{
+					"name": "تسجيل مستخدم جديد (Register)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData.data && jsonData.data.token) {",
+									"        pm.collectionVariables.set('token', jsonData.data.token);",
+									"        console.log('✅ Token saved successfully!');",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"اسم المستخدم\",\n    \"email\": \"user@example.com\",\n    \"password\": \"123456\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/register",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "register"]
+						},
+						"description": "تسجيل مستخدم جديد"
+					},
+					"response": []
+				},
+				{
+					"name": "الحصول على بياناتي (Get Me)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/auth/me",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "me"]
+						},
+						"description": "جلب بيانات المستخدم الحالي"
+					},
+					"response": []
+				},
+				{
+					"name": "تسجيل دخول Google",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData.data && jsonData.data.token) {",
+									"        pm.collectionVariables.set('token', jsonData.data.token);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"idToken\": \"GOOGLE_ID_TOKEN_HERE\",\n    \"deviceToken\": \"FCM_DEVICE_TOKEN\",\n    \"deviceInfo\": {\n        \"platform\": \"ios\",\n        \"osVersion\": \"17.0\",\n        \"appVersion\": \"1.0.0\"\n    }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/google",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "google"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "تسجيل دخول Apple",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData.data && jsonData.data.token) {",
+									"        pm.collectionVariables.set('token', jsonData.data.token);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"identityToken\": \"APPLE_IDENTITY_TOKEN_HERE\",\n    \"authorizationCode\": \"APPLE_AUTH_CODE\",\n    \"fullName\": {\n        \"givenName\": \"محمد\",\n        \"familyName\": \"أحمد\"\n    },\n    \"email\": \"user@privaterelay.appleid.com\",\n    \"deviceToken\": \"FCM_DEVICE_TOKEN\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/apple",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "apple"]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "👤 تعديل الحساب - Account",
+			"item": [
+				{
+					"name": "تحديث الملف الشخصي",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"الاسم الجديد\",\n    \"email\": \"newemail@example.com\",\n    \"bio\": \"نبذة عني...\",\n    \"country\": \"السعودية\",\n    \"gender\": \"male\",\n    \"birthDate\": \"1990-01-15\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/update-profile",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "update-profile"]
+						},
+						"description": "تحديث بيانات الملف الشخصي\n\n**الحقول المتاحة:**\n- name: الاسم\n- email: البريد الإلكتروني\n- bio: نبذة شخصية\n- country: البلد\n- gender: الجنس (male/female)\n- birthDate: تاريخ الميلاد"
+					},
+					"response": []
+				},
+				{
+					"name": "رفع صورة الملف الشخصي",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "profileImage",
+									"type": "file",
+									"src": ""
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/upload-profile-image",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "upload-profile-image"]
+						},
+						"description": "رفع صورة جديدة للملف الشخصي\n\n**ملاحظة:** اختر صورة من جهازك"
+					},
+					"response": []
+				},
+				{
+					"name": "تحديث Device Token",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"deviceToken\": \"FCM_DEVICE_TOKEN_HERE\",\n    \"deviceInfo\": {\n        \"platform\": \"ios\",\n        \"osVersion\": \"17.0\",\n        \"appVersion\": \"1.0.0\"\n    }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/device-token",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "device-token"]
+						},
+						"description": "تحديث Device Token للإشعارات"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "🔑 كلمة المرور - Password",
+			"item": [
+				{
+					"name": "تغيير كلمة المرور",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"currentPassword\": \"123456\",\n    \"newPassword\": \"newpassword123\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/change-password",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "change-password"]
+						},
+						"description": "تغيير كلمة المرور (يتطلب كلمة المرور الحالية)"
+					},
+					"response": []
+				},
+				{
+					"name": "طلب استعادة كلمة المرور",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"user@example.com\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/forgot-password",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "forgot-password"]
+						},
+						"description": "إرسال رمز استعادة كلمة المرور للبريد الإلكتروني"
+					},
+					"response": []
+				},
+				{
+					"name": "إعادة تعيين كلمة المرور",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"user@example.com\",\n    \"resetToken\": \"123456\",\n    \"newPassword\": \"newpassword123\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/reset-password",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "reset-password"]
+						},
+						"description": "إعادة تعيين كلمة المرور باستخدام الرمز المرسل"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "🔒 الخصوصية والأمان - Privacy & Security",
+			"item": [
+				{
+					"name": "الحصول على إعدادات الخصوصية",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/privacy/settings",
+							"host": ["{{baseUrl}}"],
+							"path": ["privacy", "settings"]
+						},
+						"description": "جلب جميع إعدادات الخصوصية الحالية"
+					},
+					"response": []
+				},
+				{
+					"name": "تحديث إعدادات الخصوصية (الكل)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"profileVisibility\": \"contacts\",\n    \"showLastSeen\": false,\n    \"notificationSound\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/privacy/settings",
+							"host": ["{{baseUrl}}"],
+							"path": ["privacy", "settings"]
+						},
+						"description": "تحديث جميع إعدادات الخصوصية دفعة واحدة\n\n**profileVisibility:**\n- public: للجميع\n- contacts: جهات الاتصال فقط\n- private: مخفي"
+					},
+					"response": []
+				},
+				{
+					"name": "تغيير إظهار الملف الشخصي",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"visibility\": \"contacts\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/privacy/profile-visibility",
+							"host": ["{{baseUrl}}"],
+							"path": ["privacy", "profile-visibility"]
+						},
+						"description": "تغيير من يمكنه رؤية ملفك الشخصي\n\n**القيم:**\n- public: للجميع\n- contacts: جهات الاتصال فقط\n- private: مخفي تماماً"
+					},
+					"response": []
+				},
+				{
+					"name": "تغيير إظهار آخر ظهور",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"show\": false\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/privacy/last-seen",
+							"host": ["{{baseUrl}}"],
+							"path": ["privacy", "last-seen"]
+						},
+						"description": "إخفاء/إظهار آخر ظهور\n\n- true: يظهر للآخرين\n- false: مخفي"
+					},
+					"response": []
+				},
+				{
+					"name": "تغيير صوت الإشعارات",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"enabled\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/privacy/notification-sound",
+							"host": ["{{baseUrl}}"],
+							"path": ["privacy", "notification-sound"]
+						},
+						"description": "تفعيل/إلغاء صوت الإشعارات"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "🚫 حظر المستخدمين - Block Users",
+			"item": [
+				{
+					"name": "قائمة المحظورين",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/privacy/blocked",
+							"host": ["{{baseUrl}}"],
+							"path": ["privacy", "blocked"]
+						},
+						"description": "الحصول على قائمة المستخدمين المحظورين"
+					},
+					"response": []
+				},
+				{
+					"name": "حظر مستخدم",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/privacy/block/:userId",
+							"host": ["{{baseUrl}}"],
+							"path": ["privacy", "block", ":userId"],
+							"variable": [
+								{
+									"key": "userId",
+									"value": "USER_ID_HERE"
+								}
+							]
+						},
+						"description": "حظر مستخدم معين\n\n**استبدل USER_ID_HERE بمعرف المستخدم**"
+					},
+					"response": []
+				},
+				{
+					"name": "إلغاء حظر مستخدم",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/privacy/unblock/:userId",
+							"host": ["{{baseUrl}}"],
+							"path": ["privacy", "unblock", ":userId"],
+							"variable": [
+								{
+									"key": "userId",
+									"value": "USER_ID_HERE"
+								}
+							]
+						},
+						"description": "إلغاء حظر مستخدم"
+					},
+					"response": []
+				},
+				{
+					"name": "التحقق من حظر مستخدم",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/privacy/is-blocked/:userId",
+							"host": ["{{baseUrl}}"],
+							"path": ["privacy", "is-blocked", ":userId"],
+							"variable": [
+								{
+									"key": "userId",
+									"value": "USER_ID_HERE"
+								}
+							]
+						},
+						"description": "التحقق إذا كان مستخدم محظور"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "🔇 كتم المحادثات - Mute",
+			"item": [
+				{
+					"name": "قائمة المحادثات المكتومة",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/privacy/muted",
+							"host": ["{{baseUrl}}"],
+							"path": ["privacy", "muted"]
+						},
+						"description": "الحصول على قائمة المحادثات المكتومة"
+					},
+					"response": []
+				},
+				{
+					"name": "كتم محادثة",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"duration\": \"8h\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/privacy/mute/:conversationId",
+							"host": ["{{baseUrl}}"],
+							"path": ["privacy", "mute", ":conversationId"],
+							"variable": [
+								{
+									"key": "conversationId",
+									"value": "CONVERSATION_ID_HERE"
+								}
+							]
+						},
+						"description": "كتم محادثة لمدة معينة\n\n**خيارات المدة:**\n- 1h: ساعة واحدة\n- 8h: 8 ساعات\n- 1d: يوم واحد\n- 7d: أسبوع\n- forever: دائماً"
+					},
+					"response": []
+				},
+				{
+					"name": "إلغاء كتم محادثة",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/privacy/unmute/:conversationId",
+							"host": ["{{baseUrl}}"],
+							"path": ["privacy", "unmute", ":conversationId"],
+							"variable": [
+								{
+									"key": "conversationId",
+									"value": "CONVERSATION_ID_HERE"
+								}
+							]
+						},
+						"description": "إلغاء كتم محادثة"
+					},
+					"response": []
+				},
+				{
+					"name": "التحقق من كتم محادثة",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/privacy/is-muted/:conversationId",
+							"host": ["{{baseUrl}}"],
+							"path": ["privacy", "is-muted", ":conversationId"],
+							"variable": [
+								{
+									"key": "conversationId",
+									"value": "CONVERSATION_ID_HERE"
+								}
+							]
+						},
+						"description": "التحقق إذا كانت محادثة مكتومة"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "🗑️ حذف الحساب - Delete Account",
+			"item": [
+				{
+					"name": "حذف الحساب نهائياً",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"password\": \"YOUR_PASSWORD_HERE\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/delete-account",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "delete-account"]
+						},
+						"description": "⚠️ **تحذير: هذا الإجراء لا يمكن التراجع عنه!**\n\nحذف الحساب نهائياً مع جميع البيانات\n\n**يتطلب:** كلمة المرور للتأكيد"
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}
