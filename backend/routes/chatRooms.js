@@ -1,10 +1,15 @@
 // Chat Rooms Routes - مسارات غرف المحادثة
 const express = require('express');
 const router = express.Router();
+const path = require('path');
+const fs = require('fs');
 const ChatRoom = require('../models/ChatRoom');
 const Message = require('../models/Message');
+const Report = require('../models/Report');
 const { protect, adminOnly } = require('../middleware/auth');
 const { validate } = require('../middleware/validation');
+const upload = require('../config/multer');
+const { optimizeImage } = require('../middleware/imageOptimizer');
 const {
     createChatRoomValidation,
     updateChatRoomValidation,
@@ -400,6 +405,168 @@ router.get('/:id/stats', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب الإحصائيات',
+            error: error.message
+        });
+    }
+});
+
+// @route   POST /api/chat-rooms/:id/upload-image
+// @desc    رفع صورة للغرفة
+// @access  Admin
+router.post('/:id/upload-image', protect, adminOnly, upload.single('roomImage'), optimizeImage({ maxWidth: 600, maxHeight: 600, quality: 80 }), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: 'لم يتم رفع أي صورة'
+            });
+        }
+
+        const room = await ChatRoom.findById(req.params.id);
+
+        if (!room) {
+            // حذف الملف المرفوع
+            fs.unlinkSync(req.file.path);
+            return res.status(404).json({
+                success: false,
+                message: 'الغرفة غير موجودة'
+            });
+        }
+
+        // حذف الصورة القديمة إذا كانت محلية
+        if (room.image && room.image.startsWith('/uploads/')) {
+            const oldImagePath = path.join(__dirname, '..', room.image);
+            if (fs.existsSync(oldImagePath)) {
+                fs.unlinkSync(oldImagePath);
+            }
+        }
+
+        // تحديث مسار الصورة
+        const imagePath = '/uploads/profile-images/' + req.file.filename;
+        room.image = imagePath;
+        await room.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'تم رفع الصورة بنجاح',
+            data: {
+                image: imagePath,
+                room
+            }
+        });
+
+    } catch (error) {
+        // حذف الملف في حالة حدوث خطأ
+        if (req.file) {
+            fs.unlinkSync(req.file.path);
+        }
+
+        console.error('خطأ في رفع صورة الغرفة:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'خطأ في السيرفر'
+        });
+    }
+});
+
+// @route   GET /api/chat-rooms/:id/messages
+// @desc    الحصول على رسائل الغرفة
+// @access  Admin
+router.get('/:id/messages', protect, adminOnly, async (req, res) => {
+    try {
+        const { page = 1, limit = 50, search } = req.query;
+
+        const room = await ChatRoom.findById(req.params.id);
+        if (!room) {
+            return res.status(404).json({
+                success: false,
+                message: 'الغرفة غير موجودة'
+            });
+        }
+
+        const query = {
+            chatType: 'room',
+            room: req.params.id
+        };
+
+        if (search) {
+            query.content = { $regex: search, $options: 'i' };
+        }
+
+        const messages = await Message.find(query)
+            .populate('sender', 'name email profileImage')
+            .sort({ createdAt: -1 })
+            .limit(limit * 1)
+            .skip((page - 1) * limit);
+
+        const count = await Message.countDocuments(query);
+
+        res.json({
+            success: true,
+            data: {
+                messages: messages.reverse(),
+                totalPages: Math.ceil(count / limit),
+                currentPage: parseInt(page),
+                total: count
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في جلب رسائل الغرفة:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في جلب الرسائل',
+            error: error.message
+        });
+    }
+});
+
+// @route   GET /api/chat-rooms/:id/reports
+// @desc    الحصول على بلاغات الغرفة
+// @access  Admin
+router.get('/:id/reports', protect, adminOnly, async (req, res) => {
+    try {
+        const room = await ChatRoom.findById(req.params.id);
+        if (!room) {
+            return res.status(404).json({
+                success: false,
+                message: 'الغرفة غير موجودة'
+            });
+        }
+
+        // جلب البلاغات المتعلقة بالغرفة (من خلال الرسائل)
+        const roomMessages = await Message.find({ room: req.params.id }).select('_id');
+        const messageIds = roomMessages.map(m => m._id);
+
+        const reports = await Report.find({
+            $or: [
+                { reportedMessage: { $in: messageIds } },
+                { reportedConversation: req.params.id }
+            ]
+        })
+            .populate('reportedBy', 'name email')
+            .populate('reportedUser', 'name email')
+            .populate('reportedMessage', 'content')
+            .sort({ createdAt: -1 })
+            .limit(50);
+
+        res.json({
+            success: true,
+            data: reports.map(report => ({
+                _id: report._id,
+                reason: report.category,
+                description: report.description,
+                status: report.status,
+                priority: report.priority || 'medium',
+                reporter: report.reportedBy,
+                reportedUser: report.reportedUser,
+                createdAt: report.createdAt
+            }))
+        });
+    } catch (error) {
+        console.error('خطأ في جلب بلاغات الغرفة:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في جلب البلاغات',
             error: error.message
         });
     }

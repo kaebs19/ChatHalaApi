@@ -224,6 +224,8 @@
     justify-content: center;
     font-weight: bold;
     font-size: 16px;
+    object-fit: cover;
+    flex-shrink: 0;
 }
 
 .email-cell {
@@ -258,6 +260,34 @@
 .badge-user {
     background: #d1ecf1;
     color: #0c5460;
+}
+
+.badge-google {
+    background: #fff;
+    color: #333;
+    border: 1px solid #ddd;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.badge-apple {
+    background: #000;
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.badge-app {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+}
+
+.provider-icon {
+    width: 14px;
+    height: 14px;
+    object-fit: contain;
 }
 
 .no-login {

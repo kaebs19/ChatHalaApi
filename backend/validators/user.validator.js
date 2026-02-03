@@ -59,20 +59,27 @@ const updateProfileValidation = [
         .isEmail().withMessage('البريد الإلكتروني غير صالح')
         .normalizeEmail(),
 
-    body('avatar')
+    body('profileImage')
+        .optional()
+        .trim(),
+
+    body('birthDate')
+        .optional()
+        .isISO8601().withMessage('تاريخ الميلاد غير صالح'),
+
+    body('gender')
+        .optional()
+        .isIn(['male', 'female', null]).withMessage('الجنس يجب أن يكون male أو female'),
+
+    body('country')
         .optional()
         .trim()
-        .isURL({ protocols: ['http', 'https'] }).withMessage('رابط الصورة غير صالح'),
+        .isLength({ min: 2, max: 50 }).withMessage('اسم الدولة يجب أن يكون بين 2-50 حرف'),
 
     body('bio')
         .optional()
         .trim()
-        .isLength({ max: 200 }).withMessage('النبذة لا يجب أن تتجاوز 200 حرف'),
-
-    body('phoneNumber')
-        .optional()
-        .trim()
-        .matches(/^[+]?[0-9]{10,15}$/).withMessage('رقم الهاتف غير صالح')
+        .isLength({ max: 500 }).withMessage('النبذة لا يجب أن تتجاوز 500 حرف')
 ];
 
 /**

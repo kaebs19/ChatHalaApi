@@ -23,6 +23,9 @@ const activityLogSchema = new mongoose.Schema({
             'user_update_profile',
             'user_change_password',
             'user_delete_account',
+            'profile_update',
+            'profile_image_upload',
+            'upload_room_image',
 
             // نشاطات الغرف
             'room_create',

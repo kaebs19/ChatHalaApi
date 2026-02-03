@@ -47,6 +47,11 @@ const conversationSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    status: {
+        type: String,
+        enum: ['pending', 'accepted', 'rejected'],
+        default: 'accepted' // المحادثات القديمة تكون مقبولة بشكل افتراضي
+    },
     settings: {
         allowMembersToSend: {
             type: Boolean,

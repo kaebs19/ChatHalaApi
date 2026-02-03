@@ -2,9 +2,10 @@
 // ملف الاتصال بالـ Backend API
 
 import axios from 'axios';
+import config from '../config';
 
 // عنوان API
-const API_URL = 'http://localhost:5000/api';
+const API_URL = config.API_URL;
 
 // إنشاء instance من axios
 const api = axios.create({
@@ -306,6 +307,19 @@ export const changePassword = async (currentPassword, newPassword) => {
     return response.data;
 };
 
+// رفع صورة الملف الشخصي
+export const uploadProfileImage = async (file) => {
+    const formData = new FormData();
+    formData.append('profileImage', file);
+
+    const response = await api.put('/auth/upload-profile-image', formData, {
+        headers: {
+            'Content-Type': 'multipart/form-data'
+        }
+    });
+    return response.data;
+};
+
 // ============ Chat Rooms APIs ============
 
 // الحصول على جميع غرف المحادثة (Admin)
@@ -366,6 +380,118 @@ export const toggleChatRoomLock = async (roomId) => {
 // إحصائيات الغرفة
 export const getChatRoomStats = async (roomId) => {
     const response = await api.get(`/chat-rooms/${roomId}/stats`);
+    return response.data;
+};
+
+// رفع صورة الغرفة
+export const uploadRoomImage = async (roomId, file) => {
+    const formData = new FormData();
+    formData.append('roomImage', file);
+
+    const response = await api.post(`/chat-rooms/${roomId}/upload-image`, formData, {
+        headers: {
+            'Content-Type': 'multipart/form-data'
+        }
+    });
+    return response.data;
+};
+
+// جلب رسائل الغرفة
+export const getRoomMessages = async (roomId, page = 1, limit = 50, search = '') => {
+    const params = new URLSearchParams({ page, limit });
+    if (search) params.append('search', search);
+    const response = await api.get(`/chat-rooms/${roomId}/messages?${params}`);
+    return response.data;
+};
+
+// جلب بلاغات الغرفة
+export const getRoomReports = async (roomId) => {
+    const response = await api.get(`/chat-rooms/${roomId}/reports`);
+    return response.data;
+};
+
+// ============ Notifications APIs ============
+
+// الحصول على الإشعارات
+export const getNotifications = async (params = {}) => {
+    const queryParams = new URLSearchParams();
+    if (params.page) queryParams.append('page', params.page);
+    if (params.limit) queryParams.append('limit', params.limit);
+    if (params.unreadOnly) queryParams.append('unreadOnly', params.unreadOnly);
+    const response = await api.get(`/notifications?${queryParams}`);
+    return response.data;
+};
+
+// تحديد إشعار كمقروء
+export const markNotificationAsRead = async (notificationId) => {
+    const response = await api.put(`/notifications/${notificationId}/read`);
+    return response.data;
+};
+
+// تحديد جميع الإشعارات كمقروءة
+export const markAllNotificationsAsRead = async () => {
+    const response = await api.put('/notifications/read-all');
+    return response.data;
+};
+
+// حذف إشعار
+export const deleteNotification = async (notificationId) => {
+    const response = await api.delete(`/notifications/${notificationId}`);
+    return response.data;
+};
+
+// ============ Banned Words APIs ============
+
+// الحصول على جميع الكلمات المحظورة
+export const getBannedWords = async (params = {}) => {
+    const queryParams = new URLSearchParams();
+    if (params.page) queryParams.append('page', params.page);
+    if (params.limit) queryParams.append('limit', params.limit);
+    if (params.type) queryParams.append('type', params.type);
+    if (params.isActive !== undefined) queryParams.append('isActive', params.isActive);
+    const response = await api.get(`/banned-words?${queryParams}`);
+    return response.data;
+};
+
+// إضافة كلمة محظورة
+export const addBannedWord = async (wordData) => {
+    const response = await api.post('/banned-words', wordData);
+    return response.data;
+};
+
+// إضافة كلمات محظورة بالجملة
+export const addBannedWordsBulk = async (words) => {
+    const response = await api.post('/banned-words/bulk', { words });
+    return response.data;
+};
+
+// تحديث كلمة محظورة
+export const updateBannedWord = async (wordId, wordData) => {
+    const response = await api.put(`/banned-words/${wordId}`, wordData);
+    return response.data;
+};
+
+// حذف كلمة محظورة
+export const deleteBannedWord = async (wordId) => {
+    const response = await api.delete(`/banned-words/${wordId}`);
+    return response.data;
+};
+
+// تفعيل/إلغاء تفعيل كلمة محظورة
+export const toggleBannedWordActive = async (wordId) => {
+    const response = await api.put(`/banned-words/${wordId}/toggle`);
+    return response.data;
+};
+
+// فحص نص
+export const checkBannedWords = async (text) => {
+    const response = await api.post('/banned-words/check', { text });
+    return response.data;
+};
+
+// إحصائيات الكلمات المحظورة
+export const getBannedWordsStats = async () => {
+    const response = await api.get('/banned-words/stats');
     return response.data;
 };
 

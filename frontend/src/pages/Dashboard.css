@@ -112,11 +112,135 @@
     background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
 }
 
+.stat-card.red .stat-icon {
+    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+}
+
+.stat-card.yellow .stat-icon {
+    background: linear-gradient(135deg, #ffd93d 0%, #ffb830 100%);
+}
+
+.stat-card.deep-purple .stat-icon {
+    background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+}
+
+.stat-card.light-green .stat-icon {
+    background: linear-gradient(135deg, #6ee7b7 0%, #10b981 100%);
+}
+
 .section-title {
     margin: 30px 0 15px 0;
     color: #2c3e50;
     font-size: 20px;
     font-weight: 600;
+}
+
+/* Quick Actions Section */
+.quick-actions-section {
+    background: white;
+    padding: 25px;
+    border-radius: 15px;
+    margin-bottom: 30px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+
+.quick-actions-section .section-title {
+    margin-top: 0;
+}
+
+.quick-actions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+}
+
+.quick-action-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 20px 15px;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.quick-action-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 100%);
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.quick-action-btn:hover::before {
+    opacity: 1;
+}
+
+.quick-action-btn:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+}
+
+.quick-action-btn.users {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.quick-action-btn.conversations {
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    color: white;
+}
+
+.quick-action-btn.rooms {
+    background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+    color: white;
+}
+
+.quick-action-btn.reports {
+    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+    color: white;
+}
+
+.quick-action-btn.settings {
+    background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+    color: white;
+}
+
+.quick-action-btn.notification {
+    background: linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%);
+    color: white;
+}
+
+.action-icon {
+    font-size: 28px;
+}
+
+.action-text {
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+}
+
+.action-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: #fff;
+    color: #ff6b6b;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 10px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
 }
 
 /* Charts Section */
@@ -428,6 +552,7 @@
 .user-avatar {
     width: 50px;
     height: 50px;
+    min-width: 50px;
     border-radius: 50%;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
@@ -436,6 +561,11 @@
     justify-content: center;
     font-size: 20px;
     font-weight: bold;
+    object-fit: cover;
+}
+
+img.user-avatar {
+    background: #f0f0f0;
 }
 
 .user-details {

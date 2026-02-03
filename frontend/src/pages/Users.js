@@ -4,6 +4,7 @@ import { useToast } from '../components/Toast';
 import EditUserModal from '../components/EditUserModal';
 import Pagination from '../components/Pagination';
 import { TableRowSkeleton } from '../components/Skeleton';
+import { getImageUrl, getDefaultAvatar } from '../config';
 import './Users.css';
 
 function Users({ onViewDetail }) {
@@ -15,6 +16,7 @@ function Users({ onViewDetail }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState('all'); // all, active, inactive
     const [filterRole, setFilterRole] = useState('all'); // all, admin, user
+    const [filterAuthProvider, setFilterAuthProvider] = useState('all'); // all, app, google, apple
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [userToDelete, setUserToDelete] = useState(null);
     const [showEditModal, setShowEditModal] = useState(false);
@@ -31,7 +33,7 @@ function Users({ onViewDetail }) {
 
     useEffect(() => {
         filterUsers();
-    }, [users, searchTerm, filterStatus, filterRole]);
+    }, [users, searchTerm, filterStatus, filterRole, filterAuthProvider]);
 
     useEffect(() => {
         sortAndPaginateUsers();
@@ -74,6 +76,11 @@ function Users({ onViewDetail }) {
         // فلترة حسب الدور
         if (filterRole !== 'all') {
             filtered = filtered.filter(user => user.role === filterRole);
+        }
+
+        // فلترة حسب نوع التسجيل
+        if (filterAuthProvider !== 'all') {
+            filtered = filtered.filter(user => (user.authProvider || 'app') === filterAuthProvider);
         }
 
         setFilteredUsers(filtered);
@@ -233,6 +240,17 @@ function Users({ onViewDetail }) {
         );
     };
 
+    const getAuthProviderBadge = (provider) => {
+        switch (provider) {
+            case 'google':
+                return <span className="badge badge-google"><img src="/google.png" alt="Google" className="provider-icon" /> Google</span>;
+            case 'apple':
+                return <span className="badge badge-apple"><img src="/apple-logo.png" alt="Apple" className="provider-icon" /> Apple</span>;
+            default:
+                return <span className="badge badge-app">التطبيق</span>;
+        }
+    };
+
     if (loading) {
         return (
             <div className="users-page">
@@ -289,6 +307,16 @@ function Users({ onViewDetail }) {
                         <option value="admin">مدير فقط</option>
                         <option value="user">مستخدم فقط</option>
                     </select>
+
+                    <select
+                        value={filterAuthProvider}
+                        onChange={(e) => setFilterAuthProvider(e.target.value)}
+                    >
+                        <option value="all">جميع أنواع التسجيل</option>
+                        <option value="app">التطبيق</option>
+                        <option value="google">Google</option>
+                        <option value="apple">Apple</option>
+                    </select>
                 </div>
             </div>
 
@@ -322,6 +350,7 @@ function Users({ onViewDetail }) {
                         setSearchTerm('');
                         setFilterStatus('all');
                         setFilterRole('all');
+                        setFilterAuthProvider('all');
                     }}>
                         إعادة تعيين الفلاتر
                     </button>
@@ -341,6 +370,9 @@ function Users({ onViewDetail }) {
                                     <th onClick={() => handleSort('role')} className="sortable">
                                         الدور {getSortIcon('role')}
                                     </th>
+                                    <th onClick={() => handleSort('authProvider')} className="sortable">
+                                        نوع التسجيل {getSortIcon('authProvider')}
+                                    </th>
                                     <th onClick={() => handleSort('isActive')} className="sortable">
                                         الحالة {getSortIcon('isActive')}
                                     </th>
@@ -356,23 +388,30 @@ function Users({ onViewDetail }) {
                             <tbody>
                                 {loading ? (
                                     <>
-                                        <TableRowSkeleton columns={7} />
-                                        <TableRowSkeleton columns={7} />
-                                        <TableRowSkeleton columns={7} />
+                                        <TableRowSkeleton columns={8} />
+                                        <TableRowSkeleton columns={8} />
+                                        <TableRowSkeleton columns={8} />
                                     </>
                                 ) : (
                                     paginatedUsers.map((user) => (
                                 <tr key={user._id}>
                                     <td>
                                         <div className="user-cell">
-                                            <div className="user-avatar-small">
-                                                {user.name.charAt(0)}
-                                            </div>
+                                            <img
+                                                src={user.profileImage ? getImageUrl(user.profileImage) : getDefaultAvatar(user.name)}
+                                                alt={user.name}
+                                                className="user-avatar-small"
+                                                onError={(e) => {
+                                                    e.target.onerror = null;
+                                                    e.target.src = getDefaultAvatar(user.name);
+                                                }}
+                                            />
                                             <span>{user.name}</span>
                                         </div>
                                     </td>
                                     <td dir="ltr" className="email-cell">{user.email}</td>
                                     <td>{getRoleBadge(user.role)}</td>
+                                    <td>{getAuthProviderBadge(user.authProvider)}</td>
                                     <td>{getStatusBadge(user.isActive)}</td>
                                     <td>{formatDate(user.createdAt)}</td>
                                     <td>

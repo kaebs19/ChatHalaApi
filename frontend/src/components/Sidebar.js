@@ -1,7 +1,8 @@
 import React from 'react';
+import { getImageUrl, getDefaultAvatar } from '../config';
 import './Sidebar.css';
 
-function Sidebar({ currentPage, onPageChange, user }) {
+function Sidebar({ currentPage, onPageChange, user, onProfileClick }) {
     const menuItems = [
         {
             id: 'dashboard',
@@ -41,6 +42,13 @@ function Sidebar({ currentPage, onPageChange, user }) {
             disabled: false
         },
         {
+            id: 'banned-words',
+            name: 'الكلمات المحظورة',
+            icon: '🚫',
+            adminOnly: true,
+            disabled: false
+        },
+        {
             id: 'settings',
             name: 'الإعدادات',
             icon: '⚙️',
@@ -53,8 +61,9 @@ function Sidebar({ currentPage, onPageChange, user }) {
 
     return (
         <div className="sidebar">
-            <div className="sidebar-header">
-                <h2>HalaChat</h2>
+            <div className="sidebar-header" onClick={() => onPageChange('dashboard')} style={{ cursor: 'pointer' }}>
+                <img src="/favicon.svg" alt="شات هلا" className="sidebar-logo" />
+                <h2>شات هلا</h2>
                 <p>لوحة التحكم</p>
             </div>
 
@@ -81,10 +90,16 @@ function Sidebar({ currentPage, onPageChange, user }) {
             </nav>
 
             <div className="sidebar-footer">
-                <div className="user-info">
-                    <div className="user-avatar">
-                        {user?.name?.charAt(0) || 'A'}
-                    </div>
+                <div className="user-info" onClick={onProfileClick} style={{ cursor: 'pointer' }} title="عرض الملف الشخصي">
+                    <img
+                        src={user?.profileImage ? getImageUrl(user.profileImage) : getDefaultAvatar(user?.name)}
+                        alt={user?.name || 'User'}
+                        className="user-avatar user-avatar-img"
+                        onError={(e) => {
+                            e.target.onerror = null;
+                            e.target.src = getDefaultAvatar(user?.name);
+                        }}
+                    />
                     <div className="user-details">
                         <p className="user-name">{user?.name || 'Admin'}</p>
                         <p className="user-role">

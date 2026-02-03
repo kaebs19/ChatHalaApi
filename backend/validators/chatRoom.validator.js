@@ -25,7 +25,13 @@ const createChatRoomValidation = [
     body('image')
         .optional()
         .trim()
-        .isURL({ protocols: ['http', 'https'] }).withMessage('رابط الصورة غير صالح'),
+        .custom((value) => {
+            // السماح بالروابط العادية أو المسارات المحلية
+            if (!value) return true;
+            if (value.startsWith('/uploads/')) return true;
+            if (value.startsWith('http://') || value.startsWith('https://')) return true;
+            throw new Error('رابط الصورة غير صالح');
+        }),
 
     body('category')
         .optional()
@@ -109,7 +115,13 @@ const updateChatRoomValidation = [
     body('image')
         .optional()
         .trim()
-        .isURL({ protocols: ['http', 'https'] }).withMessage('رابط الصورة غير صالح'),
+        .custom((value) => {
+            // السماح بالروابط العادية أو المسارات المحلية
+            if (!value) return true;
+            if (value.startsWith('/uploads/')) return true;
+            if (value.startsWith('http://') || value.startsWith('https://')) return true;
+            throw new Error('رابط الصورة غير صالح');
+        }),
 
     body('category')
         .optional()

@@ -8,6 +8,15 @@ node_modules/
 .env.production
 .env.test
 
+# Firebase Service Account (SENSITIVE!)
+serviceAccount.json
+**/serviceAccount.json
+backend/config/serviceAccount.json
+
+# APNs Keys
+*.p8
+AuthKey*.p8
+
 # Logs
 logs/
 *.log

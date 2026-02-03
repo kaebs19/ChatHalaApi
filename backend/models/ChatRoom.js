@@ -263,7 +263,7 @@ chatRoomSchema.methods.togglePinnedMessage = async function(messageId) {
 };
 
 // Middleware للتحقق قبل الحفظ
-chatRoomSchema.pre('save', function(next) {
+chatRoomSchema.pre('save', function() {
     // التأكد من أن عدد الوسوم لا يتجاوز 10
     if (this.tags && this.tags.length > 10) {
         this.tags = this.tags.slice(0, 10);
@@ -273,8 +273,6 @@ chatRoomSchema.pre('save', function(next) {
     if (this.rules && this.rules.length > 20) {
         this.rules = this.rules.slice(0, 20);
     }
-
-    next();
 });
 
 module.exports = mongoose.model('ChatRoom', chatRoomSchema);

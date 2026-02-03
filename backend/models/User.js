@@ -37,6 +37,10 @@ const userSchema = new mongoose.Schema({
     lastLogin: {
         type: Date
     },
+    isOnline: {
+        type: Boolean,
+        default: false
+    },
     // حقول إعادة تعيين كلمة المرور
     resetPasswordToken: {
         type: String,
@@ -87,8 +91,13 @@ const userSchema = new mongoose.Schema({
         default: null,
         sparse: true
     },
-    // Device Token للإشعارات
+    // Device Token للإشعارات (APNs)
     deviceToken: {
+        type: String,
+        default: null
+    },
+    // FCM Token للإشعارات (Firebase Cloud Messaging)
+    fcmToken: {
         type: String,
         default: null
     },
@@ -189,6 +198,12 @@ userSchema.methods.generateResetToken = function() {
 
     return resetToken;
 };
+
+// Indexes للبحث السريع
+userSchema.index({ name: 'text' });
+userSchema.index({ gender: 1, country: 1 });
+userSchema.index({ isOnline: -1, lastLogin: -1 });
+userSchema.index({ email: 1 }, { unique: true });
 
 const User = mongoose.model('User', userSchema);
 

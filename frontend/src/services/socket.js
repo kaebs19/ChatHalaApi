@@ -1,7 +1,8 @@
 // Socket.IO Service - Real-time Communication
 import { io } from 'socket.io-client';
+import config from '../config';
 
-const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || 'http://localhost:5000';
+const SOCKET_URL = config.SOCKET_URL;
 
 class SocketService {
     constructor() {

@@ -4,41 +4,34 @@ import {
     deleteConversation,
     toggleConversationActive,
     lockConversation,
-    deleteConversationMessages,
-    createGroup
+    deleteConversationMessages
 } from '../services/api';
 import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ConversationDetail from './ConversationDetail';
+import { getImageUrl, getDefaultAvatar } from '../config';
 import './Conversations.css';
 
 function Conversations() {
     const [conversations, setConversations] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [filterType, setFilterType] = useState('all');
     const [filterStatus, setFilterStatus] = useState('all');
+    const [searchTerm, setSearchTerm] = useState('');
     const [selectedConv, setSelectedConv] = useState(null);
     const [showActionsModal, setShowActionsModal] = useState(false);
-    const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
     const [viewingConversationId, setViewingConversationId] = useState(null);
-    const [groupData, setGroupData] = useState({
-        title: '',
-        description: '',
-        participants: [],
-        groupImage: ''
-    });
-    const [creatingGroup, setCreatingGroup] = useState(false);
     const { showToast } = useToast();
 
     useEffect(() => {
         fetchConversations();
-    }, [filterType, filterStatus]);
+    }, [filterStatus]);
 
     const fetchConversations = async () => {
         try {
             setLoading(true);
             const filters = {};
-            if (filterType !== 'all') filters.type = filterType;
+            // فقط المحادثات الخاصة (بدون المجموعات)
+            filters.type = 'private';
             if (filterStatus !== 'all') filters.isActive = filterStatus === 'active';
 
             const response = await getAllConversations(1, 100, filters);
@@ -129,43 +122,30 @@ function Conversations() {
         fetchConversations();
     };
 
-    const handleCreateGroup = async () => {
-        if (!groupData.title.trim()) {
-            showToast('يرجى إدخال اسم القروب', 'error');
-            return;
-        }
+    // تصفية المحادثات حسب البحث
+    const filteredConversations = conversations.filter(conv => {
+        if (!searchTerm) return true;
+        const searchLower = searchTerm.toLowerCase();
+        return (
+            conv.title?.toLowerCase().includes(searchLower) ||
+            conv.participants?.some(p => p.name?.toLowerCase().includes(searchLower))
+        );
+    });
 
-        if (groupData.participants.length < 2) {
-            showToast('يجب إضافة عضوين على الأقل', 'error');
-            return;
-        }
+    // تنسيق الوقت النسبي
+    const formatRelativeTime = (date) => {
+        const now = new Date();
+        const then = new Date(date);
+        const diffMs = now - then;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
 
-        try {
-            setCreatingGroup(true);
-            const response = await createGroup(groupData);
-            if (response.success) {
-                showToast('تم إنشاء القروب بنجاح', 'success');
-                setShowCreateGroupModal(false);
-                setGroupData({
-                    title: '',
-                    description: '',
-                    participants: [],
-                    groupImage: ''
-                });
-                fetchConversations();
-            }
-        } catch (err) {
-            showToast(err.response?.data?.message || 'فشل إنشاء القروب', 'error');
-        } finally {
-            setCreatingGroup(false);
-        }
-    };
-
-    const handleGroupDataChange = (field, value) => {
-        setGroupData(prev => ({
-            ...prev,
-            [field]: value
-        }));
+        if (diffMins < 1) return 'الآن';
+        if (diffMins < 60) return `منذ ${diffMins} دقيقة`;
+        if (diffHours < 24) return `منذ ${diffHours} ساعة`;
+        if (diffDays < 7) return `منذ ${diffDays} يوم`;
+        return formatDate(date);
     };
 
     // إذا كنا نعرض تفاصيل محادثة
@@ -175,126 +155,138 @@ function Conversations() {
 
     return (
         <div className="conversations-page">
-            {/* Header with Filters */}
+            {/* Header */}
             <div className="conversations-header">
-                <div className="header-actions">
-                    <button
-                        className="create-group-btn"
-                        onClick={() => setShowCreateGroupModal(true)}
-                    >
-                        + إنشاء قروب
-                    </button>
-                    <button className="refresh-btn" onClick={fetchConversations}>
-                        تحديث 🔄
-                    </button>
+                <div className="header-title">
+                    <h1>💬 المحادثات الخاصة</h1>
+                    <p>إدارة محادثات المستخدمين</p>
+                </div>
+                <button className="refresh-btn" onClick={fetchConversations}>
+                    تحديث 🔄
+                </button>
+            </div>
+
+            {/* Filters Bar */}
+            <div className="conversations-filters">
+                <div className="search-box">
+                    <input
+                        type="text"
+                        placeholder="🔍 البحث في المحادثات..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
                 </div>
 
-                <div className="filters">
-                    <select
-                        value={filterType}
-                        onChange={(e) => setFilterType(e.target.value)}
+                <div className="filter-buttons">
+                    <button
+                        className={`filter-btn ${filterStatus === 'all' ? 'active' : ''}`}
+                        onClick={() => setFilterStatus('all')}
                     >
-                        <option value="all">جميع الأنواع</option>
-                        <option value="private">محادثات خاصة</option>
-                        <option value="group">قروبات</option>
-                    </select>
-
-                    <select
-                        value={filterStatus}
-                        onChange={(e) => setFilterStatus(e.target.value)}
+                        الكل ({conversations.length})
+                    </button>
+                    <button
+                        className={`filter-btn ${filterStatus === 'active' ? 'active' : ''}`}
+                        onClick={() => setFilterStatus('active')}
                     >
-                        <option value="all">جميع الحالات</option>
-                        <option value="active">نشطة</option>
-                        <option value="inactive">غير نشطة</option>
-                    </select>
+                        نشطة
+                    </button>
+                    <button
+                        className={`filter-btn ${filterStatus === 'inactive' ? 'active' : ''}`}
+                        onClick={() => setFilterStatus('inactive')}
+                    >
+                        غير نشطة
+                    </button>
                 </div>
             </div>
 
             {/* Conversations List */}
             {loading ? (
                 <LoadingSpinner text="جاري تحميل المحادثات..." />
-            ) : conversations.length === 0 ? (
+            ) : filteredConversations.length === 0 ? (
                 <div className="no-conversations">
-                    <p>لا توجد محادثات 💬</p>
+                    <div className="empty-icon">💬</div>
+                    <p>لا توجد محادثات</p>
+                    <small>ستظهر المحادثات الخاصة بين المستخدمين هنا</small>
                 </div>
             ) : (
-                <div className="conversations-grid">
-                    {conversations.map((conv) => (
-                        <div key={conv._id} className={`conversation-card ${conv.type}`}>
-                            <div className="card-header">
-                                <div className="conv-title-section">
-                                    <h3>{conv.title}</h3>
-                                    <span className={`conv-type ${conv.type}`}>
-                                        {conv.type === 'private' ? '👤 خاصة' : '👥 قروب'}
+                <div className="conversations-list">
+                    {filteredConversations.map((conv) => (
+                        <div
+                            key={conv._id}
+                            className={`conversation-item ${!conv.isActive ? 'inactive' : ''}`}
+                            onClick={() => handleViewDetails(conv._id)}
+                        >
+                            {/* الصور الشخصية للمشاركين */}
+                            <div className="conversation-avatars">
+                                {conv.participants?.slice(0, 2).map((p, i) => (
+                                    <div
+                                        key={i}
+                                        className="avatar"
+                                        style={{
+                                            background: `linear-gradient(135deg, ${i === 0 ? '#667eea' : '#764ba2'} 0%, ${i === 0 ? '#764ba2' : '#667eea'} 100%)`,
+                                            zIndex: 2 - i,
+                                            marginRight: i > 0 ? '-10px' : '0'
+                                        }}
+                                    >
+                                        <img
+                                            src={p.profileImage ? getImageUrl(p.profileImage) : getDefaultAvatar(p.name)}
+                                            alt={p.name}
+                                            onError={(e) => {
+                                                e.target.onerror = null;
+                                                e.target.src = getDefaultAvatar(p.name);
+                                            }}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* معلومات المحادثة */}
+                            <div className="conversation-info">
+                                <div className="conversation-header">
+                                    <h3 className="conversation-title">
+                                        {conv.participants?.map(p => p.name).join(' و ') || conv.title}
+                                    </h3>
+                                    <span className="conversation-time">
+                                        {formatRelativeTime(conv.updatedAt)}
                                     </span>
                                 </div>
-                                <div className="conv-status-badges">
-                                    {conv.isLocked && (
-                                        <span className="badge locked">🔒 مقفل</span>
-                                    )}
-                                    <span className={`badge ${conv.isActive ? 'active' : 'inactive'}`}>
-                                        {conv.isActive ? '● نشط' : '○ غير نشط'}
-                                    </span>
+
+                                <div className="conversation-preview">
+                                    <p className="last-message">
+                                        {conv.lastMessage?.content || 'لا توجد رسائل'}
+                                    </p>
+                                    <div className="conversation-badges">
+                                        {conv.isLocked && <span className="badge locked">🔒</span>}
+                                        {!conv.isActive && <span className="badge inactive">معطلة</span>}
+                                        <span className="message-count">
+                                            {conv.metadata?.totalMessages || 0} 💬
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
 
-                            <div className="card-body">
-                                <div className="conv-meta">
-                                    <div className="meta-item">
-                                        <span className="icon">👥</span>
-                                        <span>{conv.metadata?.totalParticipants || 0} مشارك</span>
-                                    </div>
-                                    <div className="meta-item">
-                                        <span className="icon">📨</span>
-                                        <span>{conv.metadata?.totalMessages || 0} رسالة</span>
-                                    </div>
-                                </div>
-
-                                <div className="participants-list">
-                                    {conv.participants?.slice(0, 3).map((p, i) => (
-                                        <span key={i} className="participant-name">
-                                            {p.name}
-                                        </span>
-                                    ))}
-                                    {conv.participants?.length > 3 && (
-                                        <span className="more-participants">
-                                            +{conv.participants.length - 3}
-                                        </span>
-                                    )}
-                                </div>
-
-                                <div className="conv-date">
-                                    آخر تحديث: {formatDate(conv.updatedAt)}
-                                </div>
-                            </div>
-
-                            <div className="card-footer">
+                            {/* أزرار الإجراءات السريعة */}
+                            <div className="conversation-actions" onClick={(e) => e.stopPropagation()}>
                                 <button
-                                    className="quick-action-btn"
+                                    className={`action-btn ${conv.isActive ? 'active' : ''}`}
                                     onClick={() => handleToggleActive(conv._id)}
-                                    title={conv.isActive ? 'إلغاء التفعيل' : 'تفعيل'}
+                                    title={conv.isActive ? 'تعطيل' : 'تفعيل'}
                                 >
-                                    {conv.isActive ? '⏸️' : '▶️'}
+                                    {conv.isActive ? '🟢' : '🔴'}
                                 </button>
                                 <button
-                                    className="quick-action-btn"
+                                    className={`action-btn ${conv.isLocked ? 'locked' : ''}`}
                                     onClick={() => handleLock(conv._id)}
-                                    title={conv.isLocked ? 'فتح القفل' : 'قفل'}
+                                    title={conv.isLocked ? 'فتح' : 'قفل'}
                                 >
-                                    {conv.isLocked ? '🔓' : '🔒'}
+                                    {conv.isLocked ? '🔒' : '🔓'}
                                 </button>
                                 <button
-                                    className="quick-action-btn messages-btn"
-                                    onClick={() => handleViewDetails(conv._id)}
-                                    title="عرض الرسائل"
-                                >
-                                    💬
-                                </button>
-                                <button
-                                    className="actions-btn"
+                                    className="action-btn more"
                                     onClick={() => openActionsModal(conv)}
+                                    title="المزيد"
                                 >
-                                    إجراءات ⚙️
+                                    ⋮
                                 </button>
                             </div>
                         </div>
@@ -393,88 +385,6 @@ function Conversations() {
                 </div>
             )}
 
-            {/* Create Group Modal */}
-            {showCreateGroupModal && (
-                <div className="modal-overlay" onClick={() => setShowCreateGroupModal(false)}>
-                    <div className="modal-content create-group-modal" onClick={(e) => e.stopPropagation()}>
-                        <h3>إنشاء قروب جديد</h3>
-                        <p className="modal-subtitle">املأ البيانات التالية لإنشاء قروب جديد</p>
-
-                        <div className="form-group">
-                            <label>اسم القروب *</label>
-                            <input
-                                type="text"
-                                placeholder="مثال: قروب الدعم الفني"
-                                value={groupData.title}
-                                onChange={(e) => handleGroupDataChange('title', e.target.value)}
-                                className="form-input"
-                            />
-                        </div>
-
-                        <div className="form-group">
-                            <label>الوصف</label>
-                            <textarea
-                                placeholder="وصف مختصر عن القروب"
-                                value={groupData.description}
-                                onChange={(e) => handleGroupDataChange('description', e.target.value)}
-                                className="form-textarea"
-                                rows="3"
-                            />
-                        </div>
-
-                        <div className="form-group">
-                            <label>صورة القروب (URL)</label>
-                            <input
-                                type="text"
-                                placeholder="https://example.com/image.jpg"
-                                value={groupData.groupImage}
-                                onChange={(e) => handleGroupDataChange('groupImage', e.target.value)}
-                                className="form-input"
-                            />
-                        </div>
-
-                        <div className="form-group">
-                            <label>معرفات المشاركين * (افصل بينها بفاصلة)</label>
-                            <input
-                                type="text"
-                                placeholder="مثال: 507f1f77bcf86cd799439011, 507f1f77bcf86cd799439012"
-                                onChange={(e) => {
-                                    const ids = e.target.value.split(',').map(id => id.trim()).filter(id => id);
-                                    handleGroupDataChange('participants', ids);
-                                }}
-                                className="form-input"
-                            />
-                            <small className="form-hint">
-                                أدخل معرفات المستخدمين (IDs) مفصولة بفواصل. يجب إضافة عضوين على الأقل.
-                            </small>
-                        </div>
-
-                        <div className="modal-actions">
-                            <button
-                                className="btn-cancel"
-                                onClick={() => {
-                                    setShowCreateGroupModal(false);
-                                    setGroupData({
-                                        title: '',
-                                        description: '',
-                                        participants: [],
-                                        groupImage: ''
-                                    });
-                                }}
-                            >
-                                إلغاء
-                            </button>
-                            <button
-                                className="btn-create-group"
-                                onClick={handleCreateGroup}
-                                disabled={creatingGroup}
-                            >
-                                {creatingGroup ? 'جاري الإنشاء...' : '✓ إنشاء القروب'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }

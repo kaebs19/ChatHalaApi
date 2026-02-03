@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { getUserActivity } from '../services/api';
 import { useToast } from '../components/Toast';
+import { getImageUrl, getDefaultAvatar } from '../config';
 import './UserDetail.css';
 
 function UserDetail({ userId, onBack }) {
     const [loading, setLoading] = useState(true);
     const [userData, setUserData] = useState(null);
+    const [activeTab, setActiveTab] = useState('info');
     const { showToast } = useToast();
 
     useEffect(() => {
@@ -26,6 +28,7 @@ function UserDetail({ userId, onBack }) {
     };
 
     const formatDate = (date) => {
+        if (!date) return 'غير محدد';
         return new Date(date).toLocaleDateString('ar-SA', {
             year: 'numeric',
             month: 'long',
@@ -33,6 +36,53 @@ function UserDetail({ userId, onBack }) {
             hour: '2-digit',
             minute: '2-digit'
         });
+    };
+
+    const formatBirthDate = (date) => {
+        if (!date) return 'غير محدد';
+        return new Date(date).toLocaleDateString('ar-SA', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+    };
+
+    const calculateAge = (birthDate) => {
+        if (!birthDate) return null;
+        const today = new Date();
+        const birth = new Date(birthDate);
+        let age = today.getFullYear() - birth.getFullYear();
+        const monthDiff = today.getMonth() - birth.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+            age--;
+        }
+        return age;
+    };
+
+    const getGenderText = (gender) => {
+        switch (gender) {
+            case 'male': return 'ذكر';
+            case 'female': return 'أنثى';
+            default: return 'غير محدد';
+        }
+    };
+
+    const getAuthProviderText = (provider) => {
+        switch (provider) {
+            case 'google': return 'Google';
+            case 'apple': return 'Apple';
+            case 'app': return 'التطبيق';
+            default: return 'غير محدد';
+        }
+    };
+
+    const getAuthProviderIcon = (provider) => {
+        switch (provider) {
+            case 'google': return '🔵';
+            case 'apple': return '🍎';
+            case 'app': return '📱';
+            default: return '❓';
+        }
     };
 
     if (loading) {
@@ -52,6 +102,7 @@ function UserDetail({ userId, onBack }) {
     }
 
     const { user, stats, conversations, recentMessages } = userData;
+    const userAge = calculateAge(user.birthDate);
 
     return (
         <div className="user-detail">
@@ -64,116 +115,303 @@ function UserDetail({ userId, onBack }) {
 
             {/* User Info Card */}
             <div className="user-info-card">
-                <div className="user-avatar-large">
-                    {user.name.charAt(0)}
+                <div className="user-avatar-container">
+                    {user.profileImage ? (
+                        <img
+                            src={getImageUrl(user.profileImage)}
+                            alt={user.name}
+                            className="user-avatar-image"
+                            onError={(e) => {
+                                e.target.onerror = null;
+                                e.target.src = getDefaultAvatar(user.name);
+                            }}
+                        />
+                    ) : (
+                        <div className="user-avatar-large">
+                            {user.name.charAt(0)}
+                        </div>
+                    )}
+                    <span className={`status-indicator ${user.isActive ? 'online' : 'offline'}`}></span>
                 </div>
                 <div className="user-info-details">
                     <h3>{user.name}</h3>
                     <p className="user-email">{user.email}</p>
-                    <span className={`role-badge ${user.role}`}>
-                        {user.role === 'admin' ? 'مدير' : 'مستخدم'}
-                    </span>
+                    <div className="user-badges">
+                        <span className={`role-badge ${user.role}`}>
+                            {user.role === 'admin' ? 'مدير' : 'مستخدم'}
+                        </span>
+                        <span className={`status-badge ${user.isActive ? 'active' : 'inactive'}`}>
+                            {user.isActive ? 'نشط' : 'غير نشط'}
+                        </span>
+                        <span className="auth-badge">
+                            {getAuthProviderIcon(user.authProvider)} {getAuthProviderText(user.authProvider)}
+                        </span>
+                    </div>
                     <p className="user-joined">
                         انضم في: {formatDate(user.createdAt)}
                     </p>
+                    {user.lastLogin && (
+                        <p className="user-last-login">
+                            آخر دخول: {formatDate(user.lastLogin)}
+                        </p>
+                    )}
                 </div>
             </div>
 
-            {/* Activity Stats */}
-            <div className="stats-section">
-                <h3>📊 إحصائيات النشاط</h3>
-                <div className="stats-grid">
-                    <div className="stat-card">
-                        <div className="stat-icon">💬</div>
-                        <div className="stat-info">
-                            <p className="stat-label">المحادثات</p>
-                            <p className="stat-value">{stats.totalConversations}</p>
-                        </div>
-                    </div>
-                    <div className="stat-card">
-                        <div className="stat-icon">📨</div>
-                        <div className="stat-info">
-                            <p className="stat-label">الرسائل المرسلة</p>
-                            <p className="stat-value">{stats.totalMessagesSent}</p>
-                        </div>
-                    </div>
-                    <div className="stat-card">
-                        <div className="stat-icon">👥</div>
-                        <div className="stat-info">
-                            <p className="stat-label">المحادثات النشطة</p>
-                            <p className="stat-value">{stats.activeConversations}</p>
-                        </div>
-                    </div>
-                    <div className="stat-card">
-                        <div className="stat-icon">📅</div>
-                        <div className="stat-info">
-                            <p className="stat-label">آخر رسالة</p>
-                            <p className="stat-value">
-                                {stats.lastMessageDate
-                                    ? formatDate(stats.lastMessageDate).split(' ')[0]
-                                    : 'لا يوجد'}
-                            </p>
-                        </div>
-                    </div>
-                </div>
+            {/* Tabs Navigation */}
+            <div className="tabs-navigation">
+                <button
+                    className={`tab-btn ${activeTab === 'info' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('info')}
+                >
+                    👤 المعلومات الشخصية
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'stats' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('stats')}
+                >
+                    📊 الإحصائيات
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'conversations' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('conversations')}
+                >
+                    💬 المحادثات
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'messages' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('messages')}
+                >
+                    📨 الرسائل
+                </button>
             </div>
 
-            {/* Conversations List */}
-            <div className="conversations-section">
-                <h3>💬 المحادثات ({conversations.length})</h3>
-                {conversations.length === 0 ? (
-                    <p className="empty-message">لا توجد محادثات لهذا المستخدم</p>
-                ) : (
-                    <div className="conversations-list">
-                        {conversations.map((conv) => (
-                            <div key={conv._id} className="conversation-item">
-                                <div className="conversation-header">
-                                    <h4>{conv.title}</h4>
-                                    <span className={`conv-type ${conv.type}`}>
-                                        {conv.type === 'private' ? 'خاصة' : 'جماعية'}
-                                    </span>
-                                </div>
-                                <div className="conversation-meta">
-                                    <p>👥 {conv.metadata.totalParticipants} مشارك</p>
-                                    <p>📨 {conv.metadata.totalMessages} رسالة</p>
-                                    <p className={conv.isActive ? 'active' : 'inactive'}>
-                                        {conv.isActive ? '● نشطة' : '○ غير نشطة'}
+            {/* Tab Content */}
+            <div className="tab-content">
+                {/* Personal Info Tab */}
+                {activeTab === 'info' && (
+                    <div className="personal-info-section">
+                        <h3>👤 المعلومات الشخصية</h3>
+                        <div className="info-grid">
+                            <div className="info-item">
+                                <span className="info-icon">🎂</span>
+                                <div className="info-content">
+                                    <p className="info-label">تاريخ الميلاد</p>
+                                    <p className="info-value">
+                                        {formatBirthDate(user.birthDate)}
+                                        {userAge && <span className="age-badge">({userAge} سنة)</span>}
                                     </p>
                                 </div>
-                                <p className="conversation-date">
-                                    آخر تحديث: {formatDate(conv.updatedAt)}
-                                </p>
                             </div>
-                        ))}
+                            <div className="info-item">
+                                <span className="info-icon">⚧</span>
+                                <div className="info-content">
+                                    <p className="info-label">الجنس</p>
+                                    <p className="info-value">{getGenderText(user.gender)}</p>
+                                </div>
+                            </div>
+                            <div className="info-item">
+                                <span className="info-icon">🌍</span>
+                                <div className="info-content">
+                                    <p className="info-label">الدولة</p>
+                                    <p className="info-value">{user.country || 'غير محدد'}</p>
+                                </div>
+                            </div>
+                            <div className="info-item">
+                                <span className="info-icon">🔐</span>
+                                <div className="info-content">
+                                    <p className="info-label">طريقة التسجيل</p>
+                                    <p className="info-value">
+                                        {getAuthProviderIcon(user.authProvider)} {getAuthProviderText(user.authProvider)}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Bio Section */}
+                        <div className="bio-section">
+                            <h4>📝 نبذة عن المستخدم</h4>
+                            <div className="bio-content">
+                                {user.bio ? (
+                                    <p>{user.bio}</p>
+                                ) : (
+                                    <p className="no-bio">لم يتم إضافة نبذة</p>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Privacy Settings */}
+                        {user.privacySettings && (
+                            <div className="privacy-section">
+                                <h4>🔒 إعدادات الخصوصية</h4>
+                                <div className="privacy-grid">
+                                    <div className="privacy-item">
+                                        <span className="privacy-label">ظهور الملف الشخصي:</span>
+                                        <span className="privacy-value">
+                                            {user.privacySettings.profileVisibility === 'public' && '🌐 عام'}
+                                            {user.privacySettings.profileVisibility === 'contacts' && '👥 جهات الاتصال'}
+                                            {user.privacySettings.profileVisibility === 'private' && '🔒 خاص'}
+                                        </span>
+                                    </div>
+                                    <div className="privacy-item">
+                                        <span className="privacy-label">إظهار آخر ظهور:</span>
+                                        <span className="privacy-value">
+                                            {user.privacySettings.showLastSeen ? '✅ مفعل' : '❌ معطل'}
+                                        </span>
+                                    </div>
+                                    <div className="privacy-item">
+                                        <span className="privacy-label">صوت الإشعارات:</span>
+                                        <span className="privacy-value">
+                                            {user.privacySettings.notificationSound ? '🔔 مفعل' : '🔕 معطل'}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Device Info */}
+                        {user.deviceInfo && (user.deviceInfo.platform || user.deviceInfo.osVersion || user.deviceInfo.appVersion) && (
+                            <div className="device-section">
+                                <h4>📱 معلومات الجهاز</h4>
+                                <div className="device-grid">
+                                    {user.deviceInfo.platform && (
+                                        <div className="device-item">
+                                            <span className="device-label">النظام:</span>
+                                            <span className="device-value">{user.deviceInfo.platform}</span>
+                                        </div>
+                                    )}
+                                    {user.deviceInfo.osVersion && (
+                                        <div className="device-item">
+                                            <span className="device-label">إصدار النظام:</span>
+                                            <span className="device-value">{user.deviceInfo.osVersion}</span>
+                                        </div>
+                                    )}
+                                    {user.deviceInfo.appVersion && (
+                                        <div className="device-item">
+                                            <span className="device-label">إصدار التطبيق:</span>
+                                            <span className="device-value">{user.deviceInfo.appVersion}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
-            </div>
 
-            {/* Recent Messages */}
-            <div className="messages-section">
-                <h3>📨 آخر الرسائل ({recentMessages.length})</h3>
-                {recentMessages.length === 0 ? (
-                    <p className="empty-message">لا توجد رسائل حديثة</p>
-                ) : (
-                    <div className="messages-list">
-                        {recentMessages.map((msg) => (
-                            <div key={msg._id} className="message-item">
-                                <div className="message-header">
-                                    <span className={`message-type ${msg.type}`}>
-                                        {msg.type === 'text' ? '📝' : '📎'}
-                                    </span>
-                                    <span className={`message-status ${msg.status}`}>
-                                        {msg.status === 'read' && '✓✓'}
-                                        {msg.status === 'delivered' && '✓'}
-                                        {msg.status === 'sent' && '○'}
-                                    </span>
+                {/* Stats Tab */}
+                {activeTab === 'stats' && (
+                    <div className="stats-section">
+                        <h3>📊 إحصائيات النشاط</h3>
+                        <div className="stats-grid">
+                            <div className="stat-card">
+                                <div className="stat-icon">💬</div>
+                                <div className="stat-info">
+                                    <p className="stat-label">المحادثات</p>
+                                    <p className="stat-value">{stats.totalConversations}</p>
                                 </div>
-                                <p className="message-content">{msg.content}</p>
-                                <p className="message-date">
-                                    {formatDate(msg.createdAt)}
-                                </p>
                             </div>
-                        ))}
+                            <div className="stat-card">
+                                <div className="stat-icon">📨</div>
+                                <div className="stat-info">
+                                    <p className="stat-label">الرسائل المرسلة</p>
+                                    <p className="stat-value">{stats.totalMessagesSent}</p>
+                                </div>
+                            </div>
+                            <div className="stat-card">
+                                <div className="stat-icon">👥</div>
+                                <div className="stat-info">
+                                    <p className="stat-label">المحادثات النشطة</p>
+                                    <p className="stat-value">{stats.activeConversations}</p>
+                                </div>
+                            </div>
+                            <div className="stat-card">
+                                <div className="stat-icon">📅</div>
+                                <div className="stat-info">
+                                    <p className="stat-label">آخر رسالة</p>
+                                    <p className="stat-value">
+                                        {stats.lastMessageDate
+                                            ? formatDate(stats.lastMessageDate).split(' ')[0]
+                                            : 'لا يوجد'}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Additional Stats */}
+                        <div className="additional-stats">
+                            <div className="stat-row">
+                                <span className="stat-row-label">🚫 المستخدمين المحظورين:</span>
+                                <span className="stat-row-value">{user.blockedUsers?.length || 0}</span>
+                            </div>
+                            <div className="stat-row">
+                                <span className="stat-row-label">🔇 المحادثات المكتومة:</span>
+                                <span className="stat-row-value">{user.mutedConversations?.length || 0}</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Conversations Tab */}
+                {activeTab === 'conversations' && (
+                    <div className="conversations-section">
+                        <h3>💬 المحادثات ({conversations.length})</h3>
+                        {conversations.length === 0 ? (
+                            <p className="empty-message">لا توجد محادثات لهذا المستخدم</p>
+                        ) : (
+                            <div className="conversations-list">
+                                {conversations.map((conv) => (
+                                    <div key={conv._id} className="conversation-item">
+                                        <div className="conversation-header">
+                                            <h4>{conv.title}</h4>
+                                            <span className={`conv-type ${conv.type}`}>
+                                                {conv.type === 'private' ? 'خاصة' : 'جماعية'}
+                                            </span>
+                                        </div>
+                                        <div className="conversation-meta">
+                                            <p>👥 {conv.metadata.totalParticipants} مشارك</p>
+                                            <p>📨 {conv.metadata.totalMessages} رسالة</p>
+                                            <p className={conv.isActive ? 'active' : 'inactive'}>
+                                                {conv.isActive ? '● نشطة' : '○ غير نشطة'}
+                                            </p>
+                                        </div>
+                                        <p className="conversation-date">
+                                            آخر تحديث: {formatDate(conv.updatedAt)}
+                                        </p>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Messages Tab */}
+                {activeTab === 'messages' && (
+                    <div className="messages-section">
+                        <h3>📨 آخر الرسائل ({recentMessages.length})</h3>
+                        {recentMessages.length === 0 ? (
+                            <p className="empty-message">لا توجد رسائل حديثة</p>
+                        ) : (
+                            <div className="messages-list">
+                                {recentMessages.map((msg) => (
+                                    <div key={msg._id} className="message-item">
+                                        <div className="message-header">
+                                            <span className={`message-type ${msg.type}`}>
+                                                {msg.type === 'text' ? '📝' : '📎'}
+                                            </span>
+                                            <span className={`message-status ${msg.status}`}>
+                                                {msg.status === 'read' && '✓✓'}
+                                                {msg.status === 'delivered' && '✓'}
+                                                {msg.status === 'sent' && '○'}
+                                            </span>
+                                        </div>
+                                        <p className="message-content">{msg.content}</p>
+                                        <p className="message-date">
+                                            {formatDate(msg.createdAt)}
+                                        </p>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

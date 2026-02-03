@@ -5,21 +5,34 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const { protect, adminOnly } = require('../middleware/auth');
+const { get, set, CACHE_KEYS, CACHE_TTL, invalidateUsers } = require('../utils/cache');
 
 // @route   GET /api/users
 // @desc    الحصول على جميع المستخدمين
 // @access  Private/Admin
 router.get('/', protect, adminOnly, async (req, res) => {
     try {
+        // التحقق من الـ Cache
+        const cachedUsers = get(CACHE_KEYS.ALL_USERS);
+        if (cachedUsers) {
+            console.log('📦 Users من الـ Cache');
+            return res.status(200).json(cachedUsers);
+        }
+
         const users = await User.find({}).select('-password').sort({ createdAt: -1 });
 
-        res.status(200).json({
+        const responseData = {
             success: true,
             count: users.length,
             data: {
                 users
             }
-        });
+        };
+
+        // تخزين في الـ Cache
+        set(CACHE_KEYS.ALL_USERS, responseData, CACHE_TTL.ALL_USERS);
+
+        res.status(200).json(responseData);
 
     } catch (error) {
         console.error('خطأ في جلب المستخدمين:', error);
@@ -76,6 +89,9 @@ router.delete('/:id', protect, adminOnly, async (req, res) => {
 
         await user.deleteOne();
 
+        // إبطال الـ Cache
+        invalidateUsers();
+
         res.status(200).json({
             success: true,
             message: 'تم حذف المستخدم بنجاح'
@@ -125,6 +141,9 @@ router.put('/:id', protect, adminOnly, async (req, res) => {
 
         await user.save();
 
+        // إبطال الـ Cache
+        invalidateUsers();
+
         res.status(200).json({
             success: true,
             message: 'تم تحديث بيانات المستخدم بنجاح',
@@ -164,6 +183,9 @@ router.put('/:id/toggle-active', protect, adminOnly, async (req, res) => {
 
         user.isActive = !user.isActive;
         await user.save();
+
+        // إبطال الـ Cache
+        invalidateUsers();
 
         res.status(200).json({
             success: true,

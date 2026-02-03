@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { getDashboardStats, getConversationsStats } from '../services/api';
+import { getDashboardStats, getConversationsStats, getReportsStats, getAllChatRooms } from '../services/api';
 import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
+import config, { getImageUrl, getDefaultAvatar } from '../config';
 import './Dashboard.css';
 
 function Dashboard({ user, onPageChange }) {
@@ -17,6 +18,16 @@ function Dashboard({ user, onPageChange }) {
         totalMessages: 0,
         privateConversations: 0,
         groupConversations: 0
+    });
+    const [reportsStats, setReportsStats] = useState({
+        total: 0,
+        pending: 0,
+        reviewed: 0,
+        resolved: 0
+    });
+    const [roomsStats, setRoomsStats] = useState({
+        total: 0,
+        active: 0
     });
     const [latestUsers, setLatestUsers] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -55,6 +66,29 @@ function Dashboard({ user, onPageChange }) {
             } catch (convErr) {
                 console.log('تخطي إحصائيات المحادثات');
             }
+
+            // جلب إحصائيات البلاغات
+            try {
+                const reportsResponse = await getReportsStats();
+                if (reportsResponse.success) {
+                    setReportsStats(reportsResponse.data);
+                }
+            } catch (reportsErr) {
+                console.log('تخطي إحصائيات البلاغات');
+            }
+
+            // جلب إحصائيات الغرف
+            try {
+                const roomsResponse = await getAllChatRooms(1, 1);
+                if (roomsResponse.success) {
+                    setRoomsStats({
+                        total: roomsResponse.data.pagination?.total || 0,
+                        active: roomsResponse.data.rooms?.filter(r => r.isActive).length || 0
+                    });
+                }
+            } catch (roomsErr) {
+                console.log('تخطي إحصائيات الغرف');
+            }
         } catch (err) {
             console.error('خطأ في جلب البيانات:', err);
             setError('فشل تحميل البيانات');
@@ -91,7 +125,7 @@ function Dashboard({ user, onPageChange }) {
             setSending(true);
             const token = localStorage.getItem('token');
 
-            const response = await fetch('http://localhost:5000/api/notifications/send', {
+            const response = await fetch(`${config.API_URL}/notifications/send`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -140,6 +174,40 @@ function Dashboard({ user, onPageChange }) {
                     </button>
                 )}
             </div>
+
+            {/* الإجراءات السريعة */}
+            {user?.role === 'admin' && (
+                <div className="quick-actions-section">
+                    <h3 className="section-title">⚡ إجراءات سريعة</h3>
+                    <div className="quick-actions-grid">
+                        <button className="quick-action-btn users" onClick={() => onPageChange && onPageChange('users')}>
+                            <span className="action-icon">👥</span>
+                            <span className="action-text">إدارة المستخدمين</span>
+                        </button>
+                        <button className="quick-action-btn conversations" onClick={() => onPageChange && onPageChange('conversations')}>
+                            <span className="action-icon">💬</span>
+                            <span className="action-text">المحادثات</span>
+                        </button>
+                        <button className="quick-action-btn rooms" onClick={() => onPageChange && onPageChange('chat-rooms')}>
+                            <span className="action-icon">🏠</span>
+                            <span className="action-text">غرف المحادثة</span>
+                        </button>
+                        <button className="quick-action-btn reports" onClick={() => onPageChange && onPageChange('reports')}>
+                            <span className="action-icon">⚠️</span>
+                            <span className="action-text">البلاغات</span>
+                            {reportsStats.pending > 0 && <span className="action-badge">{reportsStats.pending}</span>}
+                        </button>
+                        <button className="quick-action-btn settings" onClick={() => onPageChange && onPageChange('settings')}>
+                            <span className="action-icon">⚙️</span>
+                            <span className="action-text">الإعدادات</span>
+                        </button>
+                        <button className="quick-action-btn notification" onClick={() => setShowNotificationModal(true)}>
+                            <span className="action-icon">📢</span>
+                            <span className="action-text">إرسال إشعار</span>
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* إحصائيات */}
             {loading ? (
@@ -227,6 +295,42 @@ function Dashboard({ user, onPageChange }) {
                                 </div>
                             </div>
 
+                            {/* إحصائيات البلاغات والغرف */}
+                            <h3 className="section-title">⚠️ البلاغات وغرف المحادثة</h3>
+                            <div className="stats-grid">
+                                <div className="stat-card red clickable" onClick={() => onPageChange && onPageChange('reports')}>
+                                    <div className="stat-icon">📝</div>
+                                    <div className="stat-info">
+                                        <h3>{reportsStats.total || 0}</h3>
+                                        <p>إجمالي البلاغات</p>
+                                    </div>
+                                </div>
+
+                                <div className="stat-card yellow clickable" onClick={() => onPageChange && onPageChange('reports')}>
+                                    <div className="stat-icon">⏳</div>
+                                    <div className="stat-info">
+                                        <h3>{reportsStats.pending || 0}</h3>
+                                        <p>بلاغات معلقة</p>
+                                    </div>
+                                </div>
+
+                                <div className="stat-card deep-purple clickable" onClick={() => onPageChange && onPageChange('chat-rooms')}>
+                                    <div className="stat-icon">🏠</div>
+                                    <div className="stat-info">
+                                        <h3>{roomsStats.total || 0}</h3>
+                                        <p>غرف المحادثة</p>
+                                    </div>
+                                </div>
+
+                                <div className="stat-card light-green clickable" onClick={() => onPageChange && onPageChange('reports')}>
+                                    <div className="stat-icon">✅</div>
+                                    <div className="stat-info">
+                                        <h3>{reportsStats.resolved || 0}</h3>
+                                        <p>بلاغات تم حلها</p>
+                                    </div>
+                                </div>
+                            </div>
+
                             {/* مخطط المحادثات */}
                             <div className="charts-section">
                                 <h3 className="section-title">📊 التوزيع البياني</h3>
@@ -301,16 +405,22 @@ function Dashboard({ user, onPageChange }) {
                 <div className="latest-users-section">
                     <h3>أحدث المستخدمين 📋</h3>
                     <div className="users-list">
-                        {latestUsers.map((user, index) => (
-                            <div key={user._id || index} className="user-item">
-                                <div className="user-avatar">
-                                    {user.name.charAt(0)}
-                                </div>
+                        {latestUsers.map((latestUser, index) => (
+                            <div key={latestUser._id || index} className="user-item">
+                                <img
+                                    src={latestUser.profileImage ? getImageUrl(latestUser.profileImage) : getDefaultAvatar(latestUser.name)}
+                                    alt={latestUser.name}
+                                    className="user-avatar"
+                                    onError={(e) => {
+                                        e.target.onerror = null;
+                                        e.target.src = getDefaultAvatar(latestUser.name);
+                                    }}
+                                />
                                 <div className="user-details">
-                                    <h4>{user.name}</h4>
-                                    <p>{user.email}</p>
+                                    <h4>{latestUser.name}</h4>
+                                    <p>{latestUser.email}</p>
                                     <span className="user-date">
-                                        {formatDate(user.createdAt)}
+                                        {formatDate(latestUser.createdAt)}
                                     </span>
                                 </div>
                             </div>

@@ -176,7 +176,7 @@ app.use(notFound); // 404 Handler
 app.use(errorHandler); // Error Handler
 
 // Socket.IO Connection Handler
-io.on('connection', (socket) => {
+io.on('connection', async (socket) => {
     console.log(`👤 مستخدم متصل: ${socket.user.name} (${socket.id})`);
 
     // إضافة المستخدم إلى قائمة المتصلين
@@ -185,6 +185,18 @@ io.on('connection', (socket) => {
         user: socket.user,
         connectedAt: new Date()
     });
+
+    // تحديث حالة المستخدم: متصل
+    await User.findByIdAndUpdate(socket.userId, {
+        isOnline: true,
+        lastLogin: new Date()
+    });
+
+    // إبلاغ الآخرين أن المستخدم متصل
+    socket.broadcast.emit('user:online', { userId: socket.userId });
+
+    // انضم لغرفته الخاصة (للرسائل الخاصة)
+    socket.join(`user:${socket.userId}`);
 
     // إرسال حالة الاتصال للمستخدم
     socket.emit('authenticated', {
@@ -307,11 +319,20 @@ io.on('connection', (socket) => {
     });
 
     // عند قطع الاتصال
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
         console.log(`👋 ${socket.user.name} قطع الاتصال (${socket.id})`);
         connectedUsers.delete(socket.userId);
 
-        // إرسال إشعار للجميع بأن المستخدم غير متصل
+        // تحديث حالة المستخدم: غير متصل
+        await User.findByIdAndUpdate(socket.userId, {
+            isOnline: false,
+            lastLogin: new Date()
+        });
+
+        // إبلاغ الآخرين أن المستخدم قطع الاتصال
+        socket.broadcast.emit('user:offline', { userId: socket.userId });
+
+        // إرسال إشعار للجميع بأن المستخدم غير متصل (للتوافق مع الكود القديم)
         io.emit('user-disconnected', {
             userId: socket.userId,
             userName: socket.user.name

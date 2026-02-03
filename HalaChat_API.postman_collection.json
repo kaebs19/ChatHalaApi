@@ -1,0 +1,536 @@
+{
+	"info": {
+		"_postman_id": "halachat-api-collection",
+		"name": "HalaChat Mobile API",
+		"description": "API للتطبيق - تسجيل الدخول، المحادثات، الرسائل، الإشعارات",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "https://halachat.khalafiati.io/api",
+			"type": "string"
+		},
+		{
+			"key": "token",
+			"value": "",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "Auth",
+			"item": [
+				{
+					"name": "Google Sign In",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"idToken\": \"google_id_token_here\",\n    \"deviceToken\": \"apns_device_token_optional\",\n    \"deviceInfo\": {\n        \"platform\": \"ios\",\n        \"osVersion\": \"17.0\",\n        \"appVersion\": \"1.0.0\"\n    }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/google",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "google"]
+						},
+						"description": "تسجيل الدخول عبر Google - يرجع JWT token"
+					}
+				},
+				{
+					"name": "Apple Sign In",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"identityToken\": \"apple_identity_token_here\",\n    \"authorizationCode\": \"apple_auth_code_here\",\n    \"fullName\": {\n        \"givenName\": \"أحمد\",\n        \"familyName\": \"محمد\"\n    },\n    \"deviceToken\": \"apns_device_token_optional\",\n    \"deviceInfo\": {\n        \"platform\": \"ios\",\n        \"osVersion\": \"17.0\",\n        \"appVersion\": \"1.0.0\"\n    }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/apple",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "apple"]
+						},
+						"description": "تسجيل الدخول عبر Apple - يرجع JWT token"
+					}
+				},
+				{
+					"name": "Update Device Token",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"deviceToken\": \"new_apns_device_token\",\n    \"deviceInfo\": {\n        \"platform\": \"ios\",\n        \"osVersion\": \"17.0\",\n        \"appVersion\": \"1.0.0\"\n    }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/device-token",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "device-token"]
+						},
+						"description": "تحديث توكن الإشعارات APNs"
+					}
+				},
+				{
+					"name": "Get My Profile",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/auth/me",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "me"]
+						},
+						"description": "الحصول على بيانات المستخدم الحالي"
+					}
+				},
+				{
+					"name": "Logout",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/auth/logout",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "logout"]
+						},
+						"description": "تسجيل الخروج"
+					}
+				}
+			]
+		},
+		{
+			"name": "Users",
+			"item": [
+				{
+					"name": "Search Users",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/mobile/users/search?q=أحمد&page=1&limit=20",
+							"host": ["{{base_url}}"],
+							"path": ["mobile", "users", "search"],
+							"query": [
+								{
+									"key": "q",
+									"value": "أحمد",
+									"description": "كلمة البحث"
+								},
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								}
+							]
+						},
+						"description": "البحث عن مستخدمين بالاسم أو البريد"
+					}
+				}
+			]
+		},
+		{
+			"name": "Conversations",
+			"item": [
+				{
+					"name": "Request Conversation",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"recipientId\": \"user_id_here\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/mobile/conversations/request",
+							"host": ["{{base_url}}"],
+							"path": ["mobile", "conversations", "request"]
+						},
+						"description": "إرسال طلب محادثة لمستخدم آخر"
+					}
+				},
+				{
+					"name": "Get Pending Requests",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/mobile/conversations/pending",
+							"host": ["{{base_url}}"],
+							"path": ["mobile", "conversations", "pending"]
+						},
+						"description": "الحصول على طلبات المحادثة المعلقة"
+					}
+				},
+				{
+					"name": "Accept Request",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/mobile/conversations/:conversationId/accept",
+							"host": ["{{base_url}}"],
+							"path": ["mobile", "conversations", ":conversationId", "accept"],
+							"variable": [
+								{
+									"key": "conversationId",
+									"value": "conversation_id_here"
+								}
+							]
+						},
+						"description": "قبول طلب محادثة"
+					}
+				},
+				{
+					"name": "Reject Request",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/mobile/conversations/:conversationId/reject",
+							"host": ["{{base_url}}"],
+							"path": ["mobile", "conversations", ":conversationId", "reject"],
+							"variable": [
+								{
+									"key": "conversationId",
+									"value": "conversation_id_here"
+								}
+							]
+						},
+						"description": "رفض طلب محادثة"
+					}
+				},
+				{
+					"name": "Get My Conversations",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/mobile/conversations?page=1&limit=20",
+							"host": ["{{base_url}}"],
+							"path": ["mobile", "conversations"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								}
+							]
+						},
+						"description": "الحصول على محادثاتي المقبولة"
+					}
+				}
+			]
+		},
+		{
+			"name": "Messages",
+			"item": [
+				{
+					"name": "Send Message",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"conversationId\": \"conversation_id_here\",\n    \"content\": \"مرحباً، كيف حالك؟\",\n    \"type\": \"text\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/mobile/messages/send",
+							"host": ["{{base_url}}"],
+							"path": ["mobile", "messages", "send"]
+						},
+						"description": "إرسال رسالة في محادثة"
+					}
+				},
+				{
+					"name": "Get Messages",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/mobile/messages/:conversationId?page=1&limit=50",
+							"host": ["{{base_url}}"],
+							"path": ["mobile", "messages", ":conversationId"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "50"
+								}
+							],
+							"variable": [
+								{
+									"key": "conversationId",
+									"value": "conversation_id_here"
+								}
+							]
+						},
+						"description": "الحصول على رسائل محادثة"
+					}
+				},
+				{
+					"name": "Mark as Read",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/mobile/messages/:conversationId/read",
+							"host": ["{{base_url}}"],
+							"path": ["mobile", "messages", ":conversationId", "read"],
+							"variable": [
+								{
+									"key": "conversationId",
+									"value": "conversation_id_here"
+								}
+							]
+						},
+						"description": "تحديد الرسائل كمقروءة"
+					}
+				}
+			]
+		},
+		{
+			"name": "Reports",
+			"item": [
+				{
+					"name": "Create Report",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"reportedUser\": \"user_id_here\",\n    \"reason\": \"محتوى مسيء\",\n    \"type\": \"inappropriate\",\n    \"details\": \"تفاصيل إضافية عن البلاغ\",\n    \"messageId\": \"message_id_optional\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/mobile/reports",
+							"host": ["{{base_url}}"],
+							"path": ["mobile", "reports"]
+						},
+						"description": "الإبلاغ عن مستخدم أو محتوى - الأنواع: inappropriate, spam, harassment, fake, other"
+					}
+				}
+			]
+		},
+		{
+			"name": "Notifications",
+			"item": [
+				{
+					"name": "Get Notifications",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/mobile/notifications?page=1&limit=20&unreadOnly=false",
+							"host": ["{{base_url}}"],
+							"path": ["mobile", "notifications"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								},
+								{
+									"key": "unreadOnly",
+									"value": "false"
+								}
+							]
+						},
+						"description": "الحصول على الإشعارات"
+					}
+				},
+				{
+					"name": "Mark Notification Read",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/mobile/notifications/:notificationId/read",
+							"host": ["{{base_url}}"],
+							"path": ["mobile", "notifications", ":notificationId", "read"],
+							"variable": [
+								{
+									"key": "notificationId",
+									"value": "notification_id_here"
+								}
+							]
+						},
+						"description": "تحديد إشعار كمقروء"
+					}
+				}
+			]
+		},
+		{
+			"name": "Profile",
+			"item": [
+				{
+					"name": "Update Profile",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"الاسم الجديد\",\n    \"bio\": \"نبذة عني\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/mobile/profile",
+							"host": ["{{base_url}}"],
+							"path": ["mobile", "profile"]
+						},
+						"description": "تحديث الملف الشخصي"
+					}
+				},
+				{
+					"name": "Upload Avatar",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "avatar",
+									"type": "file",
+									"src": ""
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/mobile/profile/avatar",
+							"host": ["{{base_url}}"],
+							"path": ["mobile", "profile", "avatar"]
+						},
+						"description": "رفع صورة شخصية - jpg, png, gif - max 5MB"
+					}
+				}
+			]
+		}
+	]
+}

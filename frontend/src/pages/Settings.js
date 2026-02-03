@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { getSettings, updateSettings, updatePageContent, changePassword, updateProfile } from '../services/api';
+import { getSettings, updateSettings, updatePageContent, changePassword, updateProfile, uploadProfileImage } from '../services/api';
 import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
+import ImageUpload from '../components/ImageUpload';
 import './Settings.css';
 
 function Settings() {
@@ -13,7 +14,8 @@ function Settings() {
     // بيانات المستخدم
     const [userData, setUserData] = useState({
         name: '',
-        email: ''
+        email: '',
+        profileImage: null
     });
 
     // تغيير كلمة المرور
@@ -36,7 +38,8 @@ function Settings() {
     const [pageContents, setPageContents] = useState({
         privacyPolicy: '',
         termsOfService: '',
-        aboutApp: ''
+        aboutApp: '',
+        contactUs: ''
     });
 
     useEffect(() => {
@@ -51,7 +54,8 @@ function Settings() {
             const user = JSON.parse(localStorage.getItem('user') || '{}');
             setUserData({
                 name: user.name || '',
-                email: user.email || ''
+                email: user.email || '',
+                profileImage: user.profileImage || null
             });
 
             // جلب الإعدادات
@@ -70,7 +74,8 @@ function Settings() {
                     setPageContents({
                         privacyPolicy: settings.privacyPolicy || '',
                         termsOfService: settings.termsOfService || '',
-                        aboutApp: settings.aboutApp || ''
+                        aboutApp: settings.aboutApp || '',
+                        contactUs: settings.contactUs || ''
                     });
                 }
             } catch (settingsErr) {
@@ -89,6 +94,32 @@ function Settings() {
             showToast('تم تحميل البيانات الأساسية', 'warning');
         } finally {
             setLoading(false);
+        }
+    };
+
+    // رفع صورة الملف الشخصي
+    const handleUploadProfileImage = async (file) => {
+        try {
+            const response = await uploadProfileImage(file);
+
+            if (response.success) {
+                // تحديث الصورة في state
+                setUserData(prev => ({
+                    ...prev,
+                    profileImage: response.data.profileImage
+                }));
+
+                // تحديث localStorage
+                const user = JSON.parse(localStorage.getItem('user') || '{}');
+                user.profileImage = response.data.profileImage;
+                localStorage.setItem('user', JSON.stringify(user));
+
+                showToast('تم رفع الصورة بنجاح ✅', 'success');
+            }
+        } catch (error) {
+            console.error('خطأ في رفع الصورة:', error);
+            showToast(error.response?.data?.message || 'فشل رفع الصورة', 'error');
+            throw error; // لإعادة الصورة القديمة في المكون
         }
     };
 
@@ -262,6 +293,15 @@ function Settings() {
                 {activeTab === 'profile' && (
                     <div className="settings-section">
                         <h2>تحديث الملف الشخصي</h2>
+
+                        {/* رفع صورة الملف الشخصي */}
+                        <ImageUpload
+                            currentImage={userData.profileImage}
+                            onUpload={handleUploadProfileImage}
+                            title="صورة الملف الشخصي"
+                            type="profile"
+                        />
+
                         <form onSubmit={handleUpdateProfile}>
                             <div className="form-group">
                                 <label>الاسم</label>
@@ -383,6 +423,24 @@ function Settings() {
                                 disabled={saving}
                             >
                                 {saving ? '⏳ جاري الحفظ...' : '💾 حفظ حول التطبيق'}
+                            </button>
+                        </div>
+
+                        {/* اتصل بنا */}
+                        <div className="page-editor">
+                            <h3>📞 اتصل بنا</h3>
+                            <textarea
+                                rows="8"
+                                value={pageContents.contactUs}
+                                onChange={(e) => setPageContents({ ...pageContents, contactUs: e.target.value })}
+                                placeholder="أدخل محتوى صفحة اتصل بنا (يدعم Markdown)"
+                            />
+                            <button
+                                className="btn-save-page"
+                                onClick={() => handleUpdatePageContent('contact')}
+                                disabled={saving}
+                            >
+                                {saving ? '⏳ جاري الحفظ...' : '💾 حفظ اتصل بنا'}
                             </button>
                         </div>
                     </div>
