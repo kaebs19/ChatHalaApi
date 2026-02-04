@@ -41,9 +41,7 @@ const protect = async (req, res, next) => {
                 message: 'غير مصرح، Token غير صالح'
             });
         }
-    }
-
-    if (!token) {
+    } else {
         return res.status(401).json({
             success: false,
             message: 'غير مصرح، لا يوجد Token'

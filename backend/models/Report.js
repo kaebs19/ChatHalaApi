@@ -32,6 +32,8 @@ const reportSchema = new mongoose.Schema({
             'spam',
             'harassment',
             'inappropriate_content',
+            'inappropriate',
+            'fake_profile',
             'hate_speech',
             'violence',
             'fraud',

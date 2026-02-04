@@ -442,7 +442,7 @@ router.post('/:id/upload-image', protect, adminOnly, upload.single('roomImage'),
         }
 
         // تحديث مسار الصورة
-        const imagePath = '/uploads/profile-images/' + req.file.filename;
+        const imagePath = '/uploads/profiles/' + req.file.filename;
         room.image = imagePath;
         await room.save();
 
