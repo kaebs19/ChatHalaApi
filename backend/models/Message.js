@@ -96,7 +96,7 @@ messageSchema.methods.isRoomMessage = function() {
 };
 
 // التحقق من صحة البيانات قبل الحفظ
-messageSchema.pre('validate', function(next) {
+messageSchema.pre('validate', function() {
     // التأكد من أن واحد فقط من conversation أو room محدد
     if (this.chatType === 'conversation' && this.room) {
         this.room = undefined;
@@ -104,7 +104,6 @@ messageSchema.pre('validate', function(next) {
     if (this.chatType === 'room' && this.conversation) {
         this.conversation = undefined;
     }
-    next();
 });
 
 const Message = mongoose.model('Message', messageSchema);
