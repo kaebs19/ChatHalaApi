@@ -276,7 +276,7 @@ router.post('/conversations/request', protect, async (req, res) => {
             participants: [req.user._id, targetUserId],
             creator: req.user._id,
             status: 'pending', // في انتظار قبول المستخدم الآخر
-            isActive: false, // غير نشطة حتى القبول
+            isActive: true, // نشطة عشان الرسائل تنرسل
             title: `محادثة بين ${req.user.name} و ${targetUser.name}`
         });
 
@@ -547,7 +547,7 @@ router.get('/conversations', protect, async (req, res) => {
 
         const conversations = await Conversation.find({
             participants: req.user._id,
-            status: 'accepted',
+            status: { $in: ['accepted', 'pending'] },
             isActive: true
         })
             .populate('participants', 'name email profileImage')
@@ -558,7 +558,7 @@ router.get('/conversations', protect, async (req, res) => {
 
         const total = await Conversation.countDocuments({
             participants: req.user._id,
-            status: 'accepted',
+            status: { $in: ['accepted', 'pending'] },
             isActive: true
         });
 
@@ -624,11 +624,21 @@ router.post('/messages/send', protect, async (req, res) => {
         }
 
         // التحقق من أن المحادثة نشطة
-        if (!conversation.isActive || conversation.status !== 'accepted') {
+        if (!conversation.isActive) {
             return res.status(400).json({
                 success: false,
                 message: 'المحادثة غير نشطة'
             });
+        }
+
+        // لو معلقة، بس المنشئ يقدر يرسل
+        if (conversation.status === 'pending') {
+            if (conversation.creator.toString() !== req.user._id.toString()) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'لا يمكنك الإرسال حتى تقبل المحادثة'
+                });
+            }
         }
 
         // إنشاء الرسالة
