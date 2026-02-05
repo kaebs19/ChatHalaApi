@@ -29,10 +29,15 @@ const sendNotificationToUser = async (userId, notification, data = {}, saveToDb 
         // حفظ الإشعار في قاعدة البيانات
         if (saveToDb) {
             await Notification.create({
-                user: userId,
                 title: notification.title,
-                message: notification.body,
+                body: notification.body,
                 type: data.type || 'general',
+                recipients: 'specific',
+                targetUsers: [userId],
+                sender: userId, // المستخدم نفسه كمرسل للإشعارات التلقائية
+                status: 'sent',
+                sentAt: new Date(),
+                sentCount: 1,
                 data: data
             });
         }
