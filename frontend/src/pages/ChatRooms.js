@@ -397,12 +397,13 @@ function ChatRooms() {
                         <div key={room._id} className={`room-card ${!room.isActive ? 'inactive' : ''}`}>
                             <div className="room-image">
                                 <img
-                                    src={room.image ? getImageUrl(room.image) : defaultRoomImage}
+                                    src={room.image && room.image.trim() !== '' ? getImageUrl(room.image) : defaultRoomImage}
                                     alt={room.name}
                                     onError={(e) => {
                                         e.target.onerror = null;
                                         e.target.src = defaultRoomImage;
                                     }}
+                                    loading="lazy"
                                 />
                                 {room.isLocked && <span className="lock-badge">🔒</span>}
                                 {!room.isActive && <span className="inactive-badge">معطلة</span>}

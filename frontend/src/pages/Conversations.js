@@ -268,6 +268,13 @@ function Conversations() {
                             {/* أزرار الإجراءات السريعة */}
                             <div className="conversation-actions" onClick={(e) => e.stopPropagation()}>
                                 <button
+                                    className="action-btn view-btn"
+                                    onClick={() => handleViewDetails(conv._id)}
+                                    title="عرض المحادثة"
+                                >
+                                    👁️
+                                </button>
+                                <button
                                     className={`action-btn ${conv.isActive ? 'active' : ''}`}
                                     onClick={() => handleToggleActive(conv._id)}
                                     title={conv.isActive ? 'تعطيل' : 'تفعيل'}

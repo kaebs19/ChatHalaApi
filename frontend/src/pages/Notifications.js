@@ -89,9 +89,26 @@ function Notifications({ onNotificationRead }) {
             'alert': '🚨',
             'success': '✅',
             'info': '📢',
-            'warning': '⚠️'
+            'warning': '⚠️',
+            'general': '📣',
+            'announcement': '📢'
         };
         return icons[type] || '🔔';
+    };
+
+    const getNotificationTypeClass = (type) => {
+        const classes = {
+            'message': 'type-message',
+            'report': 'type-report',
+            'user': 'type-user',
+            'system': 'type-system',
+            'alert': 'type-alert',
+            'success': 'type-success',
+            'general': 'type-general',
+            'announcement': 'type-announcement',
+            'warning': 'type-warning'
+        };
+        return classes[type] || 'type-default';
     };
 
     const formatTime = (date) => {
@@ -162,14 +179,28 @@ function Notifications({ onNotificationRead }) {
                     notifications.map((notification) => (
                         <div
                             key={notification._id}
-                            className={`notification-item ${!notification.isRead ? 'unread' : ''}`}
+                            className={`notification-item ${!notification.isRead ? 'unread' : ''} ${getNotificationTypeClass(notification.type)}`}
                         >
-                            <div className="notification-icon">
+                            <div className={`notification-icon ${getNotificationTypeClass(notification.type)}`}>
                                 {getNotificationIcon(notification.type)}
                             </div>
                             <div className="notification-content">
-                                <h4 className="notification-title">{notification.title}</h4>
-                                <p className="notification-message">{notification.message}</p>
+                                <div className="notification-header-row">
+                                    <h4 className="notification-title">{notification.title}</h4>
+                                    {notification.type && (
+                                        <span className={`notification-type-badge ${getNotificationTypeClass(notification.type)}`}>
+                                            {notification.type === 'message' && 'رسالة'}
+                                            {notification.type === 'report' && 'بلاغ'}
+                                            {notification.type === 'system' && 'نظام'}
+                                            {notification.type === 'general' && 'عام'}
+                                            {notification.type === 'announcement' && 'إعلان'}
+                                            {notification.type === 'alert' && 'تنبيه'}
+                                            {notification.type === 'warning' && 'تحذير'}
+                                            {notification.type === 'success' && 'نجاح'}
+                                        </span>
+                                    )}
+                                </div>
+                                <p className="notification-message">{notification.body || notification.message}</p>
                                 <span className="notification-time">{formatTime(notification.createdAt)}</span>
                             </div>
                             <div className="notification-actions">

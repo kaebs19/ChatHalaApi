@@ -14,10 +14,12 @@ const config = {
 
 // دالة مساعدة للحصول على رابط الصورة الكامل
 export const getImageUrl = (imagePath) => {
-    if (!imagePath) return null;
+    if (!imagePath || imagePath.trim() === '') return null;
     if (imagePath.startsWith('http')) return imagePath;
     if (imagePath.startsWith('data:')) return imagePath; // Base64 images
-    return `${config.SERVER_URL}${imagePath.startsWith('/') ? '' : '/'}${imagePath}`;
+    // إزالة أي slashes مكررة
+    const cleanPath = imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
+    return `${config.SERVER_URL}${cleanPath}`;
 };
 
 // صورة افتراضية للمستخدم

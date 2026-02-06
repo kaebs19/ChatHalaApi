@@ -85,11 +85,6 @@ function Login({ onLogin }) {
                     </button>
                 </form>
 
-                <div className="demo-info">
-                    <p><strong>للتجربة:</strong></p>
-                    <p>البريد: admin@halachat.com</p>
-                    <p>كلمة المرور: admin123</p>
-                </div>
             </div>
         </div>
     );

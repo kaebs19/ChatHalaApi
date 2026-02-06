@@ -160,20 +160,6 @@ function Dashboard({ user, onPageChange }) {
         <div className="dashboard-content">
             {error && <div className="error-banner">{error}</div>}
 
-            <div className="welcome-section">
-                <div className="welcome-text">
-                    <h2>مرحباً {user?.name || 'بك'} 👋</h2>
-                    <p>هذه لوحة التحكم الرئيسية لتطبيق HalaChat</p>
-                </div>
-                {user?.role === 'admin' && (
-                    <button
-                        className="send-notification-btn"
-                        onClick={() => setShowNotificationModal(true)}
-                    >
-                        📢 إرسال إشعار
-                    </button>
-                )}
-            </div>
 
             {/* الإجراءات السريعة */}
             {user?.role === 'admin' && (
