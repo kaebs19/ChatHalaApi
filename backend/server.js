@@ -174,6 +174,7 @@ app.use('/api/activity-logs', require('./routes/activityLogs'));
 app.use('/api/banned-words', require('./routes/bannedWords'));
 app.use('/api/mobile', require('./routes/mobile'));
 app.use('/api/privacy', require('./routes/privacy'));
+app.use('/api/categories', require('./routes/categories'));
 
 // Error Handlers - يجب أن تكون في النهاية
 app.use(notFound); // 404 Handler

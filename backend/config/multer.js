@@ -6,7 +6,7 @@ const path = require('path');
 const fs = require('fs');
 
 // التأكد من وجود مجلد الرفع
-const uploadDir = path.join(__dirname, '..', 'uploads', 'profiles');
+const uploadDir = path.join(__dirname, '..', 'uploads', 'profile-images');
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
 }

@@ -29,6 +29,12 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick }) {
             adminOnly: true
         },
         {
+            id: 'categories',
+            name: 'التصنيفات',
+            icon: '📁',
+            adminOnly: true
+        },
+        {
             id: 'reports',
             name: 'البلاغات',
             icon: '⚠️',

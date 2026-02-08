@@ -26,10 +26,8 @@ const chatRoomSchema = new mongoose.Schema({
 
     // التصنيف
     category: {
-        type: String,
-        trim: true,
-        maxlength: [50, 'التصنيف يجب أن يكون أقل من 50 حرف'],
-        default: 'عام'
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Category'
     },
 
     // الوسوم (Tags) للبحث

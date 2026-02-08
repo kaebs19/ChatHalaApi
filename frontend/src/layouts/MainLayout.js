@@ -11,6 +11,7 @@ import Settings from '../pages/Settings';
 import Profile from '../pages/Profile';
 import Notifications from '../pages/Notifications';
 import BannedWords from '../pages/BannedWords';
+import Categories from '../pages/Categories';
 import { getReportsStats, getNotifications } from '../services/api';
 import { useToast } from '../components/Toast';
 import config from '../config';
@@ -147,6 +148,8 @@ function MainLayout({ onLogout, user: initialUser }) {
                 return <Notifications onNotificationRead={fetchNotificationsCount} />;
             case 'banned-words':
                 return <BannedWords />;
+            case 'categories':
+                return <Categories />;
             case 'user-detail':
                 return <UserDetail userId={selectedUserId} onBack={handleBackFromUserDetail} />;
             default:
@@ -176,6 +179,7 @@ function MainLayout({ onLogout, user: initialUser }) {
                         {currentPage === 'profile' && '👤 الملف الشخصي'}
                         {currentPage === 'notifications' && '🔔 الإشعارات'}
                         {currentPage === 'banned-words' && '🚫 الكلمات المحظورة'}
+                        {currentPage === 'categories' && '📁 التصنيفات'}
                         {currentPage === 'user-detail' && '👤 تفاصيل المستخدم'}
                     </h1>
                     <div className="header-actions">

@@ -30,8 +30,10 @@ function ChatRooms() {
         name: '',
         image: '',
         description: '',
-        accessType: 'public'
+        accessType: 'public',
+        category: ''
     });
+    const [categories, setCategories] = useState([]);
     const [selectedImageFile, setSelectedImageFile] = useState(null); // للصورة المختارة
     const [searchTerm, setSearchTerm] = useState('');
     const [filterActive, setFilterActive] = useState('all'); // all, active, inactive
@@ -51,7 +53,20 @@ function ChatRooms() {
 
     useEffect(() => {
         fetchRooms();
+        fetchCategories();
     }, []);
+
+    const fetchCategories = async () => {
+        try {
+            const response = await fetch('/api/categories?active=true');
+            const data = await response.json();
+            if (data.success) {
+                setCategories(data.data);
+            }
+        } catch (error) {
+            console.error('خطأ في جلب التصنيفات:', error);
+        }
+    };
 
     const fetchRooms = async () => {
         try {
@@ -76,7 +91,8 @@ function ChatRooms() {
             name: '',
             image: '',
             description: '',
-            accessType: 'public'
+            accessType: 'public',
+            category: ''
         });
         setShowModal(true);
     };
@@ -89,7 +105,8 @@ function ChatRooms() {
             name: room.name,
             image: room.image,
             description: room.description || '',
-            accessType: room.accessType
+            accessType: room.accessType,
+            category: room.category?._id || room.category || ''
         });
         setShowModal(true);
     };
@@ -577,6 +594,21 @@ function ChatRooms() {
                                 >
                                     <option value="public">🌐 عامة (يمكن لأي مستخدم الدخول)</option>
                                     <option value="private">🔐 خاصة (بدعوة فقط)</option>
+                                </select>
+                            </div>
+
+                            <div className="form-group">
+                                <label>التصنيف</label>
+                                <select
+                                    value={formData.category}
+                                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                                >
+                                    <option value="">-- بدون تصنيف --</option>
+                                    {categories.map(cat => (
+                                        <option key={cat._id} value={cat._id}>
+                                            {cat.name}
+                                        </option>
+                                    ))}
                                 </select>
                             </div>
 

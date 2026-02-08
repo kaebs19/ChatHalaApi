@@ -2008,4 +2008,33 @@ router.post('/rooms/:id/messages/image', protect, uploadMessageImage.single('ima
     }
 });
 
+// ==================== التصنيفات ====================
+
+/**
+ * @route   GET /api/mobile/categories
+ * @desc    جلب التصنيفات النشطة للتطبيق
+ * @access  Public
+ */
+router.get('/categories', async (req, res) => {
+    try {
+        const Category = require('../models/Category');
+
+        const categories = await Category.find({ isActive: true })
+            .sort({ order: 1, name: 1 })
+            .select('name icon color description roomsCount');
+
+        res.json({
+            success: true,
+            data: categories,
+            count: categories.length
+        });
+    } catch (error) {
+        console.error('خطأ في جلب التصنيفات:', error);
+        res.status(500).json({
+            success: false,
+            message: 'فشل في جلب التصنيفات'
+        });
+    }
+});
+
 module.exports = router;
