@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
-const auth = require('../middleware/auth');
+const { protect: auth } = require('../middleware/auth');
 const { body, param, validationResult } = require('express-validator');
 
 // ==================== إعدادات الخصوصية العامة ====================
