@@ -23,6 +23,10 @@ connectDB();
 
 // إنشاء التطبيق
 const app = express();
+
+// Trust proxy for Nginx reverse proxy (fixes rate-limiter X-Forwarded-For issue)
+app.set('trust proxy', 1);
+
 const server = http.createServer(app);
 
 // إعداد Socket.IO
@@ -269,7 +273,20 @@ io.on('connection', async (socket) => {
 
             const room = io.sockets.adapter.rooms.get(`room-${roomId}`);
             const onlineCount = room ? room.size : 0;
+
+            // إرسال عدد المتصلين (للتوافق)
             io.to(`room-${roomId}`).emit('users-online', { count: onlineCount });
+
+            // إشعار دخول عضو جديد
+            io.to(`room-${roomId}`).emit('room-member-joined', {
+                roomId: roomId,
+                user: {
+                    _id: socket.userId,
+                    name: socket.user.name,
+                    profileImage: socket.user.profileImage
+                },
+                onlineCount: onlineCount
+            });
         } catch (error) {
             console.error('خطأ في join-room:', error);
             socket.emit('error', { message: 'حدث خطأ أثناء الانضمام للغرفة' });
@@ -297,13 +314,23 @@ io.on('connection', async (socket) => {
         setTimeout(() => {
             const room = io.sockets.adapter.rooms.get(`room-${roomId}`);
             const onlineCount = room ? room.size : 0;
+
+            // إرسال عدد المتصلين (للتوافق)
             io.to(`room-${roomId}`).emit('users-online', { count: onlineCount });
+
+            // إشعار خروج عضو
+            io.to(`room-${roomId}`).emit('room-member-left', {
+                roomId: roomId,
+                userId: socket.userId,
+                onlineCount: onlineCount
+            });
         }, 100);
     });
 
     // عند الكتابة
     socket.on('typing', ({ conversationId, userName }) => {
         socket.to(`conversation-${conversationId}`).emit('user-typing', {
+            conversationId,
             userName,
             isTyping: true
         });
@@ -313,8 +340,79 @@ io.on('connection', async (socket) => {
     // عند التوقف عن الكتابة
     socket.on('stop-typing', ({ conversationId }) => {
         socket.to(`conversation-${conversationId}`).emit('user-typing', {
+            conversationId,
             userName: null,
             isTyping: false
+        });
+    });
+
+    // ==========================================
+    // Socket Events للغرف الجماعية
+    // ==========================================
+
+    // إرسال رسالة في الغرفة
+    socket.on('room-message', async ({ roomId, content, type = 'text' }) => {
+        try {
+            const ChatRoom = require('./models/ChatRoom');
+            const Message = require('./models/Message');
+
+            // التحقق من وجود الغرفة
+            const chatRoom = await ChatRoom.findById(roomId);
+            if (!chatRoom || !chatRoom.isActive) {
+                return socket.emit('error', { message: 'الغرفة غير موجودة أو غير نشطة' });
+            }
+
+            // التحقق من قفل الغرفة
+            if (chatRoom.isLocked) {
+                return socket.emit('error', { message: 'الغرفة مقفلة' });
+            }
+
+            // إنشاء الرسالة
+            const message = new Message({
+                chatType: 'room',
+                room: roomId,
+                sender: socket.userId,
+                content: content,
+                type: type
+            });
+            await message.save();
+
+            // تحديث آخر رسالة في الغرفة
+            chatRoom.lastMessage = {
+                content: content?.substring(0, 50),
+                sender: socket.userId,
+                sentAt: new Date()
+            };
+            chatRoom.messageCount = (chatRoom.messageCount || 0) + 1;
+            await chatRoom.save();
+
+            // إرسال للجميع في الغرفة
+            io.to(`room-${roomId}`).emit('new-room-message', {
+                _id: message._id,
+                roomId: roomId,
+                sender: {
+                    _id: socket.userId,
+                    name: socket.user.name,
+                    profileImage: socket.user.profileImage
+                },
+                content: content,
+                type: type,
+                createdAt: message.createdAt
+            });
+
+            console.log(`💬 رسالة جديدة في الغرفة ${roomId} من ${socket.user.name}`);
+        } catch (error) {
+            console.error('خطأ في room-message:', error);
+            socket.emit('error', { message: 'فشل في إرسال الرسالة' });
+        }
+    });
+
+    // الكتابة في الغرفة
+    socket.on('room-typing', ({ roomId, userName, isTyping }) => {
+        socket.to(`room-${roomId}`).emit('room-user-typing', {
+            roomId,
+            userName,
+            isTyping
         });
     });
 

@@ -3,13 +3,49 @@
 
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 const User = require('../models/User');
 const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const Report = require('../models/Report');
 const Notification = require('../models/Notification');
+const ChatRoom = require('../models/ChatRoom');
 const { protect } = require('../middleware/auth');
 const notificationService = require('../services/notificationService');
+const pushNotificationService = require('../services/pushNotificationService');
+
+// إعداد multer لرفع صور الرسائل
+const messagesUploadDir = path.join(__dirname, '..', 'uploads', 'messages');
+if (!fs.existsSync(messagesUploadDir)) {
+    fs.mkdirSync(messagesUploadDir, { recursive: true });
+}
+
+const messageStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, messagesUploadDir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueName = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}${path.extname(file.originalname)}`;
+        cb(null, uniqueName);
+    }
+});
+
+const uploadMessageImage = multer({
+    storage: messageStorage,
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = /jpeg|jpg|png|gif|webp/;
+        const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+        const mimetype = allowedTypes.test(file.mimetype);
+        if (extname && mimetype) {
+            cb(null, true);
+        } else {
+            cb(new Error('فقط الصور مسموحة (JPEG, PNG, GIF, WEBP)'));
+        }
+    }
+});
 
 // ==========================================
 // نظام البحث عن المستخدمين
@@ -513,6 +549,78 @@ router.put('/conversations/:id/reject', protect, async (req, res) => {
     }
 });
 
+// @route   PUT /api/mobile/conversations/:id/read
+// @desc    تحديث الرسائل كمقروءة في المحادثة
+// @access  Private
+router.put('/conversations/:id/read', protect, async (req, res) => {
+    try {
+        const conversationId = req.params.id;
+        const userId = req.user._id;
+
+        // التحقق من المحادثة
+        const conversation = await Conversation.findById(conversationId);
+
+        if (!conversation) {
+            return res.status(404).json({
+                success: false,
+                message: 'المحادثة غير موجودة'
+            });
+        }
+
+        // التحقق من أن المستخدم جزء من المحادثة
+        const isParticipant = conversation.participants.some(
+            p => p.toString() === userId.toString()
+        );
+
+        if (!isParticipant) {
+            return res.status(403).json({
+                success: false,
+                message: 'ليس لديك صلاحية لهذه المحادثة'
+            });
+        }
+
+        // تحديث جميع الرسائل غير المقروءة (التي لم يقرأها هذا المستخدم)
+        const result = await Message.updateMany(
+            {
+                conversation: conversationId,
+                sender: { $ne: userId }, // رسائل الآخرين فقط
+                'readBy.user': { $ne: userId } // لم يقرأها هذا المستخدم بعد
+            },
+            {
+                $addToSet: {
+                    readBy: { user: userId, readAt: new Date() }
+                },
+                $set: { status: 'read' }
+            }
+        );
+
+        // إرسال Socket event للطرف الآخر (اختياري)
+        if (global.io && result.modifiedCount > 0) {
+            global.io.to(`conversation-${conversationId}`).emit('messages-read', {
+                conversationId,
+                readBy: userId,
+                count: result.modifiedCount
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'تم تحديث حالة القراءة',
+            data: {
+                markedAsRead: result.modifiedCount
+            }
+        });
+
+    } catch (error) {
+        console.error('خطأ في تحديث حالة القراءة:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            error: error.message
+        });
+    }
+});
+
 // @route   GET /api/mobile/conversations/pending
 // @desc    الحصول على طلبات المحادثة المعلقة
 // @access  Private
@@ -524,7 +632,7 @@ router.get('/conversations/pending', protect, async (req, res) => {
             status: 'pending'
         })
             .populate('creator', 'name email profileImage')
-            .populate('participants', 'name email profileImage')
+            .populate('participants', 'name email profileImage lastLogin isOnline')
             .sort({ createdAt: -1 });
 
         res.status(200).json({
@@ -543,34 +651,52 @@ router.get('/conversations/pending', protect, async (req, res) => {
 });
 
 // @route   GET /api/mobile/conversations
-// @desc    الحصول على محادثات المستخدم النشطة
+// @desc    الحصول على محادثات المستخدم النشطة مع عدد الرسائل غير المقروءة
 // @access  Private
 router.get('/conversations', protect, async (req, res) => {
     try {
         const { page = 1, limit = 20 } = req.query;
+        const userId = req.user._id;
 
         const conversations = await Conversation.find({
-            participants: req.user._id,
+            participants: userId,
             status: { $in: ['accepted', 'pending'] },
             isActive: true
         })
-            .populate('participants', 'name email profileImage')
+            .populate('participants', 'name email profileImage lastLogin isOnline')
             .populate('lastMessage')
             .sort({ updatedAt: -1 })
             .limit(limit * 1)
-            .skip((page - 1) * limit);
+            .skip((page - 1) * limit)
+            .lean(); // استخدام lean للتعديل على النتائج
+
+        // حساب عدد الرسائل غير المقروءة لكل محادثة
+        const conversationsWithUnread = await Promise.all(
+            conversations.map(async (conv) => {
+                const unreadCount = await Message.countDocuments({
+                    conversation: conv._id,
+                    sender: { $ne: userId }, // رسائل الآخرين فقط
+                    'readBy.user': { $ne: userId } // لم يقرأها هذا المستخدم
+                });
+                return { ...conv, unreadCount };
+            })
+        );
 
         const total = await Conversation.countDocuments({
-            participants: req.user._id,
+            participants: userId,
             status: { $in: ['accepted', 'pending'] },
             isActive: true
         });
 
+        // حساب إجمالي الرسائل غير المقروءة
+        const totalUnread = conversationsWithUnread.reduce((sum, conv) => sum + conv.unreadCount, 0);
+
         res.status(200).json({
             success: true,
             data: {
-                conversations,
+                conversations: conversationsWithUnread,
                 total,
+                totalUnread,
                 currentPage: parseInt(page),
                 totalPages: Math.ceil(total / limit)
             }
@@ -581,6 +707,68 @@ router.get('/conversations', protect, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
+            error: error.message
+        });
+    }
+});
+
+// @route   PUT /api/mobile/conversations/:id/mute
+// @desc    كتم/إلغاء كتم إشعارات محادثة
+// @access  Private
+router.put('/conversations/:id/mute', protect, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { muted, mutedUntil } = req.body;
+        const userId = req.user._id;
+
+        // التحقق من وجود المحادثة وأن المستخدم مشارك فيها
+        const conversation = await Conversation.findById(id);
+        if (!conversation) {
+            return res.status(404).json({
+                success: false,
+                message: 'المحادثة غير موجودة'
+            });
+        }
+
+        if (!conversation.participants.includes(userId)) {
+            return res.status(403).json({
+                success: false,
+                message: 'غير مصرح لك بالوصول لهذه المحادثة'
+            });
+        }
+
+        if (muted) {
+            // إزالة أي كتم سابق لنفس المحادثة أولاً
+            await User.findByIdAndUpdate(userId, {
+                $pull: { mutedConversations: { conversationId: id } }
+            });
+            // إضافة للقائمة المكتومة
+            await User.findByIdAndUpdate(userId, {
+                $push: {
+                    mutedConversations: {
+                        conversationId: id,
+                        mutedUntil: mutedUntil || null
+                    }
+                }
+            });
+        } else {
+            // إزالة من القائمة المكتومة
+            await User.findByIdAndUpdate(userId, {
+                $pull: { mutedConversations: { conversationId: id } }
+            });
+        }
+
+        res.json({
+            success: true,
+            muted,
+            mutedUntil: muted ? (mutedUntil || null) : null,
+            message: muted ? 'تم كتم المحادثة' : 'تم إلغاء كتم المحادثة'
+        });
+    } catch (error) {
+        console.error('خطأ في كتم المحادثة:', error);
+        res.status(500).json({
+            success: false,
+            message: 'فشل في تحديث حالة الكتم',
             error: error.message
         });
     }
@@ -666,32 +854,261 @@ router.post('/messages/send', protect, async (req, res) => {
             .populate('sender', 'name email profileImage');
 
         // إرسال عبر Socket.IO
+        console.log('🔥 About to emit new-message to room:', `conversation-${conversationId}`);
+        console.log('🔥 global.io exists:', !!global.io);
+        if (global.io) {
+            global.io.to(`conversation-${conversationId}`).emit('new-message', {
+                message: populatedMessage
+            });
+            console.log('🔥 Emitted!');
+        } else {
+            console.log('❌ global.io is undefined!');
+        }
+
+        // إرسال إشعارات للمستقبلين الـ offline فقط عبر FCM
+        const recipients = conversation.participants.filter(
+            p => p._id.toString() !== req.user._id.toString()
+        );
+
+        console.log('📲 عدد المستقبلين:', recipients.length);
+
+        for (const recipient of recipients) {
+            const recipientId = recipient._id.toString();
+
+            // تحقق هل المستقبل متصل بالسوكت
+            const isOnline = global.connectedUsers && global.connectedUsers.has(recipientId);
+
+            if (isOnline) {
+                console.log(`📲 ${recipient.name} متصل بالسوكت - لا حاجة لـ Push`);
+            } else {
+                console.log(`📲 ${recipient.name} غير متصل - إرسال Push Notification`);
+                // إرسال Push Notification عبر Firebase للـ offline users فقط
+                const pushResult = await pushNotificationService.sendNewMessageNotification(
+                    recipient._id,
+                    req.user.name,
+                    type === 'text' ? (content.length > 100 ? content.substring(0, 100) + '...' : content) : `أرسل ${type === 'image' ? 'صورة' : type === 'audio' ? 'رسالة صوتية' : type === 'video' ? 'فيديو' : 'ملف'}`,
+                    conversationId
+                );
+                console.log('📲 نتيجة الإشعار:', JSON.stringify(pushResult));
+            }
+        }
+
+        res.status(201).json({
+            success: true,
+            message: 'تم إرسال الرسالة',
+            data: { message: populatedMessage }
+        });
+
+    } catch (error) {
+        console.error('خطأ في إرسال الرسالة:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            error: error.message
+        });
+    }
+});
+
+// @route   POST /api/mobile/conversations/:conversationId/messages/image
+// @desc    إرسال صورة في رسالة (multipart/form-data)
+// @access  Private
+router.post('/conversations/:conversationId/messages/image', protect, uploadMessageImage.single('image'), async (req, res) => {
+    try {
+        const { conversationId } = req.params;
+        const senderId = req.user._id;
+
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: 'لم يتم رفع صورة'
+            });
+        }
+
+        // التحقق من المحادثة
+        const conversation = await Conversation.findById(conversationId)
+            .populate('participants', 'name email fcmToken');
+
+        if (!conversation) {
+            // حذف الصورة المرفوعة
+            fs.unlinkSync(req.file.path);
+            return res.status(404).json({
+                success: false,
+                message: 'المحادثة غير موجودة'
+            });
+        }
+
+        // التحقق من أن المستخدم جزء من المحادثة
+        const isParticipant = conversation.participants.some(
+            p => p._id.toString() === senderId.toString()
+        );
+
+        if (!isParticipant) {
+            fs.unlinkSync(req.file.path);
+            return res.status(403).json({
+                success: false,
+                message: 'ليس لديك صلاحية لهذه المحادثة'
+            });
+        }
+
+        // رابط الصورة
+        const baseUrl = process.env.BASE_URL || 'https://halachat.com';
+        const mediaUrl = `${baseUrl}/uploads/messages/${req.file.filename}`;
+
+        // إنشاء الرسالة
+        const message = await Message.create({
+            chatType: 'conversation',
+            conversation: conversationId,
+            sender: senderId,
+            type: 'image',
+            mediaUrl: mediaUrl,
+            content: req.body.caption || '',
+            status: 'sent'
+        });
+
+        // تحديث آخر رسالة في المحادثة
+        conversation.lastMessage = message._id;
+        await conversation.save();
+
+        // جلب الرسالة مع بيانات المرسل
+        const populatedMessage = await Message.findById(message._id)
+            .populate('sender', 'name profileImage');
+
+        // إرسال عبر Socket.IO
         if (global.io) {
             global.io.to(`conversation-${conversationId}`).emit('new-message', {
                 message: populatedMessage
             });
         }
 
-        // إرسال إشعارات للمستقبلين
+        // إرسال Push للمستقبلين غير المتصلين
+        const recipients = conversation.participants.filter(
+            p => p._id.toString() !== senderId.toString()
+        );
+
+        for (const recipient of recipients) {
+            const recipientId = recipient._id.toString();
+            const isOnline = global.connectedUsers && global.connectedUsers.has(recipientId);
+
+            if (!isOnline) {
+                await pushNotificationService.sendNewMessageNotification(
+                    recipient._id,
+                    req.user.name,
+                    '📷 أرسل صورة',
+                    conversationId
+                );
+            }
+        }
+
+        res.status(201).json({
+            success: true,
+            message: 'تم إرسال الصورة',
+            data: { message: populatedMessage }
+        });
+
+    } catch (error) {
+        console.error('خطأ في إرسال الصورة:', error);
+        // حذف الصورة إذا حدث خطأ
+        if (req.file && fs.existsSync(req.file.path)) {
+            fs.unlinkSync(req.file.path);
+        }
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            error: error.message
+        });
+    }
+});
+
+// @route   POST /api/mobile/conversations/:conversationId/messages
+// @desc    إرسال رسالة (route بديل للتوافق مع iOS)
+// @access  Private
+router.post('/conversations/:conversationId/messages', protect, async (req, res) => {
+    try {
+        const { conversationId } = req.params;
+        const { content, type = 'text', mediaUrl, mediaMetadata } = req.body;
+
+        if (!content) {
+            return res.status(400).json({
+                success: false,
+                message: 'المحتوى مطلوب'
+            });
+        }
+
+        // التحقق من المحادثة
+        const conversation = await Conversation.findById(conversationId)
+            .populate('participants', 'name email deviceToken fcmToken');
+
+        if (!conversation) {
+            return res.status(404).json({
+                success: false,
+                message: 'المحادثة غير موجودة'
+            });
+        }
+
+        // التحقق من أن المستخدم جزء من المحادثة
+        const isParticipant = conversation.participants.some(
+            p => p._id.toString() === req.user._id.toString()
+        );
+
+        if (!isParticipant) {
+            return res.status(403).json({
+                success: false,
+                message: 'ليس لديك صلاحية لهذه المحادثة'
+            });
+        }
+
+        // إنشاء الرسالة
+        const message = await Message.create({
+            chatType: 'conversation',
+            conversation: conversationId,
+            sender: req.user._id,
+            content,
+            type,
+            mediaUrl: mediaUrl || null,
+            mediaMetadata: mediaMetadata || null,
+            status: 'sent'
+        });
+
+        // تحديث آخر رسالة في المحادثة
+        conversation.lastMessage = message._id;
+        await conversation.save();
+
+        // جلب الرسالة مع بيانات المرسل
+        const populatedMessage = await Message.findById(message._id)
+            .populate('sender', 'name email profileImage');
+
+        // إرسال عبر Socket.IO
+        console.log('🔥 About to emit new-message to room:', `conversation-${conversationId}`);
+        console.log('🔥 global.io exists:', !!global.io);
+        if (global.io) {
+            global.io.to(`conversation-${conversationId}`).emit('new-message', {
+                message: populatedMessage
+            });
+            console.log('🔥 Emitted!');
+        }
+
+        // إرسال إشعارات للمستقبلين الـ offline فقط عبر FCM
         const recipients = conversation.participants.filter(
             p => p._id.toString() !== req.user._id.toString()
         );
 
-        for (const recipient of recipients) {
-            if (recipient.deviceToken) {
-                const notification = notificationService.createNotificationPayload({
-                    title: req.user.name,
-                    body: type === 'text' ? content : `أرسل ${type === 'image' ? 'صورة' : 'ملف'}`,
-                    type: 'message',
-                    data: {
-                        conversationId: conversationId,
-                        messageId: message._id.toString(),
-                        senderId: req.user._id.toString(),
-                        type: 'new_message'
-                    }
-                });
+        console.log('📲 عدد المستقبلين:', recipients.length);
 
-                await notificationService.sendToUser(recipient, notification);
+        for (const recipient of recipients) {
+            const recipientId = recipient._id.toString();
+            const isOnline = global.connectedUsers && global.connectedUsers.has(recipientId);
+
+            if (isOnline) {
+                console.log(`📲 ${recipient.name} متصل بالسوكت - لا حاجة لـ Push`);
+            } else {
+                console.log(`📲 ${recipient.name} غير متصل - إرسال Push Notification`);
+                const pushResult = await pushNotificationService.sendNewMessageNotification(
+                    recipient._id,
+                    req.user.name,
+                    type === 'text' ? (content.length > 100 ? content.substring(0, 100) + '...' : content) : `أرسل ${type === 'image' ? 'صورة' : type === 'audio' ? 'رسالة صوتية' : type === 'video' ? 'فيديو' : 'ملف'}`,
+                    conversationId
+                );
+                console.log('📲 نتيجة الإشعار:', JSON.stringify(pushResult));
             }
         }
 
@@ -955,29 +1372,27 @@ router.get('/notifications', protect, async (req, res) => {
     try {
         const { page = 1, limit = 20 } = req.query;
 
-        const notifications = await Notification.find({
+        // جلب الإشعارات الموجهة للمستخدم أو للجميع
+        const query = {
             $or: [
-                { recipients: req.user._id },
-                { recipientType: 'all' }
-            ]
-        })
+                { targetUsers: req.user._id },
+                { recipients: 'all' }
+            ],
+            isActive: true
+        };
+
+        const notifications = await Notification.find(query)
+            .populate('sender', 'name profileImage')
             .sort({ createdAt: -1 })
             .limit(limit * 1)
             .skip((page - 1) * limit);
 
-        const total = await Notification.countDocuments({
-            $or: [
-                { recipients: req.user._id },
-                { recipientType: 'all' }
-            ]
-        });
+        const total = await Notification.countDocuments(query);
 
+        // حساب الإشعارات غير المقروءة
         const unreadCount = await Notification.countDocuments({
-            $or: [
-                { recipients: req.user._id },
-                { recipientType: 'all' }
-            ],
-            readBy: { $ne: req.user._id }
+            ...query,
+            'readBy.user': { $ne: req.user._id }
         });
 
         res.status(200).json({
@@ -1181,6 +1596,413 @@ router.put('/device/update-token', protect, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
+            error: error.message
+        });
+    }
+});
+
+// ==========================================
+// غرف المحادثة العامة (Rooms)
+// ==========================================
+
+// @route   GET /api/mobile/rooms
+// @desc    جلب قائمة الغرف العامة (مبسط للتطبيق)
+// @access  Protected
+router.get('/rooms', protect, async (req, res) => {
+    try {
+        const { page = 1, limit = 20, category, search } = req.query;
+
+        // فلتر الغرف النشطة والعامة فقط
+        const filter = {
+            isActive: true,
+            accessType: 'public'
+        };
+
+        if (category) filter.category = category;
+        if (search) {
+            filter.$or = [
+                { name: { $regex: search, $options: 'i' } },
+                { description: { $regex: search, $options: 'i' } }
+            ];
+        }
+
+        const rooms = await ChatRoom.find(filter)
+            .select('name image description category memberCount messageCount isLocked lastMessage updatedAt members')
+            .populate('lastMessage.sender', 'name profileImage')
+            .sort({ updatedAt: -1 })
+            .skip((page - 1) * limit)
+            .limit(parseInt(limit));
+
+        const total = await ChatRoom.countDocuments(filter);
+
+        // تنسيق البيانات كجدول مبسط
+        const tableData = rooms.map(room => {
+            // حساب عدد المتصلين من Socket.IO
+            const socketRoom = global.io?.sockets?.adapter?.rooms?.get(`room-${room._id}`);
+            const onlineCount = socketRoom ? socketRoom.size : 0;
+
+            // التحقق هل المستخدم عضو بالغرفة
+            const isJoined = room.members?.some(m => m.toString() === req.user._id.toString()) || false;
+
+            return {
+                id: room._id,
+                name: room.name,
+                image: room.image,
+                description: room.description?.substring(0, 100) || '',
+                category: room.category || 'عام',
+                members: room.memberCount || 0,
+                messages: room.messageCount || 0,
+                isLocked: room.isLocked || false,
+                onlineCount,
+                isJoined,
+                lastMessage: room.lastMessage ? {
+                    content: room.lastMessage.content?.substring(0, 50),
+                    senderName: room.lastMessage.sender?.name,
+                    sentAt: room.lastMessage.sentAt
+                } : null,
+                updatedAt: room.updatedAt
+            };
+        });
+
+        res.json({
+            success: true,
+            data: {
+                rooms: tableData,
+                total,
+                currentPage: parseInt(page),
+                totalPages: Math.ceil(total / limit)
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في جلب الغرف:', error);
+        res.status(500).json({
+            success: false,
+            message: 'فشل في جلب الغرف',
+            error: error.message
+        });
+    }
+});
+
+// @route   GET /api/mobile/rooms/:id/messages
+// @desc    جلب رسائل الغرفة مع البحث والترقيم
+// @access  Protected
+router.get('/rooms/:id/messages', protect, async (req, res) => {
+    try {
+        const { id: roomId } = req.params;
+        const { page = 1, limit = 50, search } = req.query;
+
+        // التحقق من وجود الغرفة
+        const room = await ChatRoom.findById(roomId);
+        if (!room) {
+            return res.status(404).json({
+                success: false,
+                message: 'الغرفة غير موجودة'
+            });
+        }
+
+        // بناء الفلتر
+        const filter = {
+            room: roomId,
+            isDeleted: { $ne: true }
+        };
+
+        // البحث في المحتوى
+        if (search) {
+            filter.content = { $regex: search, $options: 'i' };
+        }
+
+        // جلب الرسائل
+        const messages = await Message.find(filter)
+            .populate('sender', 'name profileImage')
+            .sort({ createdAt: -1 })
+            .skip((parseInt(page) - 1) * parseInt(limit))
+            .limit(parseInt(limit));
+
+        const total = await Message.countDocuments(filter);
+
+        res.json({
+            success: true,
+            data: {
+                messages: messages.map(msg => ({
+                    _id: msg._id,
+                    roomId: msg.room,
+                    sender: {
+                        _id: msg.sender?._id,
+                        name: msg.sender?.name,
+                        profileImage: msg.sender?.profileImage
+                    },
+                    content: msg.content,
+                    type: msg.type || 'text',
+                    createdAt: msg.createdAt
+                })),
+                page: parseInt(page),
+                totalPages: Math.ceil(total / parseInt(limit))
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في جلب رسائل الغرفة:', error);
+        res.status(500).json({
+            success: false,
+            message: 'فشل في جلب الرسائل',
+            error: error.message
+        });
+    }
+});
+
+// @route   GET /api/mobile/rooms/:id/online-members
+// @desc    جلب قائمة الأعضاء المتصلين في الغرفة
+// @access  Protected
+router.get('/rooms/:id/online-members', protect, async (req, res) => {
+    try {
+        const { id: roomId } = req.params;
+
+        // التحقق من وجود الغرفة
+        const room = await ChatRoom.findById(roomId);
+        if (!room) {
+            return res.status(404).json({
+                success: false,
+                message: 'الغرفة غير موجودة'
+            });
+        }
+
+        // جلب المستخدمين المتصلين من Socket.IO
+        const socketRoom = global.io?.sockets?.adapter?.rooms?.get(`room-${roomId}`);
+        const onlineUserIds = [];
+
+        if (socketRoom && global.connectedUsers) {
+            // جمع userIds من السوكتات المتصلة
+            for (const socketId of socketRoom) {
+                const socket = global.io.sockets.sockets.get(socketId);
+                if (socket?.userId) {
+                    onlineUserIds.push(socket.userId);
+                }
+            }
+        }
+
+        // جلب بيانات المستخدمين المتصلين
+        const members = await User.find({ _id: { $in: onlineUserIds } })
+            .select('name profileImage')
+            .limit(100);
+
+        res.json({
+            success: true,
+            data: {
+                onlineCount: members.length,
+                members: members.map(m => ({
+                    _id: m._id,
+                    name: m.name,
+                    profileImage: m.profileImage
+                }))
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في جلب الأعضاء المتصلين:', error);
+        res.status(500).json({
+            success: false,
+            message: 'فشل في جلب الأعضاء المتصلين',
+            error: error.message
+        });
+    }
+});
+
+// @route   POST /api/mobile/rooms/:id/report
+// @desc    إبلاغ عن محتوى في الغرفة
+// @access  Protected
+router.post('/rooms/:id/report', protect, async (req, res) => {
+    try {
+        const { id: roomId } = req.params;
+        const { messageId, reason, details } = req.body;
+
+        // التحقق من السبب
+        const validReasons = ['spam', 'inappropriate', 'harassment'];
+        if (!reason || !validReasons.includes(reason)) {
+            return res.status(400).json({
+                success: false,
+                message: 'سبب الإبلاغ غير صالح'
+            });
+        }
+
+        // التحقق من وجود الغرفة
+        const room = await ChatRoom.findById(roomId);
+        if (!room) {
+            return res.status(404).json({
+                success: false,
+                message: 'الغرفة غير موجودة'
+            });
+        }
+
+        // إنشاء البلاغ
+        const report = new Report({
+            reporter: req.user._id,
+            type: 'room',
+            room: roomId,
+            message: messageId || null,
+            reason: reason,
+            details: details || '',
+            status: 'pending'
+        });
+
+        await report.save();
+
+        res.json({
+            success: true,
+            message: 'تم إرسال البلاغ بنجاح'
+        });
+    } catch (error) {
+        console.error('خطأ في إرسال البلاغ:', error);
+        res.status(500).json({
+            success: false,
+            message: 'فشل في إرسال البلاغ',
+            error: error.message
+        });
+    }
+});
+
+// @route   PUT /api/mobile/rooms/:id/mute
+// @desc    كتم/إلغاء كتم إشعارات الغرفة
+// @access  Protected
+router.put('/rooms/:id/mute', protect, async (req, res) => {
+    try {
+        const { id: roomId } = req.params;
+        const { muted } = req.body;
+        const userId = req.user._id;
+
+        // التحقق من وجود الغرفة
+        const room = await ChatRoom.findById(roomId);
+        if (!room) {
+            return res.status(404).json({
+                success: false,
+                message: 'الغرفة غير موجودة'
+            });
+        }
+
+        if (muted) {
+            // إضافة الغرفة للقائمة المكتومة
+            await User.findByIdAndUpdate(userId, {
+                $addToSet: {
+                    mutedRooms: {
+                        roomId: roomId,
+                        mutedAt: new Date()
+                    }
+                }
+            });
+        } else {
+            // إزالة الغرفة من القائمة المكتومة
+            await User.findByIdAndUpdate(userId, {
+                $pull: { mutedRooms: { roomId: roomId } }
+            });
+        }
+
+        res.json({
+            success: true,
+            message: muted ? 'تم كتم الغرفة' : 'تم إلغاء كتم الغرفة',
+            muted
+        });
+    } catch (error) {
+        console.error('خطأ في تحديث حالة الكتم:', error);
+        res.status(500).json({
+            success: false,
+            message: 'فشل في تحديث حالة الكتم',
+            error: error.message
+        });
+    }
+});
+
+// @route   POST /api/mobile/rooms/:id/messages/image
+// @desc    إرسال صورة في الغرفة
+// @access  Protected
+router.post('/rooms/:id/messages/image', protect, uploadMessageImage.single('image'), async (req, res) => {
+    try {
+        const { id: roomId } = req.params;
+        const senderId = req.user._id;
+
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: 'لم يتم رفع صورة'
+            });
+        }
+
+        // التحقق من وجود الغرفة
+        const room = await ChatRoom.findById(roomId);
+        if (!room) {
+            return res.status(404).json({
+                success: false,
+                message: 'الغرفة غير موجودة'
+            });
+        }
+
+        // التحقق من إعدادات الغرفة (السماح بالصور)
+        if (room.settings?.allowImages === false) {
+            return res.status(403).json({
+                success: false,
+                message: 'الصور غير مسموحة في هذه الغرفة'
+            });
+        }
+
+        // رابط الصورة
+        const mediaUrl = `${process.env.BASE_URL || 'https://halachat.com'}/uploads/messages/${req.file.filename}`;
+
+        // إنشاء الرسالة
+        const message = new Message({
+            chatType: 'room',
+            room: roomId,
+            sender: senderId,
+            type: 'image',
+            mediaUrl: mediaUrl,
+            content: req.body.caption || ''
+        });
+        await message.save();
+
+        // تحديث آخر رسالة في الغرفة
+        room.lastMessage = {
+            content: '📷 صورة',
+            sender: senderId,
+            sentAt: new Date()
+        };
+        room.messageCount = (room.messageCount || 0) + 1;
+        await room.save();
+
+        // جلب بيانات المرسل
+        const populatedMessage = await Message.findById(message._id)
+            .populate('sender', 'name profileImage');
+
+        // إرسال عبر Socket.IO
+        global.io?.to(`room-${roomId}`).emit('new-room-message', {
+            _id: populatedMessage._id,
+            roomId: roomId,
+            sender: {
+                _id: populatedMessage.sender._id,
+                name: populatedMessage.sender.name,
+                profileImage: populatedMessage.sender.profileImage
+            },
+            content: populatedMessage.content,
+            type: 'image',
+            mediaUrl: mediaUrl,
+            createdAt: populatedMessage.createdAt
+        });
+
+        res.status(201).json({
+            success: true,
+            data: {
+                _id: populatedMessage._id,
+                roomId: roomId,
+                sender: {
+                    _id: populatedMessage.sender._id,
+                    name: populatedMessage.sender.name,
+                    profileImage: populatedMessage.sender.profileImage
+                },
+                content: populatedMessage.content,
+                type: 'image',
+                mediaUrl: mediaUrl,
+                createdAt: populatedMessage.createdAt
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في إرسال الصورة:', error);
+        res.status(500).json({
+            success: false,
+            message: 'فشل في إرسال الصورة',
             error: error.message
         });
     }
