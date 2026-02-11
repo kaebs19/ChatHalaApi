@@ -1737,6 +1737,7 @@ router.get('/rooms/:id/messages', protect, async (req, res) => {
                     },
                     content: msg.content,
                     type: msg.type || 'text',
+                    mediaUrl: msg.mediaUrl || null,
                     createdAt: msg.createdAt
                 })),
                 page: parseInt(page),
