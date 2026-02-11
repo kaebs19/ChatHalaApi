@@ -149,6 +149,7 @@ function ChatRooms() {
                     name: formData.name,
                     description: formData.description,
                     accessType: formData.accessType,
+                    category: formData.category || null,
                     image: '' // سيتم استخدام الصورة الافتراضية
                 };
 

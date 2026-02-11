@@ -2,6 +2,7 @@
 // ملف السيرفر الرئيسي
 
 const express = require('express');
+const path = require('path');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
@@ -140,7 +141,7 @@ app.use(mongoSanitize());
 app.use(hpp());
 
 // 8. Static Files - تقديم الملفات المرفوعة
-app.use('/uploads', express.static('uploads'));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Route تجريبي للتأكد من عمل السيرفر
 app.get('/', (req, res) => {
