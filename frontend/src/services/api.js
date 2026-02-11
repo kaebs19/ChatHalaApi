@@ -410,6 +410,12 @@ export const getRoomReports = async (roomId) => {
     return response.data;
 };
 
+// تثبيت إعلان في الغرفة
+export const pinRoomMessage = async (roomId, content) => {
+    const response = await api.put(`/chat-rooms/${roomId}/pin`, { content });
+    return response.data;
+};
+
 // ============ Notifications APIs ============
 
 // الحصول على الإشعارات

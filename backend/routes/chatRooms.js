@@ -410,6 +410,52 @@ router.get('/:id/stats', protect, adminOnly, async (req, res) => {
     }
 });
 
+// @route   PUT /api/chat-rooms/:id/pin
+// @desc    تثبيت إعلان في الغرفة
+// @access  Admin
+router.put('/:id/pin', protect, adminOnly, async (req, res) => {
+    try {
+        const { content } = req.body;
+
+        const room = await ChatRoom.findById(req.params.id);
+
+        if (!room) {
+            return res.status(404).json({
+                success: false,
+                message: 'الغرفة غير موجودة'
+            });
+        }
+
+        // تحديث أو إزالة الإعلان المثبت
+        if (content && content.trim()) {
+            room.pinnedMessage = {
+                content: content.trim(),
+                createdAt: new Date(),
+                createdBy: req.user._id
+            };
+        } else {
+            room.pinnedMessage = undefined;
+        }
+
+        await room.save();
+
+        res.json({
+            success: true,
+            message: content ? 'تم تثبيت الإعلان بنجاح' : 'تم إزالة الإعلان المثبت',
+            data: {
+                pinnedMessage: room.pinnedMessage || null
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في تثبيت الإعلان:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في تثبيت الإعلان',
+            error: error.message
+        });
+    }
+});
+
 // @route   POST /api/chat-rooms/:id/upload-image
 // @desc    رفع صورة للغرفة
 // @access  Admin
@@ -442,7 +488,7 @@ router.post('/:id/upload-image', protect, adminOnly, upload.single('roomImage'),
         }
 
         // تحديث مسار الصورة
-        const imagePath = '/uploads/profiles/' + req.file.filename;
+        const imagePath = '/uploads/profile-images/' + req.file.filename;
         room.image = imagePath;
         await room.save();
 

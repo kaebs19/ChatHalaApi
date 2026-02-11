@@ -36,8 +36,14 @@ const messageSchema = new mongoose.Schema({
     },
     content: {
         type: String,
-        required: [true, 'محتوى الرسالة مطلوب'],
-        trim: true
+        required: [function() { return this.type === 'text'; }, 'محتوى الرسالة مطلوب'],
+        trim: true,
+        default: ''
+    },
+    // رابط الوسائط (للصور والفيديو والملفات)
+    mediaUrl: {
+        type: String,
+        default: ''
     },
     type: {
         type: String,
@@ -49,6 +55,11 @@ const messageSchema = new mongoose.Schema({
         enum: ['sent', 'delivered', 'read'],
         default: 'sent'
     },
+    // تتبع من قرأ الرسالة (للمحادثات الجماعية والخاصة)
+    readBy: [{
+        user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        readAt: { type: Date, default: Date.now }
+    }],
     isDeleted: {
         type: Boolean,
         default: false

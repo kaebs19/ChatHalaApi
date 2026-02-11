@@ -535,7 +535,7 @@ router.put('/upload-profile-image', protect, upload.single('profileImage'), opti
         }
 
         // تحديث مسار الصورة
-        const imagePath = '/uploads/profiles/' + req.file.filename;
+        const imagePath = '/uploads/profile-images/' + req.file.filename;
         user.profileImage = imagePath;
         await user.save();
 

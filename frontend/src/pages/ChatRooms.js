@@ -11,7 +11,8 @@ import {
     getRoomMessages,
     getChatRoomStats,
     deleteMessage,
-    getRoomReports
+    getRoomReports,
+    pinRoomMessage
 } from '../services/api';
 import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -46,6 +47,9 @@ function ChatRooms() {
     const [totalMessagesPages, setTotalMessagesPages] = useState(1);
     const [roomReports, setRoomReports] = useState([]);
     const [loadingReports, setLoadingReports] = useState(false);
+    const [showPinModal, setShowPinModal] = useState(false);
+    const [pinRoom, setPinRoom] = useState(null);
+    const [pinContent, setPinContent] = useState('');
     const { showToast } = useToast();
 
     // صورة افتراضية SVG للغرف
@@ -244,6 +248,30 @@ function ChatRooms() {
         } catch (error) {
             console.error('خطأ في تغيير قفل الغرفة:', error);
             showToast('فشل تغيير قفل الغرفة', 'error');
+        }
+    };
+
+    // فتح modal الإعلان المثبت
+    const handleOpenPinModal = (room) => {
+        setPinRoom(room);
+        setPinContent(room.pinnedMessage?.content || '');
+        setShowPinModal(true);
+    };
+
+    // تثبيت الإعلان
+    const handlePinMessage = async () => {
+        if (!pinRoom) return;
+
+        try {
+            const response = await pinRoomMessage(pinRoom._id, pinContent);
+            if (response.success) {
+                showToast(response.message, 'success');
+                setShowPinModal(false);
+                fetchRooms();
+            }
+        } catch (error) {
+            console.error('خطأ في تثبيت الإعلان:', error);
+            showToast('فشل تثبيت الإعلان', 'error');
         }
     };
 
@@ -475,6 +503,13 @@ function ChatRooms() {
                                     title={room.isLocked ? 'فتح' : 'قفل'}
                                 >
                                     {room.isLocked ? '🔒' : '🔓'}
+                                </button>
+                                <button
+                                    className={`action-btn pin ${room.pinnedMessage?.content ? 'has-pin' : ''}`}
+                                    onClick={() => handleOpenPinModal(room)}
+                                    title="إعلان مثبت"
+                                >
+                                    📌
                                 </button>
                                 <button
                                     className="action-btn delete-messages"
@@ -772,6 +807,73 @@ function ChatRooms() {
                                 </div>
                             </div>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {/* Modal الإعلان المثبت */}
+            {showPinModal && pinRoom && (
+                <div className="modal-overlay" onClick={() => setShowPinModal(false)}>
+                    <div className="room-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+                        <div className="modal-header">
+                            <h3>📌 إعلان مثبت - {pinRoom.name}</h3>
+                            <button className="close-btn" onClick={() => setShowPinModal(false)}>✕</button>
+                        </div>
+
+                        <div className="modal-body" style={{ padding: '20px' }}>
+                            <div className="form-group">
+                                <label>نص الإعلان</label>
+                                <textarea
+                                    value={pinContent}
+                                    onChange={(e) => setPinContent(e.target.value)}
+                                    placeholder="اكتب الإعلان الذي سيظهر لجميع أعضاء الغرفة..."
+                                    rows={4}
+                                    style={{
+                                        width: '100%',
+                                        padding: '12px',
+                                        borderRadius: '8px',
+                                        border: '1px solid #ddd',
+                                        resize: 'vertical',
+                                        fontSize: '14px'
+                                    }}
+                                />
+                                <small style={{ color: '#666', marginTop: '8px', display: 'block' }}>
+                                    اتركه فارغاً لإزالة الإعلان المثبت
+                                </small>
+                            </div>
+
+                            <div className="modal-actions" style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+                                <button
+                                    onClick={handlePinMessage}
+                                    className="btn-primary"
+                                    style={{
+                                        flex: 1,
+                                        padding: '12px',
+                                        borderRadius: '8px',
+                                        border: 'none',
+                                        background: '#667eea',
+                                        color: 'white',
+                                        cursor: 'pointer',
+                                        fontSize: '14px'
+                                    }}
+                                >
+                                    {pinContent ? '📌 تثبيت الإعلان' : '🗑️ إزالة الإعلان'}
+                                </button>
+                                <button
+                                    onClick={() => setShowPinModal(false)}
+                                    style={{
+                                        padding: '12px 24px',
+                                        borderRadius: '8px',
+                                        border: '1px solid #ddd',
+                                        background: 'white',
+                                        cursor: 'pointer',
+                                        fontSize: '14px'
+                                    }}
+                                >
+                                    إلغاء
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}

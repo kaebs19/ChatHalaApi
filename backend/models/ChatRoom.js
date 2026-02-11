@@ -117,6 +117,13 @@ const chatRoomSchema = new mongoose.Schema({
         ref: 'Message'
     }],
 
+    // الإعلان المثبت (من الأدمن)
+    pinnedMessage: {
+        content: { type: String, default: '' },
+        createdAt: { type: Date },
+        createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
+    },
+
     // إعدادات الغرفة
     settings: {
         allowImages: { type: Boolean, default: true },

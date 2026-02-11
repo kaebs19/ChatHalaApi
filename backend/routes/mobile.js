@@ -1627,7 +1627,7 @@ router.get('/rooms', protect, async (req, res) => {
         }
 
         const rooms = await ChatRoom.find(filter)
-            .select('name image description category memberCount messageCount isLocked lastMessage updatedAt members')
+            .select('name image description category memberCount messageCount isLocked lastMessage updatedAt members pinnedMessage')
             .populate('lastMessage.sender', 'name profileImage')
             .sort({ updatedAt: -1 })
             .skip((page - 1) * limit)
@@ -1655,6 +1655,10 @@ router.get('/rooms', protect, async (req, res) => {
                 isLocked: room.isLocked || false,
                 onlineCount,
                 isJoined,
+                pinnedMessage: room.pinnedMessage?.content ? {
+                    content: room.pinnedMessage.content,
+                    createdAt: room.pinnedMessage.createdAt
+                } : null,
                 lastMessage: room.lastMessage ? {
                     content: room.lastMessage.content?.substring(0, 50),
                     senderName: room.lastMessage.sender?.name,
