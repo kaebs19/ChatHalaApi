@@ -9,6 +9,10 @@
     "seed": "node seeder.js",
     "seed:destroy": "node seeder.js -d",
     "seed:conversations": "node seedConversations.js",
+    "cleanup": "node cleanupOldMessages.js",
+    "cleanup:dry": "node cleanupOldMessages.js --dry-run",
+    "cleanup:rooms": "node cleanupOldMessages.js --rooms-only",
+    "cleanup:private": "node cleanupOldMessages.js --private-only",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

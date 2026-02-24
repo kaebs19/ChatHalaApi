@@ -532,7 +532,8 @@ router.get('/:id/messages', protect, adminOnly, async (req, res) => {
 
         const query = {
             chatType: 'room',
-            room: req.params.id
+            room: req.params.id,
+            isDeleted: { $ne: true }
         };
 
         if (search) {
