@@ -203,6 +203,24 @@
     font-style: italic;
 }
 
+.message-image-container {
+    margin-top: 8px;
+    max-width: 300px;
+}
+
+.message-image {
+    width: 100%;
+    border-radius: 8px;
+    border: 1px solid #e0e0e0;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.message-image:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
 .message-type-badge {
     display: inline-block;
     margin-top: 8px;

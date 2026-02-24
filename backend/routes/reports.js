@@ -34,6 +34,11 @@ router.get('/', protect, adminOnly, async (req, res) => {
             .populate('reportedBy', 'name email')
             .populate('reportedUser', 'name email isActive')
             .populate('reportedConversation', 'title type')
+            .populate({
+                path: 'reportedMessage',
+                select: 'content type mediaUrl sender createdAt',
+                populate: { path: 'sender', select: 'name' }
+            })
             .populate('assignedTo', 'name')
             .populate('resolvedBy', 'name')
             .sort({ createdAt: -1 })

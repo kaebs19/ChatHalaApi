@@ -8,6 +8,7 @@ function Login({ onLogin }) {
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const toast = useToast();
 
     const handleSubmit = async (e) => {
@@ -68,14 +69,24 @@ function Login({ onLogin }) {
 
                     <div className="form-group">
                         <label>كلمة المرور</label>
-                        <input
-                            type="password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="••••••"
-                            required
-                            dir="ltr"
-                        />
+                        <div className="password-input-wrapper">
+                            <input
+                                type={showPassword ? "text" : "password"}
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                placeholder="••••••"
+                                required
+                                dir="ltr"
+                            />
+                            <button
+                                type="button"
+                                className="password-toggle-btn"
+                                onClick={() => setShowPassword(!showPassword)}
+                                tabIndex={-1}
+                            >
+                                {showPassword ? '🙈' : '👁️'}
+                            </button>
+                        </div>
                     </div>
 
                     {error && <div className="error-message">{error}</div>}

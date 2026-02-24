@@ -112,6 +112,36 @@
     color: #aaa;
 }
 
+.password-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.password-input-wrapper input {
+    padding-left: 45px;
+    width: 100%;
+}
+
+.password-toggle-btn {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 18px;
+    padding: 5px;
+    opacity: 0.6;
+    transition: opacity 0.3s;
+    line-height: 1;
+}
+
+.password-toggle-btn:hover {
+    opacity: 1;
+}
+
 button[type="submit"] {
     width: 100%;
     padding: 16px;

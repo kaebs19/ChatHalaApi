@@ -138,6 +138,22 @@
     gap: 12px;
 }
 
+/* Conversation Number */
+.conversation-number {
+    width: 35px;
+    height: 35px;
+    min-width: 35px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 13px;
+    flex-shrink: 0;
+}
+
 /* Conversation Item */
 .conversation-item {
     background: white;
@@ -318,6 +334,16 @@
 .conversation-actions .action-btn.view-btn:hover {
     transform: scale(1.15);
     box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.conversation-actions .action-btn.messages-btn {
+    background: linear-gradient(135deg, #00b894 0%, #00cec9 100%);
+    color: white;
+}
+
+.conversation-actions .action-btn.messages-btn:hover {
+    transform: scale(1.15);
+    box-shadow: 0 4px 12px rgba(0, 184, 148, 0.4);
 }
 
 /* Modal */

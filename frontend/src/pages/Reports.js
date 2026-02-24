@@ -3,6 +3,7 @@ import { getAllReports, getReportsStats, updateReportStatus, takeReportAction, u
 import { useToast } from '../components/Toast';
 import Pagination from '../components/Pagination';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { getImageUrl } from '../config';
 import './Reports.css';
 
 function Reports() {
@@ -286,6 +287,52 @@ function Reports() {
                                             </div>
                                         )}
                                     </div>
+
+                                    {/* المحتوى المُبلغ عنه */}
+                                    {(report.reportedMessage || report.reportedConversation) && (
+                                        <div className="reported-content-section">
+                                            <h4 className="reported-content-title">📋 المحتوى المُبلغ عنه</h4>
+
+                                            {report.reportedMessage && (
+                                                <div className="reported-message-box">
+                                                    <div className="reported-message-header">
+                                                        <span className="reported-sender">
+                                                            ✉️ {report.reportedMessage.sender?.name || 'مجهول'}
+                                                        </span>
+                                                        <span className={`reported-type ${report.reportedMessage.type}`}>
+                                                            {report.reportedMessage.type === 'text' && '📝 نص'}
+                                                            {report.reportedMessage.type === 'image' && '🖼️ صورة'}
+                                                            {report.reportedMessage.type === 'file' && '📎 ملف'}
+                                                            {report.reportedMessage.type === 'audio' && '🎵 صوت'}
+                                                            {report.reportedMessage.type === 'video' && '🎥 فيديو'}
+                                                        </span>
+                                                    </div>
+                                                    {report.reportedMessage.content && (
+                                                        <p className="reported-message-content">
+                                                            {report.reportedMessage.content}
+                                                        </p>
+                                                    )}
+                                                    {report.reportedMessage.type === 'image' && report.reportedMessage.mediaUrl && (
+                                                        <img
+                                                            src={getImageUrl(report.reportedMessage.mediaUrl)}
+                                                            alt="صورة مبلغ عنها"
+                                                            className="reported-message-image"
+                                                            onError={(e) => { e.target.style.display = 'none'; }}
+                                                        />
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {report.reportedConversation && (
+                                                <div className="reported-conversation-box">
+                                                    <span>💬 المحادثة: {report.reportedConversation.title}</span>
+                                                    <span className="conv-type-badge">
+                                                        {report.reportedConversation.type === 'private' ? 'خاصة' : 'جماعية'}
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="report-footer">

@@ -2,12 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { getUserActivity } from '../services/api';
 import { useToast } from '../components/Toast';
 import { getImageUrl, getDefaultAvatar } from '../config';
+import ConversationDetail from './ConversationDetail';
+import ConversationMessages from './ConversationMessages';
 import './UserDetail.css';
 
 function UserDetail({ userId, onBack }) {
     const [loading, setLoading] = useState(true);
     const [userData, setUserData] = useState(null);
     const [activeTab, setActiveTab] = useState('info');
+    const [viewingConversationId, setViewingConversationId] = useState(null);
+    const [viewingConversationMessages, setViewingConversationMessages] = useState(false);
     const { showToast } = useToast();
 
     useEffect(() => {
@@ -103,6 +107,29 @@ function UserDetail({ userId, onBack }) {
 
     const { user, stats, conversations, recentMessages } = userData;
     const userAge = calculateAge(user.birthDate);
+
+    // عرض تفاصيل محادثة
+    if (viewingConversationId && !viewingConversationMessages) {
+        return (
+            <ConversationDetail
+                conversationId={viewingConversationId}
+                onBack={() => setViewingConversationId(null)}
+            />
+        );
+    }
+
+    // عرض رسائل محادثة مباشرة
+    if (viewingConversationId && viewingConversationMessages) {
+        return (
+            <ConversationMessages
+                conversationId={viewingConversationId}
+                onBack={() => {
+                    setViewingConversationId(null);
+                    setViewingConversationMessages(false);
+                }}
+            />
+        );
+    }
 
     return (
         <div className="user-detail">
@@ -360,7 +387,7 @@ function UserDetail({ userId, onBack }) {
                         ) : (
                             <div className="conversations-list">
                                 {conversations.map((conv) => (
-                                    <div key={conv._id} className="conversation-item">
+                                    <div key={conv._id} className="conversation-item clickable">
                                         <div className="conversation-header">
                                             <h4>{conv.title}</h4>
                                             <span className={`conv-type ${conv.type}`}>
@@ -377,6 +404,23 @@ function UserDetail({ userId, onBack }) {
                                         <p className="conversation-date">
                                             آخر تحديث: {formatDate(conv.updatedAt)}
                                         </p>
+                                        <div className="conversation-actions-row">
+                                            <button
+                                                className="conv-action-btn view-detail"
+                                                onClick={() => setViewingConversationId(conv._id)}
+                                            >
+                                                👁️ التفاصيل
+                                            </button>
+                                            <button
+                                                className="conv-action-btn view-messages"
+                                                onClick={() => {
+                                                    setViewingConversationId(conv._id);
+                                                    setViewingConversationMessages(true);
+                                                }}
+                                            >
+                                                💬 الرسائل
+                                            </button>
+                                        </div>
                                     </div>
                                 ))}
                             </div>
@@ -393,18 +437,32 @@ function UserDetail({ userId, onBack }) {
                         ) : (
                             <div className="messages-list">
                                 {recentMessages.map((msg) => (
-                                    <div key={msg._id} className="message-item">
+                                    <div key={msg._id} className="message-item enhanced">
                                         <div className="message-header">
                                             <span className={`message-type ${msg.type}`}>
-                                                {msg.type === 'text' ? '📝' : '📎'}
+                                                {msg.type === 'text' && '📝 نص'}
+                                                {msg.type === 'image' && '🖼️ صورة'}
+                                                {msg.type === 'file' && '📎 ملف'}
+                                                {msg.type === 'audio' && '🎵 صوت'}
+                                                {msg.type === 'video' && '🎥 فيديو'}
                                             </span>
                                             <span className={`message-status ${msg.status}`}>
-                                                {msg.status === 'read' && '✓✓'}
-                                                {msg.status === 'delivered' && '✓'}
-                                                {msg.status === 'sent' && '○'}
+                                                {msg.status === 'read' && '✓✓ مقروءة'}
+                                                {msg.status === 'delivered' && '✓ مُوصلة'}
+                                                {msg.status === 'sent' && '○ مرسلة'}
                                             </span>
                                         </div>
-                                        <p className="message-content">{msg.content}</p>
+                                        {msg.content && <p className="message-content">{msg.content}</p>}
+                                        {msg.type === 'image' && msg.mediaUrl && (
+                                            <div className="message-media">
+                                                <img
+                                                    src={getImageUrl(msg.mediaUrl)}
+                                                    alt="صورة"
+                                                    className="message-image-preview"
+                                                    onError={(e) => { e.target.style.display = 'none'; }}
+                                                />
+                                            </div>
+                                        )}
                                         <p className="message-date">
                                             {formatDate(msg.createdAt)}
                                         </p>

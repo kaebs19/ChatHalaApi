@@ -8,7 +8,9 @@ import {
 } from '../services/api';
 import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
+import Pagination from '../components/Pagination';
 import ConversationDetail from './ConversationDetail';
+import ConversationMessages from './ConversationMessages';
 import { getImageUrl, getDefaultAvatar } from '../config';
 import './Conversations.css';
 
@@ -20,11 +22,21 @@ function Conversations() {
     const [selectedConv, setSelectedConv] = useState(null);
     const [showActionsModal, setShowActionsModal] = useState(false);
     const [viewingConversationId, setViewingConversationId] = useState(null);
+    const [directToMessages, setDirectToMessages] = useState(false);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalItems, setTotalItems] = useState(0);
+    const itemsPerPage = 20;
     const { showToast } = useToast();
 
     useEffect(() => {
         fetchConversations();
-    }, [filterStatus]);
+    }, [filterStatus, currentPage]);
+
+    // Reset page when search changes
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm]);
 
     const fetchConversations = async () => {
         try {
@@ -34,9 +46,11 @@ function Conversations() {
             filters.type = 'private';
             if (filterStatus !== 'all') filters.isActive = filterStatus === 'active';
 
-            const response = await getAllConversations(1, 100, filters);
+            const response = await getAllConversations(currentPage, itemsPerPage, filters);
             if (response.success) {
                 setConversations(response.data.conversations);
+                setTotalPages(response.data.totalPages || 1);
+                setTotalItems(response.data.total || response.data.conversations.length);
             }
         } catch (err) {
             console.error('خطأ في جلب المحادثات:', err);
@@ -115,10 +129,17 @@ function Conversations() {
 
     const handleViewDetails = (convId) => {
         setViewingConversationId(convId);
+        setDirectToMessages(false);
+    };
+
+    const handleViewMessages = (convId) => {
+        setViewingConversationId(convId);
+        setDirectToMessages(true);
     };
 
     const handleBackFromDetails = () => {
         setViewingConversationId(null);
+        setDirectToMessages(false);
         fetchConversations();
     };
 
@@ -131,6 +152,11 @@ function Conversations() {
             conv.participants?.some(p => p.name?.toLowerCase().includes(searchLower))
         );
     });
+
+    // ترتيب حسب الأحدث
+    const sortedConversations = [...filteredConversations].sort(
+        (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)
+    );
 
     // تنسيق الوقت النسبي
     const formatRelativeTime = (date) => {
@@ -147,6 +173,16 @@ function Conversations() {
         if (diffDays < 7) return `منذ ${diffDays} يوم`;
         return formatDate(date);
     };
+
+    const handleFilterChange = (status) => {
+        setFilterStatus(status);
+        setCurrentPage(1);
+    };
+
+    // إذا كنا نعرض رسائل محادثة مباشرة
+    if (viewingConversationId && directToMessages) {
+        return <ConversationMessages conversationId={viewingConversationId} onBack={handleBackFromDetails} />;
+    }
 
     // إذا كنا نعرض تفاصيل محادثة
     if (viewingConversationId) {
@@ -180,19 +216,19 @@ function Conversations() {
                 <div className="filter-buttons">
                     <button
                         className={`filter-btn ${filterStatus === 'all' ? 'active' : ''}`}
-                        onClick={() => setFilterStatus('all')}
+                        onClick={() => handleFilterChange('all')}
                     >
-                        الكل ({conversations.length})
+                        الكل ({totalItems})
                     </button>
                     <button
                         className={`filter-btn ${filterStatus === 'active' ? 'active' : ''}`}
-                        onClick={() => setFilterStatus('active')}
+                        onClick={() => handleFilterChange('active')}
                     >
                         نشطة
                     </button>
                     <button
                         className={`filter-btn ${filterStatus === 'inactive' ? 'active' : ''}`}
-                        onClick={() => setFilterStatus('inactive')}
+                        onClick={() => handleFilterChange('inactive')}
                     >
                         غير نشطة
                     </button>
@@ -202,103 +238,125 @@ function Conversations() {
             {/* Conversations List */}
             {loading ? (
                 <LoadingSpinner text="جاري تحميل المحادثات..." />
-            ) : filteredConversations.length === 0 ? (
+            ) : sortedConversations.length === 0 ? (
                 <div className="no-conversations">
                     <div className="empty-icon">💬</div>
                     <p>لا توجد محادثات</p>
                     <small>ستظهر المحادثات الخاصة بين المستخدمين هنا</small>
                 </div>
             ) : (
-                <div className="conversations-list">
-                    {filteredConversations.map((conv) => (
-                        <div
-                            key={conv._id}
-                            className={`conversation-item ${!conv.isActive ? 'inactive' : ''}`}
-                            onClick={() => handleViewDetails(conv._id)}
-                        >
-                            {/* الصور الشخصية للمشاركين */}
-                            <div className="conversation-avatars">
-                                {conv.participants?.slice(0, 2).map((p, i) => (
-                                    <div
-                                        key={i}
-                                        className="avatar"
-                                        style={{
-                                            background: `linear-gradient(135deg, ${i === 0 ? '#667eea' : '#764ba2'} 0%, ${i === 0 ? '#764ba2' : '#667eea'} 100%)`,
-                                            zIndex: 2 - i,
-                                            marginRight: i > 0 ? '-10px' : '0'
-                                        }}
-                                    >
-                                        <img
-                                            src={p.profileImage ? getImageUrl(p.profileImage) : getDefaultAvatar(p.name)}
-                                            alt={p.name}
-                                            onError={(e) => {
-                                                e.target.onerror = null;
-                                                e.target.src = getDefaultAvatar(p.name);
-                                            }}
-                                        />
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* معلومات المحادثة */}
-                            <div className="conversation-info">
-                                <div className="conversation-header">
-                                    <h3 className="conversation-title">
-                                        {conv.participants?.map(p => p.name).join(' و ') || conv.title}
-                                    </h3>
-                                    <span className="conversation-time">
-                                        {formatRelativeTime(conv.updatedAt)}
-                                    </span>
+                <>
+                    <div className="conversations-list">
+                        {sortedConversations.map((conv, index) => (
+                            <div
+                                key={conv._id}
+                                className={`conversation-item ${!conv.isActive ? 'inactive' : ''}`}
+                                onClick={() => handleViewDetails(conv._id)}
+                            >
+                                {/* رقم المحادثة */}
+                                <div className="conversation-number">
+                                    {(currentPage - 1) * itemsPerPage + index + 1}
                                 </div>
 
-                                <div className="conversation-preview">
-                                    <p className="last-message">
-                                        {conv.lastMessage?.content || 'لا توجد رسائل'}
-                                    </p>
-                                    <div className="conversation-badges">
-                                        {conv.isLocked && <span className="badge locked">🔒</span>}
-                                        {!conv.isActive && <span className="badge inactive">معطلة</span>}
-                                        <span className="message-count">
-                                            {conv.metadata?.totalMessages || 0} 💬
+                                {/* الصور الشخصية للمشاركين */}
+                                <div className="conversation-avatars">
+                                    {conv.participants?.slice(0, 2).map((p, i) => (
+                                        <div
+                                            key={i}
+                                            className="avatar"
+                                            style={{
+                                                background: `linear-gradient(135deg, ${i === 0 ? '#667eea' : '#764ba2'} 0%, ${i === 0 ? '#764ba2' : '#667eea'} 100%)`,
+                                                zIndex: 2 - i,
+                                                marginRight: i > 0 ? '-10px' : '0'
+                                            }}
+                                        >
+                                            <img
+                                                src={p.profileImage ? getImageUrl(p.profileImage) : getDefaultAvatar(p.name)}
+                                                alt={p.name}
+                                                onError={(e) => {
+                                                    e.target.onerror = null;
+                                                    e.target.src = getDefaultAvatar(p.name);
+                                                }}
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* معلومات المحادثة */}
+                                <div className="conversation-info">
+                                    <div className="conversation-header">
+                                        <h3 className="conversation-title">
+                                            {conv.participants?.map(p => p.name).join(' و ') || conv.title}
+                                        </h3>
+                                        <span className="conversation-time">
+                                            {formatRelativeTime(conv.updatedAt)}
                                         </span>
                                     </div>
+
+                                    <div className="conversation-preview">
+                                        <p className="last-message">
+                                            {conv.lastMessage?.content || 'لا توجد رسائل'}
+                                        </p>
+                                        <div className="conversation-badges">
+                                            {conv.isLocked && <span className="badge locked">🔒</span>}
+                                            {!conv.isActive && <span className="badge inactive">معطلة</span>}
+                                            <span className="message-count">
+                                                {conv.metadata?.totalMessages || 0} 💬
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* أزرار الإجراءات السريعة */}
+                                <div className="conversation-actions" onClick={(e) => e.stopPropagation()}>
+                                    <button
+                                        className="action-btn view-btn"
+                                        onClick={() => handleViewDetails(conv._id)}
+                                        title="عرض التفاصيل"
+                                    >
+                                        👁️
+                                    </button>
+                                    <button
+                                        className="action-btn messages-btn"
+                                        onClick={() => handleViewMessages(conv._id)}
+                                        title="عرض الرسائل"
+                                    >
+                                        💬
+                                    </button>
+                                    <button
+                                        className={`action-btn ${conv.isActive ? 'active' : ''}`}
+                                        onClick={() => handleToggleActive(conv._id)}
+                                        title={conv.isActive ? 'تعطيل' : 'تفعيل'}
+                                    >
+                                        {conv.isActive ? '🟢' : '🔴'}
+                                    </button>
+                                    <button
+                                        className={`action-btn ${conv.isLocked ? 'locked' : ''}`}
+                                        onClick={() => handleLock(conv._id)}
+                                        title={conv.isLocked ? 'فتح' : 'قفل'}
+                                    >
+                                        {conv.isLocked ? '🔒' : '🔓'}
+                                    </button>
+                                    <button
+                                        className="action-btn more"
+                                        onClick={() => openActionsModal(conv)}
+                                        title="المزيد"
+                                    >
+                                        ⋮
+                                    </button>
                                 </div>
                             </div>
+                        ))}
+                    </div>
 
-                            {/* أزرار الإجراءات السريعة */}
-                            <div className="conversation-actions" onClick={(e) => e.stopPropagation()}>
-                                <button
-                                    className="action-btn view-btn"
-                                    onClick={() => handleViewDetails(conv._id)}
-                                    title="عرض المحادثة"
-                                >
-                                    👁️
-                                </button>
-                                <button
-                                    className={`action-btn ${conv.isActive ? 'active' : ''}`}
-                                    onClick={() => handleToggleActive(conv._id)}
-                                    title={conv.isActive ? 'تعطيل' : 'تفعيل'}
-                                >
-                                    {conv.isActive ? '🟢' : '🔴'}
-                                </button>
-                                <button
-                                    className={`action-btn ${conv.isLocked ? 'locked' : ''}`}
-                                    onClick={() => handleLock(conv._id)}
-                                    title={conv.isLocked ? 'فتح' : 'قفل'}
-                                >
-                                    {conv.isLocked ? '🔒' : '🔓'}
-                                </button>
-                                <button
-                                    className="action-btn more"
-                                    onClick={() => openActionsModal(conv)}
-                                    title="المزيد"
-                                >
-                                    ⋮
-                                </button>
-                            </div>
-                        </div>
-                    ))}
-                </div>
+                    <Pagination
+                        currentPage={currentPage}
+                        totalPages={totalPages}
+                        onPageChange={setCurrentPage}
+                        itemsPerPage={itemsPerPage}
+                        totalItems={totalItems}
+                    />
+                </>
             )}
 
             {/* Actions Modal */}
@@ -318,6 +376,17 @@ function Conversations() {
                             >
                                 <span className="action-icon">👁️</span>
                                 <span>عرض التفاصيل</span>
+                            </button>
+
+                            <button
+                                className="action-item view"
+                                onClick={() => {
+                                    handleViewMessages(selectedConv._id);
+                                    setShowActionsModal(false);
+                                }}
+                            >
+                                <span className="action-icon">💬</span>
+                                <span>عرض الرسائل</span>
                             </button>
 
                             <button
@@ -357,17 +426,6 @@ function Conversations() {
                             >
                                 <span className="action-icon">🗑️</span>
                                 <span>حذف جميع الرسائل</span>
-                            </button>
-
-                            <button
-                                className="action-item reports"
-                                onClick={() => {
-                                    showToast('عرض البلاغات قريباً', 'info');
-                                    setShowActionsModal(false);
-                                }}
-                            >
-                                <span className="action-icon">⚠️</span>
-                                <span>عرض البلاغات</span>
                             </button>
 
                             <button

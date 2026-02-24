@@ -50,6 +50,7 @@ function ChatRooms() {
     const [showPinModal, setShowPinModal] = useState(false);
     const [pinRoom, setPinRoom] = useState(null);
     const [pinContent, setPinContent] = useState('');
+    const [expandedImage, setExpandedImage] = useState(null);
     const { showToast } = useToast();
 
     // صورة افتراضية SVG للغرف
@@ -739,10 +740,21 @@ function ChatRooms() {
                                                             <span className="sender-name">{message.sender?.name || 'مستخدم محذوف'}</span>
                                                             <span className="message-time">{formatMessageTime(message.createdAt)}</span>
                                                         </div>
-                                                        <p className="message-text">{message.content}</p>
-                                                        {message.type !== 'text' && (
-                                                            <span className="message-type-badge">{message.type}</span>
+                                                        {message.content && <p className="message-text">{message.content}</p>}
+                                                        {message.type === 'image' && message.mediaUrl && (
+                                                            <div className="message-image-container">
+                                                                <img
+                                                                    src={getImageUrl(message.mediaUrl)}
+                                                                    alt="صورة مرسلة"
+                                                                    className="message-image"
+                                                                    onClick={() => setExpandedImage(getImageUrl(message.mediaUrl))}
+                                                                    onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; }}
+                                                                />
+                                                            </div>
                                                         )}
+                                                        {message.type === 'video' && <span className="message-type-badge">🎥 فيديو</span>}
+                                                        {message.type === 'audio' && <span className="message-type-badge">🎵 صوت</span>}
+                                                        {message.type === 'file' && <span className="message-type-badge">📎 ملف</span>}
                                                     </div>
                                                     <button
                                                         className="delete-message-btn"
@@ -874,6 +886,15 @@ function ChatRooms() {
                                 </button>
                             </div>
                         </div>
+                    </div>
+                </div>
+            )}
+            {/* Image Lightbox */}
+            {expandedImage && (
+                <div className="modal-overlay" style={{ zIndex: 10000 }} onClick={() => setExpandedImage(null)}>
+                    <div className="image-lightbox" onClick={(e) => e.stopPropagation()}>
+                        <button className="lightbox-close-btn" onClick={() => setExpandedImage(null)}>✕</button>
+                        <img src={expandedImage} alt="صورة مكبرة" />
                     </div>
                 </div>
             )}

@@ -241,6 +241,79 @@
     color: #2c3e50;
 }
 
+/* Reported Content Section */
+.reported-content-section {
+    background: #f8f9fa;
+    border-radius: 10px;
+    padding: 15px;
+    margin-top: 12px;
+    border-right: 4px solid #667eea;
+}
+
+.reported-content-title {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    color: #555;
+}
+
+.reported-message-box {
+    background: white;
+    border-radius: 8px;
+    padding: 12px;
+    border: 1px solid #e0e0e0;
+}
+
+.reported-message-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    font-size: 13px;
+}
+
+.reported-sender {
+    font-weight: 600;
+    color: #333;
+}
+
+.reported-message-content {
+    margin: 8px 0 0 0;
+    font-size: 14px;
+    color: #444;
+    background: #fff3e0;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px dashed #ffb74d;
+    word-break: break-word;
+}
+
+.reported-message-image {
+    max-width: 200px;
+    border-radius: 8px;
+    margin-top: 10px;
+    border: 1px solid #e0e0e0;
+}
+
+.reported-conversation-box {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    background: white;
+    border-radius: 8px;
+    border: 1px solid #e0e0e0;
+    font-size: 14px;
+    margin-top: 8px;
+}
+
+.conv-type-badge {
+    padding: 2px 8px;
+    background: #e3f2fd;
+    color: #1565c0;
+    border-radius: 6px;
+    font-size: 12px;
+}
+
 .report-footer {
     display: flex;
     justify-content: space-between;

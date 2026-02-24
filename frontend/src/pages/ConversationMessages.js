@@ -4,6 +4,7 @@ import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import socketService from '../services/socket';
 import notificationService from '../services/notifications';
+import { getImageUrl } from '../config';
 import './ConversationMessages.css';
 
 function ConversationMessages({ conversationId, onBack }) {
@@ -330,11 +331,22 @@ function ConversationMessages({ conversationId, onBack }) {
                                                     <em>تم حذف هذه الرسالة</em>
                                                 </p>
                                             ) : (
-                                                <p>{message.content}</p>
+                                                <>
+                                                    {message.content && <p>{message.content}</p>}
+                                                    {message.type === 'image' && message.mediaUrl && (
+                                                        <div className="message-image-container">
+                                                            <img
+                                                                src={getImageUrl(message.mediaUrl)}
+                                                                alt="صورة"
+                                                                className="message-image"
+                                                                onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; }}
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </>
                                             )}
-                                            {message.type !== 'text' && !message.isDeleted && (
+                                            {message.type !== 'text' && message.type !== 'image' && !message.isDeleted && (
                                                 <span className="message-type-badge">
-                                                    {message.type === 'image' && '🖼️ صورة'}
                                                     {message.type === 'file' && '📎 ملف'}
                                                     {message.type === 'audio' && '🎵 صوت'}
                                                     {message.type === 'video' && '🎥 فيديو'}
