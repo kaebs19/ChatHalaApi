@@ -202,18 +202,49 @@ const broadcastNotification = async (notification, data = {}, filter = {}) => {
  * @param {string} conversationId - معرف المحادثة
  */
 const sendNewMessageNotification = async (recipientId, senderName, messagePreview, conversationId) => {
-    const notification = {
-        title: senderName,
-        body: messagePreview.length > 100 ? messagePreview.substring(0, 100) + '...' : messagePreview
-    };
+    try {
+        // التحقق من كتم المحادثة
+        const user = await User.findById(recipientId);
+        if (!user) {
+            return { success: false, error: 'المستخدم غير موجود' };
+        }
 
-    const data = {
-        type: 'new_message',
-        conversationId: conversationId.toString(),
-        senderName
-    };
+        // فحص قائمة المحادثات المكتومة
+        const mutedConv = user.mutedConversations?.find(
+            m => m.conversationId && m.conversationId.toString() === conversationId.toString()
+        );
 
-    return sendNotificationToUser(recipientId, notification, data, true);
+        if (mutedConv) {
+            // تحقق إذا انتهت مدة الكتم
+            if (mutedConv.mutedUntil && new Date() > new Date(mutedConv.mutedUntil)) {
+                // انتهت مدة الكتم - أزل من القائمة
+                await User.findByIdAndUpdate(recipientId, {
+                    $pull: { mutedConversations: { conversationId: conversationId } }
+                });
+                console.log(`🔔 انتهت مدة كتم المحادثة ${conversationId} للمستخدم ${user.name}`);
+            } else {
+                // لا تزال مكتومة - لا ترسل إشعار
+                console.log(`🔇 المحادثة ${conversationId} مكتومة للمستخدم ${user.name}`);
+                return { success: true, skipped: true, reason: 'muted' };
+            }
+        }
+
+        const notification = {
+            title: senderName,
+            body: messagePreview.length > 100 ? messagePreview.substring(0, 100) + '...' : messagePreview
+        };
+
+        const data = {
+            type: 'message',  // يجب أن يكون 'message' حسب الـ enum في Notification model
+            conversationId: conversationId.toString(),
+            senderName
+        };
+
+        return sendNotificationToUser(recipientId, notification, data, true);
+    } catch (error) {
+        console.error('❌ خطأ في إرسال إشعار الرسالة:', error.message);
+        return { success: false, error: error.message };
+    }
 };
 
 /**

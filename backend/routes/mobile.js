@@ -340,12 +340,14 @@ router.post('/conversations/request', protect, async (req, res) => {
             });
         }
 
-        // ٢. Push Notification (لو غير متصل)
-        if (targetUser.deviceToken) {
-            await notificationService.sendPush(
-                targetUser.deviceToken,
-                'طلب محادثة جديد',
-                `${req.user.name} يريد التحدث معك`,
+        // ٢. Push Notification عبر FCM
+        if (targetUser.fcmToken) {
+            await pushNotificationService.sendNotificationToUser(
+                targetUserId,
+                {
+                    title: 'طلب محادثة جديد',
+                    body: `${req.user.name} يريد التحدث معك`
+                },
                 {
                     type: 'conversation_request',
                     conversationId: conversation._id.toString(),
@@ -353,25 +355,25 @@ router.post('/conversations/request', protect, async (req, res) => {
                     senderName: req.user.name
                 }
             );
+        } else {
+            // حفظ الإشعار في قاعدة البيانات فقط (بدون push)
+            await Notification.create({
+                title: 'طلب محادثة جديد',
+                body: `${req.user.name} يريد بدء محادثة معك`,
+                type: 'conversation_request',
+                recipients: 'specific',
+                targetUsers: [targetUserId],
+                sender: req.user._id,
+                status: 'sent',
+                sentAt: new Date(),
+                sentCount: 1,
+                data: {
+                    conversationId: conversation._id.toString(),
+                    senderId: req.user._id.toString(),
+                    type: 'conversation_request'
+                }
+            });
         }
-
-        // حفظ الإشعار في قاعدة البيانات
-        await Notification.create({
-            title: 'طلب محادثة جديد',
-            body: `${req.user.name} يريد بدء محادثة معك`,
-            type: 'message',
-            recipients: 'specific',
-            targetUsers: [targetUserId],
-            sender: req.user._id,
-            status: 'sent',
-            sentAt: new Date(),
-            sentCount: 1,
-            data: {
-                conversationId: conversation._id.toString(),
-                senderId: req.user._id.toString(),
-                type: 'conversation_request'
-            }
-        });
 
         res.status(201).json({
             success: true,
@@ -398,7 +400,7 @@ router.post('/conversations/request', protect, async (req, res) => {
 router.put('/conversations/:id/accept', protect, async (req, res) => {
     try {
         const conversation = await Conversation.findById(req.params.id)
-            .populate('participants', 'name email deviceToken');
+            .populate('participants', 'name email deviceToken fcmToken');
 
         if (!conversation) {
             return res.status(404).json({
@@ -432,23 +434,24 @@ router.put('/conversations/:id/accept', protect, async (req, res) => {
         conversation.isActive = true;
         await conversation.save();
 
-        // إرسال إشعار لمنشئ المحادثة
+        // إرسال إشعار لمنشئ المحادثة عبر FCM
         const creator = conversation.participants.find(
             p => p._id.toString() === conversation.creator.toString()
         );
 
-        if (creator && creator.deviceToken) {
-            const notification = notificationService.createNotificationPayload({
-                title: 'تم قبول طلب المحادثة',
-                body: `${req.user.name} قبل طلب المحادثة`,
-                type: 'message',
-                data: {
+        if (creator && creator.fcmToken) {
+            await pushNotificationService.sendNotificationToUser(
+                creator._id,
+                {
+                    title: 'تم قبول طلب المحادثة',
+                    body: `${req.user.name} قبل طلب المحادثة`
+                },
+                {
+                    type: 'conversation_request',
                     conversationId: conversation._id.toString(),
-                    type: 'conversation_accepted'
+                    action: 'accepted'
                 }
-            });
-
-            await notificationService.sendToUser(creator, notification);
+            );
         }
 
         // إرسال عبر Socket.IO
@@ -481,7 +484,7 @@ router.put('/conversations/:id/accept', protect, async (req, res) => {
 router.put('/conversations/:id/reject', protect, async (req, res) => {
     try {
         const conversation = await Conversation.findById(req.params.id)
-            .populate('participants', 'name email deviceToken');
+            .populate('participants', 'name email deviceToken fcmToken');
 
         if (!conversation) {
             return res.status(404).json({
@@ -514,23 +517,24 @@ router.put('/conversations/:id/reject', protect, async (req, res) => {
         conversation.isActive = false;
         await conversation.save();
 
-        // إرسال إشعار لمنشئ المحادثة (اختياري)
+        // إرسال إشعار لمنشئ المحادثة عبر FCM
         const creator = conversation.participants.find(
             p => p._id.toString() === conversation.creator.toString()
         );
 
-        if (creator && creator.deviceToken) {
-            const notification = notificationService.createNotificationPayload({
-                title: 'طلب المحادثة',
-                body: 'لم يتم قبول طلب المحادثة',
-                type: 'message',
-                data: {
+        if (creator && creator.fcmToken) {
+            await pushNotificationService.sendNotificationToUser(
+                creator._id,
+                {
+                    title: 'طلب المحادثة',
+                    body: 'لم يتم قبول طلب المحادثة'
+                },
+                {
+                    type: 'conversation_request',
                     conversationId: conversation._id.toString(),
-                    type: 'conversation_rejected'
+                    action: 'rejected'
                 }
-            });
-
-            await notificationService.sendToUser(creator, notification);
+            );
         }
 
         // إرسال عبر Socket.IO

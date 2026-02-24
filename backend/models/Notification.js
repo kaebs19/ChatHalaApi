@@ -21,7 +21,7 @@ const notificationSchema = new mongoose.Schema({
     // نوع الإشعار
     type: {
         type: String,
-        enum: ['general', 'message', 'report', 'announcement', 'system'],
+        enum: ['general', 'message', 'report', 'announcement', 'system', 'new_message', 'new_follower', 'like', 'comment', 'conversation_request', 'broadcast'],
         default: 'general'
     },
 
