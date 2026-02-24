@@ -341,7 +341,7 @@ router.post('/conversations/request', protect, async (req, res) => {
         }
 
         // ٢. Push Notification (لو غير متصل)
-        if (!targetUser.isOnline && targetUser.deviceToken) {
+        if (targetUser.deviceToken) {
             await notificationService.sendPush(
                 targetUser.deviceToken,
                 'طلب محادثة جديد',
@@ -453,7 +453,7 @@ router.put('/conversations/:id/accept', protect, async (req, res) => {
 
         // إرسال عبر Socket.IO
         if (global.io) {
-            global.io.to(`user-${conversation.creator.toString()}`).emit('conversation-accepted', {
+            global.io.to(`user:${conversation.creator.toString()}`).emit('conversation-accepted', {
                 conversationId: conversation._id,
                 acceptedBy: req.user.name
             });
@@ -531,6 +531,14 @@ router.put('/conversations/:id/reject', protect, async (req, res) => {
             });
 
             await notificationService.sendToUser(creator, notification);
+        }
+
+        // إرسال عبر Socket.IO
+        if (global.io) {
+            global.io.to(`user:${conversation.creator.toString()}`).emit('conversation-rejected', {
+                conversationId: conversation._id,
+                rejectedBy: req.user.name
+            });
         }
 
         res.status(200).json({
