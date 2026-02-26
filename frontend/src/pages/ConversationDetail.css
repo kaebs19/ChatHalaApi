@@ -175,13 +175,13 @@
     border-radius: 12px;
 }
 
-.stat-value {
+.conversation-detail-page .stat-value {
     font-size: 24px;
     font-weight: 700;
     color: #333;
 }
 
-.stat-label {
+.conversation-detail-page .stat-label {
     font-size: 13px;
     color: #666;
 }
@@ -277,29 +277,29 @@
     border-bottom: 2px solid #f3f4f6;
 }
 
-.status-badge {
+.conversation-detail-page .status-badge {
     padding: 5px 12px;
     border-radius: 20px;
     font-size: 12px;
     font-weight: 600;
 }
 
-.status-badge.pending {
+.conversation-detail-page .status-badge.pending {
     background: #fff3cd;
     color: #856404;
 }
 
-.status-badge.reviewing {
+.conversation-detail-page .status-badge.reviewing {
     background: #cfe2ff;
     color: #084298;
 }
 
-.status-badge.resolved {
+.conversation-detail-page .status-badge.resolved {
     background: #d4edda;
     color: #155724;
 }
 
-.status-badge.rejected {
+.conversation-detail-page .status-badge.rejected {
     background: #f8d7da;
     color: #721c24;
 }
@@ -413,8 +413,8 @@
     font-weight: 600;
 }
 
-/* Badges */
-.badge {
+/* Badges — scoped to avoid shared badge conflicts */
+.conversation-detail-page .badge {
     display: inline-block;
     padding: 5px 12px;
     border-radius: 20px;
@@ -422,12 +422,12 @@
     font-weight: 600;
 }
 
-.badge.active {
+.conversation-detail-page .badge.active {
     background: #d4edda;
     color: #155724;
 }
 
-.badge.inactive {
+.conversation-detail-page .badge.inactive {
     background: #f8d7da;
     color: #721c24;
 }

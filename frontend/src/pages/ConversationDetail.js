@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { getConversationById, getConversationReports } from '../services/api';
 import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { formatDateTimeLong } from '../utils/formatters';
 import ConversationMessages from './ConversationMessages';
 import './ConversationDetail.css';
 
@@ -40,16 +41,6 @@ function ConversationDetail({ conversationId, onBack }) {
         } finally {
             setLoading(false);
         }
-    };
-
-    const formatDate = (date) => {
-        return new Date(date).toLocaleDateString('ar-SA', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
     };
 
     if (loading) {
@@ -189,11 +180,11 @@ function ConversationDetail({ conversationId, onBack }) {
                                 <h3>التواريخ</h3>
                                 <div className="info-item">
                                     <span className="label">تاريخ الإنشاء:</span>
-                                    <span className="value">{formatDate(conversation.createdAt)}</span>
+                                    <span className="value">{formatDateTimeLong(conversation.createdAt)}</span>
                                 </div>
                                 <div className="info-item">
                                     <span className="label">آخر تحديث:</span>
-                                    <span className="value">{formatDate(conversation.updatedAt)}</span>
+                                    <span className="value">{formatDateTimeLong(conversation.updatedAt)}</span>
                                 </div>
                             </div>
                         </div>
@@ -252,7 +243,7 @@ function ConversationDetail({ conversationId, onBack }) {
                                         <div className="report-body">
                                             <p><strong>الفئة:</strong> {report.category}</p>
                                             <p><strong>الوصف:</strong> {report.description}</p>
-                                            <p><strong>تاريخ البلاغ:</strong> {formatDate(report.createdAt)}</p>
+                                            <p><strong>تاريخ البلاغ:</strong> {formatDateTimeLong(report.createdAt)}</p>
                                         </div>
                                     </div>
                                 ))}

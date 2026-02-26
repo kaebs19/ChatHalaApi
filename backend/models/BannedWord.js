@@ -16,13 +16,13 @@ const bannedWordSchema = new mongoose.Schema({
     },
     severity: {
         type: String,
-        enum: ['low', 'medium', 'high'],
+        enum: ['low', 'medium', 'high', 'critical'],
         default: 'medium'
     },
     action: {
         type: String,
-        enum: ['warn', 'block', 'ban'], // تحذير، حظر الرسالة، حظر المستخدم
-        default: 'block'
+        enum: ['filter', 'warn', 'block', 'ban'], // فلترة، تحذير، حظر الرسالة، حظر المستخدم
+        default: 'filter'
     },
     isActive: {
         type: Boolean,
@@ -80,15 +80,15 @@ bannedWordSchema.statics.checkText = async function(text, type = 'both') {
         foundWords,
         highestSeverity: foundWords.length > 0
             ? foundWords.reduce((max, w) => {
-                const order = { low: 1, medium: 2, high: 3 };
+                const order = { low: 1, medium: 2, high: 3, critical: 4 };
                 return order[w.severity] > order[max] ? w.severity : max;
             }, 'low')
             : null,
         suggestedAction: foundWords.length > 0
             ? foundWords.reduce((max, w) => {
-                const order = { warn: 1, block: 2, ban: 3 };
+                const order = { filter: 1, warn: 2, block: 3, ban: 4 };
                 return order[w.action] > order[max] ? w.action : max;
-            }, 'warn')
+            }, 'filter')
             : null
     };
 };

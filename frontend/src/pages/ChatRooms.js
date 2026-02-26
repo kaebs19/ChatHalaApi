@@ -12,16 +12,19 @@ import {
     getChatRoomStats,
     deleteMessage,
     getRoomReports,
-    pinRoomMessage
+    pinRoomMessage,
+    toggleUserActive
 } from '../services/api';
 import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import EmptyState from '../components/EmptyState';
 import ImageUpload from '../components/ImageUpload';
+import ConfirmModal from '../components/ConfirmModal';
+import { formatDateTime } from '../utils/formatters';
 import { getImageUrl, getDefaultAvatar } from '../config';
 import './ChatRooms.css';
 
-function ChatRooms() {
+function ChatRooms({ onViewUser }) {
     const [rooms, setRooms] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
@@ -51,6 +54,11 @@ function ChatRooms() {
     const [pinRoom, setPinRoom] = useState(null);
     const [pinContent, setPinContent] = useState('');
     const [expandedImage, setExpandedImage] = useState(null);
+    const [userActionMenu, setUserActionMenu] = useState(null);
+    const [banningUser, setBanningUser] = useState(null);
+    const [deleteConfirm, setDeleteConfirm] = useState({ show: false, roomId: null, roomName: '' });
+    const [deleteMessagesConfirm, setDeleteMessagesConfirm] = useState({ show: false, roomId: null, roomName: '' });
+    const [deleteMessageConfirm, setDeleteMessageConfirm] = useState({ show: false, messageId: null });
     const { showToast } = useToast();
 
     // صورة افتراضية SVG للغرف
@@ -192,11 +200,7 @@ function ChatRooms() {
         }
     };
 
-    const handleDelete = async (roomId, roomName) => {
-        if (!window.confirm(`هل أنت متأكد من حذف غرفة "${roomName}"؟\nسيتم حذف الغرفة نهائياً.`)) {
-            return;
-        }
-
+    const handleDelete = async (roomId) => {
         try {
             const response = await deleteChatRoom(roomId);
             if (response.success) {
@@ -206,14 +210,12 @@ function ChatRooms() {
         } catch (error) {
             console.error('خطأ في حذف الغرفة:', error);
             showToast('فشل حذف الغرفة', 'error');
+        } finally {
+            setDeleteConfirm({ show: false, roomId: null, roomName: '' });
         }
     };
 
-    const handleDeleteMessages = async (roomId, roomName) => {
-        if (!window.confirm(`هل أنت متأكد من حذف جميع رسائل غرفة "${roomName}"؟\nلا يمكن التراجع عن هذا الإجراء!`)) {
-            return;
-        }
-
+    const handleDeleteMessages = async (roomId) => {
         try {
             const response = await deleteRoomMessages(roomId);
             if (response.success) {
@@ -223,6 +225,8 @@ function ChatRooms() {
         } catch (error) {
             console.error('خطأ في حذف الرسائل:', error);
             showToast('فشل حذف الرسائل', 'error');
+        } finally {
+            setDeleteMessagesConfirm({ show: false, roomId: null, roomName: '' });
         }
     };
 
@@ -324,24 +328,8 @@ function ChatRooms() {
         }
     };
 
-    // تنسيق التاريخ
-    const formatMessageTime = (dateString) => {
-        const date = new Date(dateString);
-        return date.toLocaleString('ar-SA', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-    };
-
     // حذف رسالة فردية
     const handleDeleteMessage = async (messageId) => {
-        if (!window.confirm('هل أنت متأكد من حذف هذه الرسالة؟')) {
-            return;
-        }
-
         try {
             const response = await deleteMessage(messageId);
             if (response.success) {
@@ -351,6 +339,8 @@ function ChatRooms() {
         } catch (error) {
             console.error('خطأ في حذف الرسالة:', error);
             showToast('فشل حذف الرسالة', 'error');
+        } finally {
+            setDeleteMessageConfirm({ show: false, messageId: null });
         }
     };
 
@@ -514,14 +504,14 @@ function ChatRooms() {
                                 </button>
                                 <button
                                     className="action-btn delete-messages"
-                                    onClick={() => handleDeleteMessages(room._id, room.name)}
+                                    onClick={() => setDeleteMessagesConfirm({ show: true, roomId: room._id, roomName: room.name })}
                                     title="حذف الرسائل"
                                 >
                                     🗑️💬
                                 </button>
                                 <button
                                     className="action-btn delete"
-                                    onClick={() => handleDelete(room._id, room.name)}
+                                    onClick={() => setDeleteConfirm({ show: true, roomId: room._id, roomName: room.name })}
                                     title="حذف الغرفة"
                                 >
                                     ❌
@@ -724,8 +714,13 @@ function ChatRooms() {
                                     ) : (
                                         <div className="messages-list">
                                             {roomMessages.map((message) => (
-                                                <div key={message._id} className="message-item">
-                                                    <div className="message-avatar">
+                                                <div key={message._id} className={`message-item ${message.hasBannedWords ? 'flagged' : ''}`}>
+                                                    <div className="message-avatar" style={{cursor: 'pointer'}} onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        if (message.sender?._id) {
+                                                            setUserActionMenu({ userId: message.sender._id, userName: message.sender.name, x: e.clientX, y: e.clientY });
+                                                        }
+                                                    }}>
                                                         <img
                                                             src={message.sender?.profileImage ? getImageUrl(message.sender.profileImage) : getDefaultAvatar(message.sender?.name)}
                                                             alt={message.sender?.name}
@@ -737,8 +732,13 @@ function ChatRooms() {
                                                     </div>
                                                     <div className="message-content">
                                                         <div className="message-header">
-                                                            <span className="sender-name">{message.sender?.name || 'مستخدم محذوف'}</span>
-                                                            <span className="message-time">{formatMessageTime(message.createdAt)}</span>
+                                                            <span className="sender-name" style={{cursor: 'pointer'}} onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                if (message.sender?._id) {
+                                                                    setUserActionMenu({ userId: message.sender._id, userName: message.sender.name, x: e.clientX, y: e.clientY });
+                                                                }
+                                                            }}>{message.sender?.name || 'مستخدم محذوف'}</span>
+                                                            <span className="message-time">{formatDateTime(message.createdAt)}</span>
                                                         </div>
                                                         {message.content && <p className="message-text">{message.content}</p>}
                                                         {message.type === 'image' && message.mediaUrl && (
@@ -755,10 +755,18 @@ function ChatRooms() {
                                                         {message.type === 'video' && <span className="message-type-badge">🎥 فيديو</span>}
                                                         {message.type === 'audio' && <span className="message-type-badge">🎵 صوت</span>}
                                                         {message.type === 'file' && <span className="message-type-badge">📎 ملف</span>}
+                                                        {message.hasBannedWords && message.bannedWordsFound?.length > 0 && (
+                                                            <div className="banned-words-badges">
+                                                                <span className="banned-label">⚠️ كلمات محظورة:</span>
+                                                                {message.bannedWordsFound.map((w, i) => (
+                                                                    <span key={i} className={`banned-word-badge ${w.severity}`}>{w.word}</span>
+                                                                ))}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                     <button
                                                         className="delete-message-btn"
-                                                        onClick={() => handleDeleteMessage(message._id)}
+                                                        onClick={() => setDeleteMessageConfirm({ show: true, messageId: message._id })}
                                                         title="حذف الرسالة"
                                                     >
                                                         🗑️
@@ -798,7 +806,7 @@ function ChatRooms() {
                                                              report.status === 'dismissed' ? '❌ مرفوض' : report.status}
                                                         </span>
                                                         <span className="report-date">
-                                                            {formatMessageTime(report.createdAt)}
+                                                            {formatDateTime(report.createdAt)}
                                                         </span>
                                                     </div>
                                                     <div className="report-body">
@@ -889,6 +897,83 @@ function ChatRooms() {
                     </div>
                 </div>
             )}
+            {/* User Action Menu */}
+            {userActionMenu && (
+                <div className="user-action-overlay" onClick={() => setUserActionMenu(null)}>
+                    <div className="user-action-menu"
+                         style={{ top: Math.min(userActionMenu.y, window.innerHeight - 150), left: Math.min(userActionMenu.x, window.innerWidth - 220) }}
+                         onClick={(e) => e.stopPropagation()}>
+                        <div className="user-action-header">{userActionMenu.userName}</div>
+                        <button className="user-action-btn view" onClick={() => {
+                            if (onViewUser) onViewUser(userActionMenu.userId);
+                            setUserActionMenu(null);
+                        }}>👤 عرض الملف الشخصي</button>
+                        <button className="user-action-btn ban" onClick={() => {
+                            setBanningUser({ id: userActionMenu.userId, name: userActionMenu.userName });
+                            setUserActionMenu(null);
+                        }}>🚫 حظر المستخدم</button>
+                    </div>
+                </div>
+            )}
+
+            {/* Ban Confirmation */}
+            <ConfirmModal
+                isOpen={!!banningUser}
+                onClose={() => setBanningUser(null)}
+                onConfirm={async () => {
+                    try {
+                        const response = await toggleUserActive(banningUser.id);
+                        if (response.success) {
+                            showToast('تم حظر المستخدم بنجاح', 'success');
+                        }
+                    } catch (err) {
+                        showToast('فشل في حظر المستخدم', 'error');
+                    }
+                    setBanningUser(null);
+                }}
+                title="🚫 تأكيد الحظر"
+                message={`هل أنت متأكد من حظر المستخدم "${banningUser?.name}"؟`}
+                confirmText="حظر"
+                cancelText="إلغاء"
+                variant="danger"
+            />
+
+            {/* Delete Room Confirmation */}
+            <ConfirmModal
+                isOpen={deleteConfirm.show}
+                onClose={() => setDeleteConfirm({ show: false, roomId: null, roomName: '' })}
+                onConfirm={() => handleDelete(deleteConfirm.roomId)}
+                title="❌ حذف غرفة"
+                message={`هل أنت متأكد من حذف غرفة "${deleteConfirm.roomName}"؟ سيتم حذف الغرفة نهائياً.`}
+                confirmText="حذف"
+                cancelText="إلغاء"
+                variant="danger"
+            />
+
+            {/* Delete Room Messages Confirmation */}
+            <ConfirmModal
+                isOpen={deleteMessagesConfirm.show}
+                onClose={() => setDeleteMessagesConfirm({ show: false, roomId: null, roomName: '' })}
+                onConfirm={() => handleDeleteMessages(deleteMessagesConfirm.roomId)}
+                title="🗑️ حذف رسائل الغرفة"
+                message={`هل أنت متأكد من حذف جميع رسائل غرفة "${deleteMessagesConfirm.roomName}"؟ لا يمكن التراجع عن هذا الإجراء!`}
+                confirmText="حذف الرسائل"
+                cancelText="إلغاء"
+                variant="danger"
+            />
+
+            {/* Delete Single Message Confirmation */}
+            <ConfirmModal
+                isOpen={deleteMessageConfirm.show}
+                onClose={() => setDeleteMessageConfirm({ show: false, messageId: null })}
+                onConfirm={() => handleDeleteMessage(deleteMessageConfirm.messageId)}
+                title="🗑️ حذف رسالة"
+                message="هل أنت متأكد من حذف هذه الرسالة؟"
+                confirmText="حذف"
+                cancelText="إلغاء"
+                variant="danger"
+            />
+
             {/* Image Lightbox */}
             {expandedImage && (
                 <div className="modal-overlay" style={{ zIndex: 10000 }} onClick={() => setExpandedImage(null)}>

@@ -43,6 +43,101 @@ router.get('/', protect, adminOnly, async (req, res) => {
     }
 });
 
+// @route   GET /api/users/premium
+// @desc    قائمة المستخدمين المميزين
+// @access  Private/Admin
+router.get('/premium', protect, adminOnly, async (req, res) => {
+    try {
+        const { page = 1, limit = 20, plan, expired } = req.query;
+        const pageNum = parseInt(page);
+        const limitNum = parseInt(limit);
+
+        const filter = { isPremium: true };
+        if (plan && ['weekly', 'monthly', 'quarterly'].includes(plan)) {
+            filter.premiumPlan = plan;
+        }
+        if (expired === 'true') {
+            filter.premiumExpiresAt = { $lt: new Date() };
+        } else if (expired === 'false') {
+            filter.premiumExpiresAt = { $gte: new Date() };
+        }
+
+        const users = await User.find(filter)
+            .select('name email profileImage isPremium premiumPlan premiumExpiresAt verification.isVerified createdAt lastLogin')
+            .sort({ premiumExpiresAt: -1 })
+            .limit(limitNum)
+            .skip((pageNum - 1) * limitNum);
+
+        const total = await User.countDocuments(filter);
+
+        // إحصائيات
+        const stats = {
+            total: await User.countDocuments({ isPremium: true }),
+            active: await User.countDocuments({ isPremium: true, premiumExpiresAt: { $gte: new Date() } }),
+            expired: await User.countDocuments({ isPremium: true, premiumExpiresAt: { $lt: new Date() } }),
+            weekly: await User.countDocuments({ isPremium: true, premiumPlan: 'weekly' }),
+            monthly: await User.countDocuments({ isPremium: true, premiumPlan: 'monthly' }),
+            quarterly: await User.countDocuments({ isPremium: true, premiumPlan: 'quarterly' })
+        };
+
+        res.json({
+            success: true,
+            data: {
+                users,
+                stats,
+                page: pageNum,
+                totalPages: Math.ceil(total / limitNum),
+                total
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في جلب المستخدمين المميزين:', error);
+        res.status(500).json({ success: false, message: 'فشل في جلب المستخدمين المميزين' });
+    }
+});
+
+// @route   PUT /api/users/:id/premium
+// @desc    تعديل اشتراك مستخدم يدوياً
+// @access  Private/Admin
+router.put('/:id/premium', protect, adminOnly, async (req, res) => {
+    try {
+        const { isPremium, premiumPlan, premiumExpiresAt } = req.body;
+
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        }
+
+        if (typeof isPremium === 'boolean') user.isPremium = isPremium;
+        if (premiumPlan !== undefined) user.premiumPlan = premiumPlan;
+        if (premiumExpiresAt) user.premiumExpiresAt = new Date(premiumExpiresAt);
+
+        // إذا تم إلغاء Premium
+        if (isPremium === false) {
+            user.premiumPlan = null;
+            user.premiumExpiresAt = null;
+            user.stealthMode = false;
+        }
+
+        await user.save();
+
+        res.json({
+            success: true,
+            message: 'تم تحديث الاشتراك بنجاح',
+            data: {
+                _id: user._id,
+                name: user.name,
+                isPremium: user.isPremium,
+                premiumPlan: user.premiumPlan,
+                premiumExpiresAt: user.premiumExpiresAt
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في تعديل الاشتراك:', error);
+        res.status(500).json({ success: false, message: 'فشل في تعديل الاشتراك' });
+    }
+});
+
 // @route   GET /api/users/:id
 // @desc    الحصول على مستخدم واحد
 // @access  Private/Admin

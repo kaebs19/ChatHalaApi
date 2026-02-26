@@ -21,24 +21,24 @@
     gap: 24px;
 }
 
-.stat-item {
+.notifications-page .stat-item {
     display: flex;
     align-items: center;
     gap: 8px;
 }
 
-.stat-label {
+.notifications-page .stat-label {
     color: #666;
     font-size: 14px;
 }
 
-.stat-value {
+.notifications-page .stat-value {
     font-weight: 600;
     color: #333;
     font-size: 16px;
 }
 
-.stat-item.unread .stat-value {
+.notifications-page .stat-item.unread .stat-value {
     color: #2196f3;
 }
 
@@ -66,7 +66,7 @@
     margin-bottom: 20px;
 }
 
-.filter-btn {
+.notifications-page .filter-btn {
     padding: 10px 24px;
     background: white;
     border: 1px solid #e0e0e0;
@@ -77,12 +77,12 @@
     transition: all 0.2s ease;
 }
 
-.filter-btn:hover {
+.notifications-page .filter-btn:hover {
     border-color: #667eea;
     color: #667eea;
 }
 
-.filter-btn.active {
+.notifications-page .filter-btn.active {
     background: #667eea;
     color: white;
     border-color: #667eea;
@@ -284,7 +284,7 @@
     opacity: 1;
 }
 
-.action-btn {
+.notifications-page .action-btn {
     width: 32px;
     height: 32px;
     display: flex;
@@ -332,17 +332,13 @@
     margin: 0 auto 16px;
 }
 
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
 /* Empty State */
 .empty-state {
     padding: 60px 20px;
     text-align: center;
 }
 
-.empty-icon {
+.notifications-page .empty-icon {
     font-size: 64px;
     display: block;
     margin-bottom: 16px;

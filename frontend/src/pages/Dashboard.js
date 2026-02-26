@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { getDashboardStats, getConversationsStats, getReportsStats, getAllChatRooms } from '../services/api';
 import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
+import StatCard from '../components/StatCard';
+import { formatDateLong } from '../utils/formatters';
+import socketService from '../services/socket';
 import config, { getImageUrl, getDefaultAvatar } from '../config';
 import './Dashboard.css';
 
@@ -29,6 +32,24 @@ function Dashboard({ user, onPageChange }) {
         total: 0,
         active: 0
     });
+    const [premiumStats, setPremiumStats] = useState({
+        total: 0,
+        active: 0,
+        expired: 0,
+        byPlan: { weekly: 0, monthly: 0, quarterly: 0 },
+        estimatedMonthlyRevenue: 0
+    });
+    const [superLikeStats, setSuperLikeStats] = useState({
+        total: 0,
+        last7Days: 0
+    });
+    const [stealthStats, setStealthStats] = useState({ activeUsers: 0 });
+    const [flaggedStats, setFlaggedStats] = useState({
+        last24h: 0,
+        last7Days: 0,
+        last30Days: 0,
+        total: 0
+    });
     const [latestUsers, setLatestUsers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -46,15 +67,51 @@ function Dashboard({ user, onPageChange }) {
         fetchDashboardData();
     }, []);
 
+    // Real-time: الاستماع لتنبيهات الكلمات المحظورة
+    useEffect(() => {
+        if (!socketService.isConnected()) {
+            socketService.connect();
+        }
+
+        socketService.onBannedWordAlert((data) => {
+            const chatLabel = data.chatType === 'room' ? `غرفة: ${data.roomName || ''}` : 'محادثة خاصة';
+            showToast(
+                `⚠️ كلمة محظورة من ${data.senderName} (${chatLabel}): ${data.wordsFound?.join(', ')}`,
+                'warning'
+            );
+            setFlaggedStats(prev => ({
+                ...prev,
+                last24h: prev.last24h + 1,
+                total: prev.total + 1
+            }));
+        });
+
+        return () => {
+            socketService.offBannedWordAlert();
+        };
+    }, []);
+
     const fetchDashboardData = async () => {
         try {
             setLoading(true);
 
-            // جلب إحصائيات المستخدمين
+            // جلب إحصائيات المستخدمين + الإحصائيات المتقدمة
             const userStatsResponse = await getDashboardStats();
             if (userStatsResponse.success) {
                 setStats(userStatsResponse.data.stats);
                 setLatestUsers(userStatsResponse.data.latestUsers);
+                if (userStatsResponse.data.premium) setPremiumStats(userStatsResponse.data.premium);
+                if (userStatsResponse.data.superLikes) setSuperLikeStats(userStatsResponse.data.superLikes);
+                if (userStatsResponse.data.stealthMode) setStealthStats(userStatsResponse.data.stealthMode);
+                if (userStatsResponse.data.flaggedMessages) setFlaggedStats(userStatsResponse.data.flaggedMessages);
+                if (userStatsResponse.data.conversations) {
+                    setConversationStats(prev => ({
+                        ...prev,
+                        totalConversations: userStatsResponse.data.conversations.total || prev.totalConversations,
+                        activeConversations: userStatsResponse.data.conversations.active || prev.activeConversations,
+                        totalMessages: userStatsResponse.data.conversations.totalMessages || prev.totalMessages
+                    }));
+                }
             }
 
             // جلب إحصائيات المحادثات
@@ -92,7 +149,6 @@ function Dashboard({ user, onPageChange }) {
         } catch (err) {
             console.error('خطأ في جلب البيانات:', err);
             setError('فشل تحميل البيانات');
-            // استخدم بيانات تجريبية إذا فشل
             setStats({
                 totalUsers: 5,
                 activeUsers: 4,
@@ -102,15 +158,6 @@ function Dashboard({ user, onPageChange }) {
         } finally {
             setLoading(false);
         }
-    };
-
-    const formatDate = (dateString) => {
-        const date = new Date(dateString);
-        return date.toLocaleDateString('ar-SA', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-        });
     };
 
     const handleSendNotification = async (e) => {
@@ -156,13 +203,14 @@ function Dashboard({ user, onPageChange }) {
         }
     };
 
+    const isAdmin = user?.role === 'admin';
+
     return (
         <div className="dashboard-content">
             {error && <div className="error-banner">{error}</div>}
 
-
             {/* الإجراءات السريعة */}
-            {user?.role === 'admin' && (
+            {isAdmin && (
                 <div className="quick-actions-section">
                     <h3 className="section-title">⚡ إجراءات سريعة</h3>
                     <div className="quick-actions-grid">
@@ -195,193 +243,119 @@ function Dashboard({ user, onPageChange }) {
                 </div>
             )}
 
-            {/* إحصائيات */}
+            {/* الإحصائيات */}
             {loading ? (
                 <LoadingSpinner text="جاري تحميل الإحصائيات..." />
             ) : (
                 <>
-                    <h3 className="section-title">📊 إحصائيات المستخدمين</h3>
-                    <div className="stats-grid">
-                        <div className="stat-card purple clickable" onClick={() => onPageChange && onPageChange('users')}>
-                            <div className="stat-icon">👥</div>
-                            <div className="stat-info">
-                                <h3>{stats.totalUsers}</h3>
-                                <p>إجمالي المستخدمين</p>
-                            </div>
-                        </div>
-
-                        <div className="stat-card blue clickable" onClick={() => onPageChange && onPageChange('users')}>
-                            <div className="stat-icon">✅</div>
-                            <div className="stat-info">
-                                <h3>{stats.activeUsers}</h3>
-                                <p>مستخدمين نشطين</p>
-                            </div>
-                        </div>
-
-                        <div className="stat-card green clickable" onClick={() => onPageChange && onPageChange('users')}>
-                            <div className="stat-icon">🆕</div>
-                            <div className="stat-info">
-                                <h3>{stats.newUsers}</h3>
-                                <p>مستخدمين جدد (7 أيام)</p>
-                            </div>
-                        </div>
-
-                        <div className="stat-card orange clickable" onClick={() => onPageChange && onPageChange('users')}>
-                            <div className="stat-icon">🟢</div>
-                            <div className="stat-info">
-                                <h3>{stats.recentLogins}</h3>
-                                <p>دخول مؤخراً (24 ساعة)</p>
-                            </div>
+                    {/* ===== القسم 1: نظرة عامة ===== */}
+                    <div className="stats-section">
+                        <h3 className="section-title">📊 نظرة عامة</h3>
+                        <div className="stats-grid">
+                            <StatCard icon="👥" value={stats.totalUsers} label="إجمالي المستخدمين" color="purple" onClick={() => onPageChange && onPageChange('users')} />
+                            <StatCard icon="✅" value={stats.activeUsers} label="مستخدمين نشطين" color="blue" onClick={() => onPageChange && onPageChange('users')} />
+                            <StatCard icon="💬" value={conversationStats.totalConversations} label="إجمالي المحادثات" color="cyan" onClick={() => onPageChange && onPageChange('conversations')} />
+                            <StatCard icon="📨" value={conversationStats.totalMessages} label="إجمالي الرسائل" color="pink" onClick={() => onPageChange && onPageChange('conversations')} />
                         </div>
                     </div>
 
-                    {/* إحصائيات المحادثات */}
-                    {user?.role === 'admin' && conversationStats.totalConversations > 0 && (
-                        <>
-                            <h3 className="section-title">💬 إحصائيات المحادثات</h3>
+                    {/* ===== القسم 2: المستخدمين والنشاط ===== */}
+                    {isAdmin && (
+                        <div className="stats-section">
+                            <h3 className="section-title">👥 المستخدمين والنشاط</h3>
                             <div className="stats-grid">
-                                <div className="stat-card cyan clickable" onClick={() => onPageChange && onPageChange('conversations')}>
-                                    <div className="stat-icon">💬</div>
-                                    <div className="stat-info">
-                                        <h3>{conversationStats.totalConversations}</h3>
-                                        <p>إجمالي المحادثات</p>
-                                    </div>
-                                </div>
-
-                                <div className="stat-card teal clickable" onClick={() => onPageChange && onPageChange('conversations')}>
-                                    <div className="stat-icon">✨</div>
-                                    <div className="stat-info">
-                                        <h3>{conversationStats.activeConversations}</h3>
-                                        <p>محادثات نشطة</p>
-                                    </div>
-                                </div>
-
-                                <div className="stat-card pink clickable" onClick={() => onPageChange && onPageChange('conversations')}>
-                                    <div className="stat-icon">📨</div>
-                                    <div className="stat-info">
-                                        <h3>{conversationStats.totalMessages}</h3>
-                                        <p>إجمالي الرسائل</p>
-                                    </div>
-                                </div>
-
-                                <div className="stat-card indigo clickable" onClick={() => onPageChange && onPageChange('conversations')}>
-                                    <div className="stat-icon">👤</div>
-                                    <div className="stat-info">
-                                        <h3>{conversationStats.privateConversations}</h3>
-                                        <p>محادثات خاصة</p>
-                                    </div>
-                                </div>
-
-                                <div className="stat-card amber clickable" onClick={() => onPageChange && onPageChange('conversations')}>
-                                    <div className="stat-icon">👥</div>
-                                    <div className="stat-info">
-                                        <h3>{conversationStats.groupConversations}</h3>
-                                        <p>محادثات جماعية</p>
-                                    </div>
-                                </div>
+                                <StatCard icon="🆕" value={stats.newUsers} label="مستخدمين جدد (7 أيام)" color="green" onClick={() => onPageChange && onPageChange('users')} />
+                                <StatCard icon="🟢" value={stats.recentLogins} label="دخول مؤخراً (24 ساعة)" color="orange" onClick={() => onPageChange && onPageChange('users')} />
+                                <StatCard icon="👑" value={premiumStats.active} label="مشتركين مميزين نشطين" color="gold" onClick={() => onPageChange && onPageChange('premium-users')} />
+                                <StatCard icon="⚡" value={superLikeStats.total} label="Super Likes" color="violet" onClick={() => onPageChange && onPageChange('super-likes')} />
                             </div>
+                        </div>
+                    )}
 
-                            {/* إحصائيات البلاغات والغرف */}
-                            <h3 className="section-title">⚠️ البلاغات وغرف المحادثة</h3>
+                    {/* ===== القسم 3: الإشراف والبلاغات ===== */}
+                    {isAdmin && (
+                        <div className="stats-section">
+                            <h3 className="section-title">🛡️ الإشراف والبلاغات</h3>
                             <div className="stats-grid">
-                                <div className="stat-card red clickable" onClick={() => onPageChange && onPageChange('reports')}>
-                                    <div className="stat-icon">📝</div>
-                                    <div className="stat-info">
-                                        <h3>{reportsStats.total || 0}</h3>
-                                        <p>إجمالي البلاغات</p>
-                                    </div>
-                                </div>
-
-                                <div className="stat-card yellow clickable" onClick={() => onPageChange && onPageChange('reports')}>
-                                    <div className="stat-icon">⏳</div>
-                                    <div className="stat-info">
-                                        <h3>{reportsStats.pending || 0}</h3>
-                                        <p>بلاغات معلقة</p>
-                                    </div>
-                                </div>
-
-                                <div className="stat-card deep-purple clickable" onClick={() => onPageChange && onPageChange('chat-rooms')}>
-                                    <div className="stat-icon">🏠</div>
-                                    <div className="stat-info">
-                                        <h3>{roomsStats.total || 0}</h3>
-                                        <p>غرف المحادثة</p>
-                                    </div>
-                                </div>
-
-                                <div className="stat-card light-green clickable" onClick={() => onPageChange && onPageChange('reports')}>
-                                    <div className="stat-icon">✅</div>
-                                    <div className="stat-info">
-                                        <h3>{reportsStats.resolved || 0}</h3>
-                                        <p>بلاغات تم حلها</p>
-                                    </div>
-                                </div>
+                                <StatCard icon="⏳" value={reportsStats.pending || 0} label="بلاغات معلقة" color="yellow" onClick={() => onPageChange && onPageChange('reports')} />
+                                <StatCard icon="✅" value={reportsStats.resolved || 0} label="بلاغات تم حلها" color="light-green" onClick={() => onPageChange && onPageChange('reports')} />
+                                <StatCard
+                                    icon={flaggedStats.last24h > 0 ? '🚨' : '✅'}
+                                    value={flaggedStats.last24h}
+                                    label="رسائل مُبلّغة (24 ساعة)"
+                                    color={flaggedStats.last24h > 0 ? 'danger' : 'light-green'}
+                                    onClick={() => onPageChange && onPageChange('flagged-messages')}
+                                />
+                                <StatCard icon="🏠" value={roomsStats.total || 0} label="غرف المحادثة" color="deep-purple" onClick={() => onPageChange && onPageChange('chat-rooms')} />
                             </div>
+                        </div>
+                    )}
 
-                            {/* مخطط المحادثات */}
-                            <div className="charts-section">
-                                <h3 className="section-title">📊 التوزيع البياني</h3>
-                                <div className="charts-grid">
-                                    {/* Progress Bars */}
-                                    <div className="chart-card">
-                                        <h4>توزيع المستخدمين</h4>
-                                        <div className="progress-bars">
-                                            <div className="progress-item">
-                                                <div className="progress-label">
-                                                    <span>مستخدمين نشطين</span>
-                                                    <span>{stats.activeUsers}</span>
-                                                </div>
-                                                <div className="progress-bar">
-                                                    <div
-                                                        className="progress-fill blue"
-                                                        style={{width: `${(stats.activeUsers / stats.totalUsers * 100) || 0}%`}}
-                                                    ></div>
-                                                </div>
+                    {/* ===== القسم 4: التوزيع البياني ===== */}
+                    {isAdmin && conversationStats.totalConversations > 0 && (
+                        <div className="charts-section">
+                            <h3 className="section-title">📊 التوزيع البياني</h3>
+                            <div className="charts-grid">
+                                {/* Progress Bars */}
+                                <div className="chart-card">
+                                    <h4>توزيع المستخدمين</h4>
+                                    <div className="progress-bars">
+                                        <div className="progress-item">
+                                            <div className="progress-label">
+                                                <span>مستخدمين نشطين</span>
+                                                <span>{stats.activeUsers}</span>
                                             </div>
-                                            <div className="progress-item">
-                                                <div className="progress-label">
-                                                    <span>مستخدمين جدد</span>
-                                                    <span>{stats.newUsers}</span>
-                                                </div>
-                                                <div className="progress-bar">
-                                                    <div
-                                                        className="progress-fill green"
-                                                        style={{width: `${(stats.newUsers / stats.totalUsers * 100) || 0}%`}}
-                                                    ></div>
-                                                </div>
+                                            <div className="progress-bar">
+                                                <div
+                                                    className="progress-fill blue"
+                                                    style={{width: `${(stats.activeUsers / stats.totalUsers * 100) || 0}%`}}
+                                                ></div>
+                                            </div>
+                                        </div>
+                                        <div className="progress-item">
+                                            <div className="progress-label">
+                                                <span>مستخدمين جدد</span>
+                                                <span>{stats.newUsers}</span>
+                                            </div>
+                                            <div className="progress-bar">
+                                                <div
+                                                    className="progress-fill green"
+                                                    style={{width: `${(stats.newUsers / stats.totalUsers * 100) || 0}%`}}
+                                                ></div>
                                             </div>
                                         </div>
                                     </div>
+                                </div>
 
-                                    {/* Pie Chart (CSS) */}
-                                    <div className="chart-card">
-                                        <h4>نوع المحادثات</h4>
-                                        <div className="pie-chart-container">
-                                            <div className="pie-chart" style={{
-                                                background: `conic-gradient(
-                                                    #6366f1 0deg ${(conversationStats.privateConversations / conversationStats.totalConversations * 360) || 0}deg,
-                                                    #f59e0b ${(conversationStats.privateConversations / conversationStats.totalConversations * 360) || 0}deg 360deg
-                                                )`
-                                            }}>
-                                                <div className="pie-center">
-                                                    <span>{conversationStats.totalConversations}</span>
-                                                    <small>محادثة</small>
-                                                </div>
+                                {/* Pie Chart (CSS) */}
+                                <div className="chart-card">
+                                    <h4>نوع المحادثات</h4>
+                                    <div className="pie-chart-container">
+                                        <div className="pie-chart" style={{
+                                            background: `conic-gradient(
+                                                #6366f1 0deg ${(conversationStats.privateConversations / conversationStats.totalConversations * 360) || 0}deg,
+                                                #f59e0b ${(conversationStats.privateConversations / conversationStats.totalConversations * 360) || 0}deg 360deg
+                                            )`
+                                        }}>
+                                            <div className="pie-center">
+                                                <span>{conversationStats.totalConversations}</span>
+                                                <small>محادثة</small>
                                             </div>
-                                            <div className="pie-legend">
-                                                <div className="legend-item">
-                                                    <span className="legend-color indigo"></span>
-                                                    <span>خاصة ({conversationStats.privateConversations})</span>
-                                                </div>
-                                                <div className="legend-item">
-                                                    <span className="legend-color amber"></span>
-                                                    <span>جماعية ({conversationStats.groupConversations})</span>
-                                                </div>
+                                        </div>
+                                        <div className="pie-legend">
+                                            <div className="legend-item">
+                                                <span className="legend-color indigo"></span>
+                                                <span>خاصة ({conversationStats.privateConversations})</span>
+                                            </div>
+                                            <div className="legend-item">
+                                                <span className="legend-color amber"></span>
+                                                <span>جماعية ({conversationStats.groupConversations})</span>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                        </>
+                        </div>
                     )}
                 </>
             )}
@@ -406,7 +380,7 @@ function Dashboard({ user, onPageChange }) {
                                     <h4>{latestUser.name}</h4>
                                     <p>{latestUser.email}</p>
                                     <span className="user-date">
-                                        {formatDate(latestUser.createdAt)}
+                                        {formatDateLong(latestUser.createdAt)}
                                     </span>
                                 </div>
                             </div>

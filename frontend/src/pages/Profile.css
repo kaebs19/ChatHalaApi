@@ -67,10 +67,6 @@
     animation: spin 1s ease-in-out infinite;
 }
 
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
 .profile-basic-info h2 {
     margin: 0 0 8px 0;
     font-size: 28px;
@@ -160,28 +156,28 @@
     color: #333;
 }
 
-/* Profile Form */
+/* Profile Form — scoped to avoid shared forms.css conflicts */
 .profile-form {
     display: flex;
     flex-direction: column;
     gap: 20px;
 }
 
-.form-group {
+.profile-form .form-group {
     display: flex;
     flex-direction: column;
     gap: 8px;
 }
 
-.form-group label {
+.profile-form .form-group label {
     font-size: 14px;
     color: #555;
     font-weight: 500;
 }
 
-.form-group input,
-.form-group select,
-.form-group textarea {
+.profile-form .form-group input,
+.profile-form .form-group select,
+.profile-form .form-group textarea {
     padding: 12px 16px;
     border: 1px solid #e0e0e0;
     border-radius: 10px;
@@ -190,15 +186,15 @@
     font-family: inherit;
 }
 
-.form-group input:focus,
-.form-group select:focus,
-.form-group textarea:focus {
+.profile-form .form-group input:focus,
+.profile-form .form-group select:focus,
+.profile-form .form-group textarea:focus {
     outline: none;
     border-color: #667eea;
     box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
-.form-group textarea {
+.profile-form .form-group textarea {
     resize: vertical;
     min-height: 80px;
 }

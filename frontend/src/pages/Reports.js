@@ -4,9 +4,26 @@ import { useToast } from '../components/Toast';
 import Pagination from '../components/Pagination';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { getImageUrl } from '../config';
+import { formatDateTime } from '../utils/formatters';
+import ConfirmModal from '../components/ConfirmModal';
 import './Reports.css';
 
-function Reports() {
+function Reports({ onViewUserDetail, onViewConversation }) {
+
+    const highlightBannedWords = (content, bannedWordsFound) => {
+        if (!content || !bannedWordsFound || bannedWordsFound.length === 0) return content;
+        const words = bannedWordsFound.map(w => w.word);
+        const pattern = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+        const regex = new RegExp(`(${pattern})`, 'gi');
+        const parts = content.split(regex);
+        return parts.map((part, i) => {
+            const match = bannedWordsFound.find(w => w.word.toLowerCase() === part.toLowerCase());
+            if (match) {
+                return <mark key={i} className={`highlighted-banned-word ${match.severity}`}>{part}</mark>;
+            }
+            return part;
+        });
+    };
     const [reports, setReports] = useState([]);
     const [stats, setStats] = useState({
         totalReports: 0,
@@ -23,6 +40,7 @@ function Reports() {
     const [totalPages, setTotalPages] = useState(1);
     const [selectedReport, setSelectedReport] = useState(null);
     const [showActionModal, setShowActionModal] = useState(false);
+    const [deleteConfirm, setDeleteConfirm] = useState({ show: false, reportId: null });
     const { showToast } = useToast();
 
     useEffect(() => {
@@ -104,11 +122,10 @@ function Reports() {
         }
     };
 
-    const handleDelete = async (reportId) => {
-        if (!window.confirm('هل أنت متأكد من حذف هذا البلاغ؟')) return;
-
+    const handleDelete = async () => {
+        if (!deleteConfirm.reportId) return;
         try {
-            const response = await deleteReport(reportId);
+            const response = await deleteReport(deleteConfirm.reportId);
             if (response.success) {
                 showToast('تم حذف البلاغ', 'success');
                 fetchReports();
@@ -116,6 +133,8 @@ function Reports() {
             }
         } catch (error) {
             showToast('فشل في حذف البلاغ', 'error');
+        } finally {
+            setDeleteConfirm({ show: false, reportId: null });
         }
     };
 
@@ -140,16 +159,6 @@ function Reports() {
             conversation: 'محادثة'
         };
         return types[type] || type;
-    };
-
-    const formatDate = (date) => {
-        return new Date(date).toLocaleDateString('ar-SA', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
     };
 
     return (
@@ -269,7 +278,7 @@ function Reports() {
                                             {report.priority}
                                         </span>
                                     </div>
-                                    <span className="report-date">{formatDate(report.createdAt)}</span>
+                                    <span className="report-date">{formatDateTime(report.createdAt)}</span>
                                 </div>
 
                                 <div className="report-body">
@@ -278,12 +287,24 @@ function Reports() {
                                     <div className="report-users">
                                         <div className="report-user">
                                             <span className="label">المبلّغ:</span>
-                                            <span className="value">{report.reportedBy?.name || 'غير معروف'}</span>
+                                            {report.reportedBy?._id && onViewUserDetail ? (
+                                                <span className="value user-link" onClick={() => onViewUserDetail(report.reportedBy._id)}>
+                                                    {report.reportedBy?.name || 'غير معروف'}
+                                                </span>
+                                            ) : (
+                                                <span className="value">{report.reportedBy?.name || 'غير معروف'}</span>
+                                            )}
                                         </div>
                                         {report.reportedUser && (
                                             <div className="report-user">
                                                 <span className="label">المبلّغ عليه:</span>
-                                                <span className="value">{report.reportedUser?.name}</span>
+                                                {report.reportedUser?._id && onViewUserDetail ? (
+                                                    <span className="value user-link" onClick={() => onViewUserDetail(report.reportedUser._id)}>
+                                                        {report.reportedUser?.name}
+                                                    </span>
+                                                ) : (
+                                                    <span className="value">{report.reportedUser?.name}</span>
+                                                )}
                                             </div>
                                         )}
                                     </div>
@@ -309,7 +330,10 @@ function Reports() {
                                                     </div>
                                                     {report.reportedMessage.content && (
                                                         <p className="reported-message-content">
-                                                            {report.reportedMessage.content}
+                                                            {report.reportedMessage.hasBannedWords
+                                                                ? highlightBannedWords(report.reportedMessage.content, report.reportedMessage.bannedWordsFound)
+                                                                : report.reportedMessage.content
+                                                            }
                                                         </p>
                                                     )}
                                                     {report.reportedMessage.type === 'image' && report.reportedMessage.mediaUrl && (
@@ -320,15 +344,33 @@ function Reports() {
                                                             onError={(e) => { e.target.style.display = 'none'; }}
                                                         />
                                                     )}
+                                                    {report.reportedMessage.hasBannedWords && report.reportedMessage.bannedWordsFound?.length > 0 && (
+                                                        <div className="banned-words-badges">
+                                                            <span className="banned-label">🚫 كلمات محظورة:</span>
+                                                            {report.reportedMessage.bannedWordsFound.map((w, i) => (
+                                                                <span key={i} className={`banned-word-badge severity-${w.severity}`}>{w.word}</span>
+                                                            ))}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
 
                                             {report.reportedConversation && (
                                                 <div className="reported-conversation-box">
-                                                    <span>💬 المحادثة: {report.reportedConversation.title}</span>
-                                                    <span className="conv-type-badge">
-                                                        {report.reportedConversation.type === 'private' ? 'خاصة' : 'جماعية'}
-                                                    </span>
+                                                    <div className="reported-conv-info">
+                                                        <span>💬 المحادثة: {report.reportedConversation.title}</span>
+                                                        <span className="conv-type-badge">
+                                                            {report.reportedConversation.type === 'private' ? 'خاصة' : 'جماعية'}
+                                                        </span>
+                                                    </div>
+                                                    {onViewConversation && report.reportedConversation._id && (
+                                                        <button
+                                                            className="view-conv-btn"
+                                                            onClick={() => onViewConversation(report.reportedConversation._id)}
+                                                        >
+                                                            عرض المحادثة
+                                                        </button>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
@@ -371,7 +413,7 @@ function Reports() {
                                             اتخاذ إجراء
                                         </button>
                                         <button
-                                            onClick={() => handleDelete(report._id)}
+                                            onClick={() => setDeleteConfirm({ show: true, reportId: report._id })}
                                             className="delete-btn"
                                         >
                                             🗑️
@@ -392,14 +434,47 @@ function Reports() {
                 </>
             )}
 
+            {/* Delete Confirm Modal */}
+            <ConfirmModal
+                isOpen={deleteConfirm.show}
+                onClose={() => setDeleteConfirm({ show: false, reportId: null })}
+                onConfirm={handleDelete}
+                title="تأكيد الحذف"
+                message="هل أنت متأكد من حذف هذا البلاغ؟"
+                confirmText="حذف"
+                cancelText="إلغاء"
+                variant="danger"
+            />
+
             {/* Action Modal */}
             {showActionModal && selectedReport && (
                 <div className="modal-overlay" onClick={() => setShowActionModal(false)}>
                     <div className="modal-content action-modal" onClick={(e) => e.stopPropagation()}>
                         <h3>اتخاذ إجراء على البلاغ</h3>
-                        <p className="modal-description">
-                            البلاغ: {getCategoryLabel(selectedReport.category)}
-                        </p>
+                        <div className="modal-report-context">
+                            <p className="modal-description">
+                                البلاغ: {getCategoryLabel(selectedReport.category)}
+                            </p>
+                            {selectedReport.reportedUser && (
+                                <p className="modal-reported-user">
+                                    المبلّغ عليه: <strong>{selectedReport.reportedUser.name}</strong>
+                                </p>
+                            )}
+                            {selectedReport.reportedMessage?.content && (
+                                <div className="modal-message-preview">
+                                    <span className="preview-label">الرسالة المُبلغ عنها:</span>
+                                    <p className="preview-content">{selectedReport.reportedMessage.content}</p>
+                                </div>
+                            )}
+                            {selectedReport.reportedMessage?.type === 'image' && selectedReport.reportedMessage?.mediaUrl && (
+                                <img
+                                    src={getImageUrl(selectedReport.reportedMessage.mediaUrl)}
+                                    alt="صورة مبلغ عنها"
+                                    className="modal-message-image"
+                                    onError={(e) => { e.target.style.display = 'none'; }}
+                                />
+                            )}
+                        </div>
 
                         <div className="action-buttons">
                             <button

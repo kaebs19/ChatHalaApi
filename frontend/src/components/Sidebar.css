@@ -1,6 +1,6 @@
 .sidebar {
     width: 280px;
-    min-height: 100vh;
+    height: 100vh;
     background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
     color: white;
     display: flex;
@@ -147,10 +147,11 @@
     .sidebar {
         width: 100%;
         position: relative;
-        min-height: auto;
+        height: auto;
     }
-    
+
     .sidebar-nav {
         padding: 15px;
+        max-height: 50vh;
     }
 }

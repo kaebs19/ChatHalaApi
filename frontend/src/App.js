@@ -3,6 +3,7 @@ import Login from './pages/Login';
 import MainLayout from './layouts/MainLayout';
 import { ToastProvider } from './components/Toast';
 import ErrorBoundary from './components/ErrorBoundary';
+import './styles/shared/index.css';
 import './App.css';
 
 function App() {

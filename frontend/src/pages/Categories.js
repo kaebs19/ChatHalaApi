@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../components/Toast';
 import api from '../services/api';
+import ConfirmModal from '../components/ConfirmModal';
 import './Categories.css';
 
 function Categories() {
@@ -17,6 +18,7 @@ function Categories() {
         isActive: true
     });
     const [submitting, setSubmitting] = useState(false);
+    const [deleteConfirm, setDeleteConfirm] = useState({ show: false, id: null });
 
     const iconOptions = [
         { value: 'folder', label: '📁 مجلد' },
@@ -117,15 +119,16 @@ function Categories() {
         }
     };
 
-    const handleDelete = async (id) => {
-        if (!window.confirm('هل أنت متأكد من حذف هذا التصنيف؟')) return;
-
+    const handleDelete = async () => {
+        if (!deleteConfirm.id) return;
         try {
-            await api.delete(`/categories/${id}`);
+            await api.delete(`/categories/${deleteConfirm.id}`);
             showToast('تم حذف التصنيف بنجاح', 'success');
             fetchCategories();
         } catch (error) {
             showToast(error.response?.data?.message || 'فشل في حذف التصنيف', 'error');
+        } finally {
+            setDeleteConfirm({ show: false, id: null });
         }
     };
 
@@ -230,7 +233,7 @@ function Categories() {
                                 </button>
                                 <button
                                     className="btn-icon delete"
-                                    onClick={() => handleDelete(category._id)}
+                                    onClick={() => setDeleteConfirm({ show: true, id: category._id })}
                                     title="حذف"
                                 >
                                     🗑️
@@ -240,6 +243,18 @@ function Categories() {
                     ))}
                 </div>
             )}
+
+            {/* Delete Confirm */}
+            <ConfirmModal
+                isOpen={deleteConfirm.show}
+                onClose={() => setDeleteConfirm({ show: false, id: null })}
+                onConfirm={handleDelete}
+                title="تأكيد الحذف"
+                message="هل أنت متأكد من حذف هذا التصنيف؟"
+                confirmText="حذف"
+                cancelText="إلغاء"
+                variant="danger"
+            />
 
             {/* Modal */}
             {showModal && (

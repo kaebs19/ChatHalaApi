@@ -152,7 +152,50 @@ const userSchema = new mongoose.Schema({
             type: Date,
             default: Date.now
         }
-    }]
+    }],
+
+    // ============ Premium Features ============
+
+    // الاشتراك المميز
+    isPremium: { type: Boolean, default: false },
+    premiumPlan: {
+        type: String,
+        enum: ['weekly', 'monthly', 'quarterly', null],
+        default: null
+    },
+    premiumExpiresAt: { type: Date, default: null },
+
+    // بيانات StoreKit 2 (Apple)
+    subscriptionTransactionId: { type: String, default: null },
+    subscriptionOriginalTransactionId: { type: String, default: null },
+
+    // الموقع الجغرافي (GeoJSON)
+    location: {
+        type: { type: String, enum: ['Point'], default: 'Point' },
+        coordinates: { type: [Number], default: [0, 0] } // [longitude, latitude]
+    },
+
+    // وضع التخفي (للمشتركين فقط)
+    stealthMode: { type: Boolean, default: false },
+
+    // توثيق الحساب
+    verification: {
+        isVerified: { type: Boolean, default: false },
+        selfieUrl: { type: String, default: null },
+        status: {
+            type: String,
+            enum: ['none', 'pending', 'approved', 'rejected'],
+            default: 'none'
+        },
+        submittedAt: { type: Date, default: null },
+        reviewedAt: { type: Date, default: null }
+    },
+
+    // Super Likes
+    superLikes: {
+        daily: { type: Number, default: 0 },
+        lastReset: { type: Date, default: Date.now }
+    }
 }, {
     timestamps: true // يضيف createdAt و updatedAt تلقائياً
 });
@@ -215,6 +258,9 @@ userSchema.index({ name: 'text' });
 userSchema.index({ gender: 1, country: 1 });
 userSchema.index({ isOnline: -1, lastLogin: -1 });
 userSchema.index({ email: 1 }, { unique: true });
+userSchema.index({ location: '2dsphere' });
+userSchema.index({ isPremium: 1 });
+userSchema.index({ 'verification.status': 1 });
 
 const User = mongoose.model('User', userSchema);
 

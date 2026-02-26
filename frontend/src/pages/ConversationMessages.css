@@ -36,23 +36,23 @@
     transform: translateX(-5px);
 }
 
-.conversation-info {
+.conversation-messages-page .conversation-info {
     flex: 1;
 }
 
-.conversation-info h2 {
+.conversation-messages-page .conversation-info h2 {
     margin: 0 0 5px 0;
     font-size: 22px;
     font-weight: 700;
 }
 
-.conversation-info p {
+.conversation-messages-page .conversation-info p {
     margin: 0;
     font-size: 13px;
     opacity: 0.9;
 }
 
-.search-box {
+.messages-header .search-box {
     min-width: 300px;
 }
 
@@ -126,6 +126,11 @@
     background: #f8f9fa;
     border-right-color: #dc3545;
     opacity: 0.7;
+}
+
+.message-bubble.flagged {
+    border-right: 4px solid #dc2626;
+    background: #fff5f5;
 }
 
 .message-header {
@@ -278,47 +283,13 @@
     transform: none;
 }
 
-.page-info {
+.conversation-messages-page .page-info {
     font-weight: 600;
     color: #666;
     font-size: 14px;
 }
 
-/* Modal */
-.modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10000;
-    padding: 20px;
-}
-
-.modal-content {
-    background: white;
-    border-radius: 16px;
-    padding: 30px;
-    max-width: 450px;
-    width: 100%;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-}
-
-.modal-content h3 {
-    margin: 0 0 15px 0;
-    font-size: 22px;
-    color: #333;
-}
-
-.modal-content p {
-    margin: 0 0 20px 0;
-    color: #666;
-}
-
+/* Message Preview (in delete modal) */
 .message-preview {
     padding: 15px;
     background: #f5f7fa;
@@ -331,40 +302,6 @@
 
 .message-preview strong {
     color: #333;
-}
-
-.modal-actions {
-    display: flex;
-    gap: 12px;
-}
-
-.modal-actions button {
-    flex: 1;
-    padding: 12px;
-    border: none;
-    border-radius: 10px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.btn-cancel {
-    background: #f3f4f6;
-    color: #666;
-}
-
-.btn-cancel:hover {
-    background: #e5e7eb;
-}
-
-.btn-confirm-delete {
-    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-    color: white;
-}
-
-.btn-confirm-delete:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
 }
 
 /* Scrollbar Styling */
@@ -385,46 +322,7 @@
     background: #764ba2;
 }
 
-/* Responsive */
-@media (max-width: 768px) {
-    .conversation-messages-page {
-        height: calc(100vh - 80px);
-    }
-
-    .messages-header {
-        padding: 15px;
-        flex-wrap: wrap;
-    }
-
-    .search-box {
-        min-width: 100%;
-        margin-top: 10px;
-    }
-
-    .conversation-info h2 {
-        font-size: 18px;
-    }
-
-    .message-bubble {
-        padding: 12px;
-    }
-
-    .message-content {
-        padding-right: 0;
-    }
-
-    .sender-avatar {
-        width: 35px;
-        height: 35px;
-        font-size: 16px;
-    }
-
-    .messages-pagination {
-        flex-wrap: wrap;
-    }
-}
-
-/* Typing Indicator - مؤشر "يكتب الآن" */
+/* Typing Indicator */
 .typing-indicator {
     display: flex;
     align-items: flex-start;
@@ -487,35 +385,16 @@
 }
 
 @keyframes typingBounce {
-    0%, 60%, 100% {
-        transform: translateY(0);
-    }
-    30% {
-        transform: translateY(-8px);
-    }
-}
-
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-    }
-    to {
-        opacity: 1;
-    }
+    0%, 60%, 100% { transform: translateY(0); }
+    30% { transform: translateY(-8px); }
 }
 
 @keyframes slideIn {
-    from {
-        transform: translateX(-10px);
-        opacity: 0;
-    }
-    to {
-        transform: translateX(0);
-        opacity: 1;
-    }
+    from { transform: translateX(-10px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
 }
 
-/* Online Count - عداد المتصلين */
+/* Online Count */
 .header-stats {
     display: flex;
     gap: 15px;
@@ -540,17 +419,11 @@
 }
 
 @keyframes pulse {
-    0%, 100% {
-        opacity: 1;
-        transform: scale(1);
-    }
-    50% {
-        opacity: 0.5;
-        transform: scale(1.1);
-    }
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(1.1); }
 }
 
-/* Message Input - واجهة الإرسال */
+/* Message Input */
 .message-input-container {
     position: sticky;
     bottom: 0;
@@ -612,4 +485,109 @@
 
 .send-btn:active:not(:disabled) {
     transform: scale(0.95);
+}
+
+/* Ban Confirmation (page-specific) */
+.ban-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10001;
+}
+
+.ban-modal {
+    background: white;
+    border-radius: 16px;
+    padding: 30px;
+    max-width: 400px;
+    width: 90%;
+    text-align: center;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+}
+
+.ban-modal h3 {
+    margin: 0 0 15px;
+    color: #dc2626;
+    font-size: 20px;
+}
+
+.ban-modal p {
+    color: #666;
+    margin: 0 0 25px;
+    font-size: 15px;
+}
+
+.ban-modal-actions {
+    display: flex;
+    gap: 12px;
+}
+
+.ban-modal-actions button {
+    flex: 1;
+    padding: 12px;
+    border: none;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.ban-cancel-btn {
+    background: #f3f4f6;
+    color: #666;
+}
+
+.ban-cancel-btn:hover { background: #e5e7eb; }
+
+.ban-confirm-btn {
+    background: #dc2626;
+    color: white;
+}
+
+.ban-confirm-btn:hover { background: #b91c1c; }
+
+/* Responsive */
+@media (max-width: 768px) {
+    .conversation-messages-page {
+        height: calc(100vh - 80px);
+    }
+
+    .messages-header {
+        padding: 15px;
+        flex-wrap: wrap;
+    }
+
+    .messages-header .search-box {
+        min-width: 100%;
+        margin-top: 10px;
+    }
+
+    .conversation-messages-page .conversation-info h2 {
+        font-size: 18px;
+    }
+
+    .message-bubble {
+        padding: 12px;
+    }
+
+    .message-content {
+        padding-right: 0;
+    }
+
+    .sender-avatar {
+        width: 35px;
+        height: 35px;
+        font-size: 16px;
+    }
+
+    .messages-pagination {
+        flex-wrap: wrap;
+    }
 }

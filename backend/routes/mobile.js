@@ -13,8 +13,20 @@ const Report = require('../models/Report');
 const Notification = require('../models/Notification');
 const ChatRoom = require('../models/ChatRoom');
 const { protect } = require('../middleware/auth');
+const { requirePremium } = require('../middleware/premium');
 const notificationService = require('../services/notificationService');
 const pushNotificationService = require('../services/pushNotificationService');
+const ProfileView = require('../models/ProfileView');
+const SuperLike = require('../models/SuperLike');
+const BannedWord = require('../models/BannedWord');
+
+// Helper: تحويل المسار النسبي إلى URL كامل
+const getFullUrl = (path) => {
+    if (!path) return null;
+    if (path.startsWith('http')) return path;
+    const baseUrl = process.env.BASE_URL || 'https://halachat.khalafiati.io';
+    return `${baseUrl}${path}`;
+};
 
 // إعداد multer لرفع صور الرسائل
 const messagesUploadDir = path.join(__dirname, '..', 'uploads', 'messages');
@@ -47,6 +59,76 @@ const uploadMessageImage = multer({
     }
 });
 
+// إعداد multer لرفع صور التوثيق (Verification Selfies)
+const verificationsUploadDir = path.join(__dirname, '..', 'uploads', 'verifications');
+if (!fs.existsSync(verificationsUploadDir)) {
+    fs.mkdirSync(verificationsUploadDir, { recursive: true });
+}
+
+const verificationStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, verificationsUploadDir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueName = `verify-${Date.now()}-${Math.random().toString(36).substr(2, 9)}${path.extname(file.originalname)}`;
+        cb(null, uniqueName);
+    }
+});
+
+const uploadVerificationSelfie = multer({
+    storage: verificationStorage,
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = /jpeg|jpg|png/;
+        const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+        const mimetype = allowedTypes.test(file.mimetype);
+        if (extname && mimetype) {
+            cb(null, true);
+        } else {
+            cb(new Error('فقط الصور مسموحة (JPEG, PNG)'));
+        }
+    }
+});
+
+// ==========================================
+// نظام الموقع الجغرافي
+// ==========================================
+
+// @route   PUT /api/mobile/users/location
+// @desc    تحديث الموقع الجغرافي
+// @access  Protected
+router.put('/users/location', protect, async (req, res) => {
+    try {
+        const { latitude, longitude } = req.body;
+
+        if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+            return res.status(400).json({
+                success: false,
+                message: 'الإحداثيات مطلوبة (latitude, longitude) كأرقام'
+            });
+        }
+
+        if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+            return res.status(400).json({
+                success: false,
+                message: 'الإحداثيات غير صحيحة'
+            });
+        }
+
+        await User.findByIdAndUpdate(req.user._id, {
+            location: {
+                type: 'Point',
+                coordinates: [longitude, latitude] // GeoJSON: [lng, lat]
+            }
+        });
+
+        res.json({ success: true, message: 'تم تحديث الموقع بنجاح' });
+    } catch (error) {
+        console.error('خطأ في تحديث الموقع:', error);
+        res.status(500).json({ success: false, message: 'فشل في تحديث الموقع' });
+    }
+});
+
 // ==========================================
 // نظام البحث عن المستخدمين
 // ==========================================
@@ -63,16 +145,20 @@ router.get('/users/search', protect, async (req, res) => {
             gender,      // male / female
             country,     // كود الدولة: SA, AE, EG
             minAge,      // أقل عمر
-            maxAge       // أكبر عمر
+            maxAge,      // أكبر عمر
+            latitude,    // خط العرض (اختياري)
+            longitude,   // خط الطول (اختياري)
+            maxDistance = 50 // أقصى مسافة بالكيلومتر
         } = req.query;
 
         // بناء الفلتر
         const filter = {
-            _id: { $ne: req.user._id },              // 1. استثناء نفسك
-            isActive: true                            // 2. المستخدمين النشطين فقط
+            _id: { $ne: req.user._id },
+            isActive: true
+            // Stealth Mode لا يخفي من الاكتشاف — فقط يمنع تسجيل زيارات البروفايل ويخفي آخر ظهور
         };
 
-        // 3. استثناء المستخدمين المحظورين
+        // استثناء المستخدمين المحظورين
         if (req.user.blockedUsers && req.user.blockedUsers.length > 0) {
             filter._id = {
                 $ne: req.user._id,
@@ -99,33 +185,122 @@ router.get('/users/search', protect, async (req, res) => {
         if (minAge || maxAge) {
             filter.birthDate = {};
             if (maxAge) {
-                // أكبر عمر = أصغر تاريخ ميلاد
                 const minDate = new Date();
                 minDate.setFullYear(minDate.getFullYear() - parseInt(maxAge) - 1);
                 filter.birthDate.$gte = minDate;
             }
             if (minAge) {
-                // أصغر عمر = أكبر تاريخ ميلاد
                 const maxDate = new Date();
                 maxDate.setFullYear(maxDate.getFullYear() - parseInt(minAge));
                 filter.birthDate.$lte = maxDate;
             }
         }
 
-        const users = await User.find(filter)
-            .select('name email profileImage birthDate gender country bio isOnline lastLogin')
-            .sort({ isOnline: -1, lastLogin: -1 })  // المتصلين أولاً، ثم الأنشط
-            .limit(parseInt(limit))
-            .skip((parseInt(page) - 1) * parseInt(limit));
+        const pageNum = parseInt(page);
+        const limitNum = parseInt(limit);
+        const skipNum = (pageNum - 1) * limitNum;
 
-        const totalUsers = await User.countDocuments(filter);
+        // Helper: حساب وصف المسافة
+        const getDistanceLabel = (distanceInMeters) => {
+            const km = distanceInMeters / 1000;
+            if (km < 1) return 'قريب جداً';
+            if (km <= 10) return 'قريب منك';
+            if (km <= 50) return 'في مدينتك';
+            if (km <= 200) return 'في منطقتك';
+            return 'بعيد';
+        };
+
+        let users, totalUsers;
+
+        // إذا فيه إحداثيات → استخدام $geoNear
+        if (latitude && longitude) {
+            const lat = parseFloat(latitude);
+            const lng = parseFloat(longitude);
+            const maxDist = parseFloat(maxDistance) * 1000; // تحويل كم إلى متر
+
+            const pipeline = [
+                {
+                    $geoNear: {
+                        near: { type: 'Point', coordinates: [lng, lat] },
+                        distanceField: 'distance',
+                        maxDistance: maxDist,
+                        query: filter,
+                        spherical: true
+                    }
+                },
+                {
+                    $project: {
+                        name: 1, email: 1, profileImage: 1, birthDate: 1,
+                        gender: 1, country: 1, bio: 1, isOnline: 1, lastLogin: 1,
+                        'verification.isVerified': 1, isPremium: 1, stealthMode: 1, distance: 1
+                    }
+                },
+                { $sort: { isOnline: -1, distance: 1 } },
+                { $skip: skipNum },
+                { $limit: limitNum }
+            ];
+
+            users = await User.aggregate(pipeline);
+
+            // حساب distanceLabel + إخفاء lastLogin للمتخفين
+            users = users.map(u => {
+                const result = {
+                    ...u,
+                    distance: Math.round(u.distance),
+                    distanceLabel: getDistanceLabel(u.distance)
+                };
+                if (u.stealthMode) {
+                    result.lastLogin = null;
+                }
+                delete result.stealthMode;
+                return result;
+            });
+
+            // حساب الإجمالي
+            const countPipeline = [
+                {
+                    $geoNear: {
+                        near: { type: 'Point', coordinates: [lng, lat] },
+                        distanceField: 'distance',
+                        maxDistance: maxDist,
+                        query: filter,
+                        spherical: true
+                    }
+                },
+                { $count: 'total' }
+            ];
+            const countResult = await User.aggregate(countPipeline);
+            totalUsers = countResult.length > 0 ? countResult[0].total : 0;
+
+        } else {
+            // بدون موقع — البحث العادي
+            users = await User.find(filter)
+                .select('name email profileImage birthDate gender country bio isOnline lastLogin verification.isVerified isPremium stealthMode')
+                .sort({ isOnline: -1, lastLogin: -1 })
+                .limit(limitNum)
+                .skip(skipNum);
+
+            totalUsers = await User.countDocuments(filter);
+
+            // إخفاء lastLogin للمتخفين + إضافة distance: null + حذف stealthMode
+            users = users.map(u => {
+                const userObj = u.toObject();
+                if (userObj.stealthMode) {
+                    userObj.lastLogin = null;
+                }
+                delete userObj.stealthMode;
+                userObj.distance = null;
+                userObj.distanceLabel = null;
+                return userObj;
+            });
+        }
 
         res.status(200).json({
             success: true,
             data: {
                 users,
-                page: parseInt(page),
-                totalPages: Math.ceil(totalUsers / parseInt(limit)),
+                page: pageNum,
+                totalPages: Math.ceil(totalUsers / limitNum),
                 totalUsers
             }
         });
@@ -137,6 +312,496 @@ router.get('/users/search', protect, async (req, res) => {
             message: 'خطأ في السيرفر',
             error: error.message
         });
+    }
+});
+
+// ==========================================
+// نظام زيارات البروفايل
+// ==========================================
+
+// @route   POST /api/mobile/profile-views
+// @desc    تسجيل زيارة بروفايل
+// @access  Protected
+router.post('/profile-views', protect, async (req, res) => {
+    try {
+        const { viewedUserId } = req.body;
+        const viewerId = req.user._id;
+
+        if (!viewedUserId) {
+            return res.status(400).json({ success: false, message: 'معرف المستخدم مطلوب' });
+        }
+
+        if (viewedUserId === viewerId.toString()) {
+            return res.status(400).json({ success: false, message: 'لا يمكن تسجيل زيارة لنفسك' });
+        }
+
+        // التحقق من وجود المستخدم
+        const viewedUser = await User.findById(viewedUserId);
+        if (!viewedUser) {
+            return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        }
+
+        // لا تسجل زيارة مكررة خلال 24 ساعة
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const existingView = await ProfileView.findOne({
+            viewer: viewerId,
+            viewed: viewedUserId,
+            createdAt: { $gte: twentyFourHoursAgo }
+        });
+
+        if (existingView) {
+            return res.json({ success: true, message: 'الزيارة مسجلة مسبقاً' });
+        }
+
+        // إنشاء زيارة جديدة
+        const isHidden = req.user.stealthMode || false;
+        const profileView = await ProfileView.create({
+            viewer: viewerId,
+            viewed: viewedUserId,
+            isHidden
+        });
+
+        // إرسال Socket event في الوقت الحقيقي (فقط لو الزيارة مش مخفية)
+        if (!isHidden && global.io) {
+            global.io.to(`user:${viewedUserId}`).emit('profile-viewed', {
+                viewer: {
+                    _id: req.user._id,
+                    name: req.user.name,
+                    profileImage: getFullUrl(req.user.profileImage),
+                    isPremium: req.user.isPremium || false,
+                    isVerified: req.user.verification?.isVerified || false
+                },
+                createdAt: profileView.createdAt
+            });
+        }
+
+        res.json({ success: true, message: 'تم تسجيل الزيارة' });
+    } catch (error) {
+        console.error('خطأ في تسجيل زيارة البروفايل:', error);
+        res.status(500).json({ success: false, message: 'فشل في تسجيل الزيارة' });
+    }
+});
+
+// @route   GET /api/mobile/profile-views
+// @desc    من شاف بروفايلي
+// @access  Protected
+router.get('/profile-views', protect, async (req, res) => {
+    try {
+        const { page = 1, limit = 20 } = req.query;
+        const pageNum = parseInt(page);
+        const limitNum = parseInt(limit);
+
+        const totalViews = await ProfileView.countDocuments({
+            viewed: req.user._id,
+            isHidden: false
+        });
+
+        const isPremium = req.user.isPremium && req.user.premiumExpiresAt > new Date();
+
+        if (isPremium) {
+            // المشترك: يشوف التفاصيل
+            const views = await ProfileView.find({
+                viewed: req.user._id,
+                isHidden: false
+            })
+                .populate('viewer', 'name profileImage country isOnline isPremium verification.isVerified')
+                .sort({ createdAt: -1 })
+                .limit(limitNum)
+                .skip((pageNum - 1) * limitNum);
+
+            res.json({
+                success: true,
+                data: {
+                    totalViews,
+                    views: views.map(v => ({
+                        viewer: {
+                            _id: v.viewer._id,
+                            name: v.viewer.name,
+                            profileImage: getFullUrl(v.viewer.profileImage),
+                            country: v.viewer.country,
+                            isVerified: v.viewer.verification?.isVerified || false
+                        },
+                        createdAt: v.createdAt
+                    })),
+                    page: pageNum,
+                    totalPages: Math.ceil(totalViews / limitNum),
+                    isPremiumRequired: false
+                }
+            });
+        } else {
+            // المجاني: عدد فقط + بيانات مخفية
+            const views = await ProfileView.find({
+                viewed: req.user._id,
+                isHidden: false
+            })
+                .sort({ createdAt: -1 })
+                .limit(3);
+
+            res.json({
+                success: true,
+                data: {
+                    totalViews,
+                    views: views.map(v => ({
+                        viewer: { _id: null, name: null, profileImage: null, country: null },
+                        createdAt: v.createdAt
+                    })),
+                    page: 1,
+                    totalPages: 1,
+                    isPremiumRequired: true
+                }
+            });
+        }
+    } catch (error) {
+        console.error('خطأ في جلب زيارات البروفايل:', error);
+        res.status(500).json({ success: false, message: 'فشل في جلب الزيارات' });
+    }
+});
+
+// ==========================================
+// نظام التوثيق (Verification)
+// ==========================================
+
+// @route   POST /api/mobile/verification/submit
+// @desc    طلب توثيق الحساب (رفع سيلفي)
+// @access  Protected + Premium
+router.post('/verification/submit', protect, requirePremium, uploadVerificationSelfie.single('selfie'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ success: false, message: 'صورة السيلفي مطلوبة' });
+        }
+
+        // التحقق من الحالة الحالية
+        if (req.user.verification && req.user.verification.status === 'pending') {
+            return res.status(400).json({ success: false, message: 'لديك طلب توثيق قيد المراجعة' });
+        }
+
+        const selfieUrl = `/uploads/verifications/${req.file.filename}`;
+
+        await User.findByIdAndUpdate(req.user._id, {
+            'verification.selfieUrl': selfieUrl,
+            'verification.status': 'pending',
+            'verification.submittedAt': new Date()
+        });
+
+        res.json({
+            success: true,
+            message: 'تم إرسال طلب التوثيق بنجاح',
+            data: { status: 'pending' }
+        });
+    } catch (error) {
+        console.error('خطأ في طلب التوثيق:', error);
+        res.status(500).json({ success: false, message: 'فشل في إرسال طلب التوثيق' });
+    }
+});
+
+// @route   GET /api/mobile/verification/status
+// @desc    حالة التوثيق
+// @access  Protected
+router.get('/verification/status', protect, async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id).select('verification');
+        res.json({
+            success: true,
+            data: {
+                isVerified: user.verification?.isVerified || false,
+                status: user.verification?.status || 'none',
+                submittedAt: user.verification?.submittedAt || null,
+                reviewedAt: user.verification?.reviewedAt || null
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في جلب حالة التوثيق:', error);
+        res.status(500).json({ success: false, message: 'فشل في جلب حالة التوثيق' });
+    }
+});
+
+// ==========================================
+// وضع التخفي (Stealth Mode)
+// ==========================================
+
+// @route   PUT /api/mobile/users/stealth-mode
+// @desc    تفعيل/تعطيل وضع التخفي
+// @access  Protected + Premium
+router.put('/users/stealth-mode', protect, requirePremium, async (req, res) => {
+    try {
+        const { enabled } = req.body;
+
+        if (typeof enabled !== 'boolean') {
+            return res.status(400).json({ success: false, message: 'القيمة مطلوبة (true/false)' });
+        }
+
+        await User.findByIdAndUpdate(req.user._id, { stealthMode: enabled });
+
+        res.json({
+            success: true,
+            message: enabled ? 'تم تفعيل وضع التخفي' : 'تم تعطيل وضع التخفي',
+            data: { stealthMode: enabled }
+        });
+    } catch (error) {
+        console.error('خطأ في تغيير وضع التخفي:', error);
+        res.status(500).json({ success: false, message: 'فشل في تغيير وضع التخفي' });
+    }
+});
+
+// ==========================================
+// نظام Super Like
+// ==========================================
+
+// @route   POST /api/mobile/super-like
+// @desc    إرسال Super Like
+// @access  Protected
+router.post('/super-like', protect, async (req, res) => {
+    try {
+        const { userId: targetUserId } = req.body;
+        const senderId = req.user._id;
+
+        if (!targetUserId) {
+            return res.status(400).json({ success: false, message: 'معرف المستخدم مطلوب' });
+        }
+
+        if (targetUserId === senderId.toString()) {
+            return res.status(400).json({ success: false, message: 'لا يمكن إرسال Super Like لنفسك' });
+        }
+
+        // التحقق من وجود المستخدم المستهدف
+        const targetUser = await User.findById(targetUserId);
+        if (!targetUser) {
+            return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        }
+
+        // التحقق من الحد اليومي
+        const user = await User.findById(senderId);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const lastReset = user.superLikes?.lastReset ? new Date(user.superLikes.lastReset) : new Date(0);
+        lastReset.setHours(0, 0, 0, 0);
+
+        let dailyCount = user.superLikes?.daily || 0;
+
+        // ريسيت إذا يوم جديد
+        if (lastReset < today) {
+            dailyCount = 0;
+        }
+
+        const isPremium = user.isPremium && user.premiumExpiresAt > new Date();
+        const maxDaily = isPremium ? 5 : 1;
+
+        if (dailyCount >= maxDaily) {
+            return res.status(429).json({
+                success: false,
+                error: 'super_like_limit_reached',
+                message: `وصلت الحد الأقصى (${maxDaily} يومياً)`,
+                data: { remaining: 0, max: maxDaily }
+            });
+        }
+
+        // إنشاء Super Like
+        await SuperLike.create({ sender: senderId, receiver: targetUserId });
+
+        // تحديث العداد
+        await User.findByIdAndUpdate(senderId, {
+            'superLikes.daily': dailyCount + 1,
+            'superLikes.lastReset': new Date()
+        });
+
+        // إنشاء محادثة pending تلقائياً (إذا ما فيه محادثة سابقة)
+        let conversation = null;
+        const existingConversation = await Conversation.findOne({
+            type: 'private',
+            participants: { $all: [senderId, targetUserId] }
+        });
+
+        if (!existingConversation) {
+            conversation = await Conversation.create({
+                type: 'private',
+                participants: [senderId, targetUserId],
+                creator: senderId,
+                status: 'pending',
+                isActive: true,
+                title: `محادثة بين ${req.user.name} و ${targetUser.name}`
+            });
+        }
+
+        // Socket.IO (لو متصل)
+        if (global.io) {
+            global.io.to(`user:${targetUserId}`).emit('conversation:request', {
+                conversationId: conversation ? conversation._id : existingConversation._id,
+                isSuperLike: true,
+                from: {
+                    _id: senderId,
+                    name: req.user.name,
+                    profileImage: req.user.profileImage
+                }
+            });
+        }
+
+        // إرسال إشعار push
+        try {
+            await pushNotificationService.sendNotificationToUser(targetUserId, {
+                title: '💎 إعجاب مميز!',
+                body: `${req.user.name} أرسل لك Super Like`,
+                type: 'super_like'
+            }, {
+                userId: senderId.toString(),
+                type: 'super_like',
+                conversationId: conversation ? conversation._id.toString() : existingConversation._id.toString()
+            });
+        } catch (notifError) {
+            console.error('خطأ في إرسال إشعار Super Like:', notifError);
+        }
+
+        res.json({
+            success: true,
+            message: 'تم إرسال Super Like بنجاح',
+            data: {
+                remaining: maxDaily - (dailyCount + 1),
+                max: maxDaily,
+                conversationId: conversation ? conversation._id : existingConversation._id
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في Super Like:', error);
+        res.status(500).json({ success: false, message: 'فشل في إرسال Super Like' });
+    }
+});
+
+// @route   GET /api/mobile/super-like/remaining
+// @desc    المتبقي من Super Likes
+// @access  Protected
+router.get('/super-like/remaining', protect, async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id).select('superLikes isPremium premiumExpiresAt');
+
+        const isPremium = user.isPremium && user.premiumExpiresAt > new Date();
+        const maxDaily = isPremium ? 5 : 1;
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const lastReset = user.superLikes?.lastReset ? new Date(user.superLikes.lastReset) : new Date(0);
+        lastReset.setHours(0, 0, 0, 0);
+
+        let used = user.superLikes?.daily || 0;
+        if (lastReset < today) used = 0;
+
+        // وقت الريسيت القادم (بداية اليوم التالي)
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+
+        res.json({
+            success: true,
+            data: {
+                remaining: Math.max(0, maxDaily - used),
+                max: maxDaily,
+                used,
+                resetsAt: tomorrow.toISOString()
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في جلب بيانات Super Like:', error);
+        res.status(500).json({ success: false, message: 'فشل في جلب البيانات' });
+    }
+});
+
+// ==========================================
+// نظام الاشتراكات (Subscription)
+// ==========================================
+
+// @route   POST /api/mobile/subscription/verify
+// @desc    التحقق من إيصال Apple وتفعيل الاشتراك
+// @access  Protected
+router.post('/subscription/verify', protect, async (req, res) => {
+    try {
+        const { receipt, transactionId, originalTransactionId, plan } = req.body;
+
+        // يجب إرسال إما receipt (StoreKit 1) أو transactionId (StoreKit 2)
+        if (!receipt && !transactionId) {
+            return res.status(400).json({
+                success: false,
+                message: 'بيانات الإيصال مطلوبة (receipt أو transactionId)'
+            });
+        }
+
+        if (!plan) {
+            return res.status(400).json({ success: false, message: 'الخطة مطلوبة' });
+        }
+
+        if (!['weekly', 'monthly', 'quarterly'].includes(plan)) {
+            return res.status(400).json({ success: false, message: 'خطة غير صالحة' });
+        }
+
+        // TODO: التحقق الفعلي من Apple في بيئة الإنتاج
+        // StoreKit 1: التحقق من receipt عبر Apple verifyReceipt API
+        // StoreKit 2: التحقق من transactionId عبر App Store Server API v2
+
+        // حساب تاريخ الانتهاء
+        const now = new Date();
+        let expiresAt;
+        switch (plan) {
+            case 'weekly':
+                expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+                break;
+            case 'monthly':
+                expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+                break;
+            case 'quarterly':
+                expiresAt = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+                break;
+        }
+
+        const updateData = {
+            isPremium: true,
+            premiumPlan: plan,
+            premiumExpiresAt: expiresAt
+        };
+
+        // حفظ بيانات المعاملة لو StoreKit 2
+        if (transactionId) {
+            updateData.subscriptionTransactionId = transactionId;
+            if (originalTransactionId) {
+                updateData.subscriptionOriginalTransactionId = originalTransactionId;
+            }
+        }
+
+        await User.findByIdAndUpdate(req.user._id, updateData);
+
+        res.json({
+            success: true,
+            message: 'تم تفعيل الاشتراك بنجاح',
+            data: {
+                isPremium: true,
+                plan,
+                expiresAt: expiresAt.toISOString()
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في التحقق من الاشتراك:', error);
+        res.status(500).json({ success: false, message: 'فشل في التحقق من الاشتراك' });
+    }
+});
+
+// @route   GET /api/mobile/subscription/status
+// @desc    حالة الاشتراك الحالية
+// @access  Protected
+router.get('/subscription/status', protect, async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id)
+            .select('isPremium premiumPlan premiumExpiresAt');
+
+        const isPremium = user.isPremium && user.premiumExpiresAt && user.premiumExpiresAt > new Date();
+
+        res.json({
+            success: true,
+            data: {
+                isPremium: isPremium || false,
+                plan: isPremium ? user.premiumPlan : null,
+                expiresAt: isPremium ? user.premiumExpiresAt.toISOString() : null
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في جلب حالة الاشتراك:', error);
+        res.status(500).json({ success: false, message: 'فشل في جلب حالة الاشتراك' });
     }
 });
 
@@ -236,7 +901,7 @@ router.post('/users/unblock/:userId', protect, async (req, res) => {
 router.get('/users/blocked', protect, async (req, res) => {
     try {
         const user = await User.findById(req.user._id)
-            .populate('blockedUsers', 'name email profileImage');
+            .populate('blockedUsers', 'name email profileImage isPremium verification.isVerified');
 
         res.json({
             success: true,
@@ -264,7 +929,7 @@ router.get('/users/blocked', protect, async (req, res) => {
 // @access  Private
 router.post('/conversations/request', protect, async (req, res) => {
     try {
-        const { targetUserId, initialMessage } = req.body;
+        const { targetUserId, initialMessage, isSuperLike } = req.body;
 
         if (!targetUserId) {
             return res.status(400).json({
@@ -306,13 +971,50 @@ router.post('/conversations/request', protect, async (req, res) => {
             });
         }
 
+        // ========== معالجة Super Like ==========
+        let superLikeCreated = false;
+        if (isSuperLike) {
+            const senderId = req.user._id;
+
+            // التحقق من الحد اليومي
+            const senderUser = await User.findById(senderId);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            const lastReset = senderUser.superLikes?.lastReset ? new Date(senderUser.superLikes.lastReset) : new Date(0);
+            lastReset.setHours(0, 0, 0, 0);
+
+            let dailyCount = senderUser.superLikes?.daily || 0;
+            if (lastReset < today) dailyCount = 0;
+
+            const userIsPremium = senderUser.isPremium && senderUser.premiumExpiresAt > new Date();
+            const maxDaily = userIsPremium ? 5 : 1;
+
+            if (dailyCount >= maxDaily) {
+                return res.status(429).json({
+                    success: false,
+                    error: 'super_like_limit_reached',
+                    message: `وصلت الحد الأقصى من Super Likes (${maxDaily} يومياً)`,
+                    data: { remaining: 0, max: maxDaily }
+                });
+            }
+
+            // إنشاء Super Like
+            await SuperLike.create({ sender: senderId, receiver: targetUserId });
+            await User.findByIdAndUpdate(senderId, {
+                'superLikes.daily': dailyCount + 1,
+                'superLikes.lastReset': new Date()
+            });
+            superLikeCreated = true;
+        }
+
         // إنشاء محادثة جديدة بحالة "pending"
         const conversation = await Conversation.create({
             type: 'private',
             participants: [req.user._id, targetUserId],
             creator: req.user._id,
-            status: 'pending', // في انتظار قبول المستخدم الآخر
-            isActive: true, // نشطة عشان الرسائل تنرسل
+            status: 'pending',
+            isActive: true,
             title: `محادثة بين ${req.user.name} و ${targetUser.name}`
         });
 
@@ -332,6 +1034,7 @@ router.post('/conversations/request', protect, async (req, res) => {
         if (global.io) {
             global.io.to(`user:${targetUserId}`).emit('conversation:request', {
                 conversationId: conversation._id,
+                isSuperLike: superLikeCreated,
                 from: {
                     _id: req.user._id,
                     name: req.user.name,
@@ -341,46 +1044,38 @@ router.post('/conversations/request', protect, async (req, res) => {
         }
 
         // ٢. Push Notification عبر FCM
-        if (targetUser.fcmToken) {
+        const notifTitle = superLikeCreated ? '💎 إعجاب مميز!' : 'طلب محادثة جديد';
+        const notifBody = superLikeCreated
+            ? `${req.user.name} أرسل لك Super Like ويريد التحدث معك`
+            : `${req.user.name} يريد التحدث معك`;
+
+        try {
             await pushNotificationService.sendNotificationToUser(
                 targetUserId,
                 {
-                    title: 'طلب محادثة جديد',
-                    body: `${req.user.name} يريد التحدث معك`
+                    title: notifTitle,
+                    body: notifBody,
+                    type: superLikeCreated ? 'super_like' : 'conversation_request'
                 },
                 {
-                    type: 'conversation_request',
+                    type: superLikeCreated ? 'super_like' : 'conversation_request',
                     conversationId: conversation._id.toString(),
                     senderId: req.user._id.toString(),
-                    senderName: req.user.name
+                    senderName: req.user.name,
+                    isSuperLike: superLikeCreated ? 'true' : 'false'
                 }
             );
-        } else {
-            // حفظ الإشعار في قاعدة البيانات فقط (بدون push)
-            await Notification.create({
-                title: 'طلب محادثة جديد',
-                body: `${req.user.name} يريد بدء محادثة معك`,
-                type: 'conversation_request',
-                recipients: 'specific',
-                targetUsers: [targetUserId],
-                sender: req.user._id,
-                status: 'sent',
-                sentAt: new Date(),
-                sentCount: 1,
-                data: {
-                    conversationId: conversation._id.toString(),
-                    senderId: req.user._id.toString(),
-                    type: 'conversation_request'
-                }
-            });
+        } catch (notifError) {
+            console.error('خطأ في إرسال إشعار طلب المحادثة:', notifError);
         }
 
         res.status(201).json({
             success: true,
-            message: 'تم إرسال طلب المحادثة',
+            message: superLikeCreated ? 'تم إرسال Super Like وطلب المحادثة' : 'تم إرسال طلب المحادثة',
             data: {
                 conversation,
-                isExisting: false
+                isExisting: false,
+                isSuperLike: superLikeCreated
             }
         });
 
@@ -640,16 +1335,38 @@ router.get('/conversations/pending', protect, async (req, res) => {
     try {
         const conversations = await Conversation.find({
             participants: req.user._id,
-            creator: { $ne: req.user._id }, // طلبات من الآخرين
+            creator: { $ne: req.user._id },
             status: 'pending'
         })
-            .populate('creator', 'name email profileImage')
-            .populate('participants', 'name email profileImage lastLogin isOnline')
+            .populate('creator', 'name email profileImage verification.isVerified isPremium')
+            .populate('participants', 'name email profileImage lastLogin isOnline isPremium verification.isVerified')
             .sort({ createdAt: -1 });
+
+        // إضافة حقل isSuperLike لكل طلب
+        const creatorIds = conversations.map(c => c.creator._id);
+        const superLikes = await SuperLike.find({
+            receiver: req.user._id,
+            sender: { $in: creatorIds }
+        });
+        const superLikeSet = new Set(superLikes.map(sl => sl.sender.toString()));
+
+        const enrichedConversations = conversations.map(conv => {
+            const convObj = conv.toObject();
+            convObj.isSuperLike = superLikeSet.has(conv.creator._id.toString());
+            convObj.creator.isVerified = conv.creator.verification?.isVerified || false;
+            return convObj;
+        });
+
+        // ترتيب: Super Like أولاً ثم بالتاريخ
+        enrichedConversations.sort((a, b) => {
+            if (a.isSuperLike && !b.isSuperLike) return -1;
+            if (!a.isSuperLike && b.isSuperLike) return 1;
+            return new Date(b.createdAt) - new Date(a.createdAt);
+        });
 
         res.status(200).json({
             success: true,
-            data: { conversations }
+            data: { conversations: enrichedConversations }
         });
 
     } catch (error) {
@@ -675,7 +1392,7 @@ router.get('/conversations', protect, async (req, res) => {
             status: { $in: ['accepted', 'pending'] },
             isActive: true
         })
-            .populate('participants', 'name email profileImage lastLogin isOnline')
+            .populate('participants', 'name email profileImage lastLogin isOnline isPremium verification.isVerified')
             .populate('lastMessage')
             .sort({ updatedAt: -1 })
             .limit(limit * 1)
@@ -804,6 +1521,12 @@ router.post('/messages/send', protect, async (req, res) => {
             });
         }
 
+        // فحص الكلمات المحظورة
+        let bannedWordResult = { isClean: true, foundWords: [] };
+        if (type === 'text' && content) {
+            bannedWordResult = await BannedWord.checkText(content, 'word');
+        }
+
         // التحقق من المحادثة
         const conversation = await Conversation.findById(conversationId)
             .populate('participants', 'name email deviceToken');
@@ -845,7 +1568,7 @@ router.post('/messages/send', protect, async (req, res) => {
             }
         }
 
-        // إنشاء الرسالة
+        // إنشاء الرسالة (مع نتائج فحص الكلمات المحظورة)
         const message = await Message.create({
             chatType: 'conversation',
             conversation: conversationId,
@@ -854,16 +1577,38 @@ router.post('/messages/send', protect, async (req, res) => {
             type,
             mediaUrl: mediaUrl || null,
             mediaMetadata: mediaMetadata || null,
-            status: 'sent'
+            status: 'sent',
+            hasBannedWords: !bannedWordResult.isClean,
+            bannedWordsFound: bannedWordResult.foundWords.map(w => ({
+                word: w.word, severity: w.severity, action: w.action
+            })),
+            bannedWordSeverity: bannedWordResult.highestSeverity || null
         });
 
-        // تحديث آخر رسالة في المحادثة
+        // تنبيه الأدمن إذا وُجدت كلمات محظورة
+        if (!bannedWordResult.isClean && global.io) {
+            global.io.emit('banned-word-alert', {
+                messageId: message._id,
+                conversationId,
+                senderId: req.user._id,
+                senderName: req.user.name,
+                content: content.substring(0, 100),
+                wordsFound: bannedWordResult.foundWords,
+                severity: bannedWordResult.highestSeverity,
+                chatType: 'conversation',
+                timestamp: new Date()
+            });
+        }
+
+        // تحديث آخر رسالة + عداد الرسائل
         conversation.lastMessage = message._id;
+        if (!conversation.metadata) conversation.metadata = {};
+        conversation.metadata.totalMessages = (conversation.metadata.totalMessages || 0) + 1;
         await conversation.save();
 
         // جلب الرسالة مع بيانات المرسل
         const populatedMessage = await Message.findById(message._id)
-            .populate('sender', 'name email profileImage');
+            .populate('sender', 'name email profileImage isPremium verification.isVerified');
 
         // إرسال عبر Socket.IO
         console.log('🔥 About to emit new-message to room:', `conversation-${conversationId}`);
@@ -983,7 +1728,7 @@ router.post('/conversations/:conversationId/messages/image', protect, uploadMess
 
         // جلب الرسالة مع بيانات المرسل
         const populatedMessage = await Message.findById(message._id)
-            .populate('sender', 'name profileImage');
+            .populate('sender', 'name profileImage isPremium verification.isVerified');
 
         // إرسال عبر Socket.IO
         if (global.io) {
@@ -1046,6 +1791,12 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
             });
         }
 
+        // فحص الكلمات المحظورة
+        let bannedWordResult = { isClean: true, foundWords: [] };
+        if (type === 'text' && content) {
+            bannedWordResult = await BannedWord.checkText(content, 'word');
+        }
+
         // التحقق من المحادثة
         const conversation = await Conversation.findById(conversationId)
             .populate('participants', 'name email deviceToken fcmToken');
@@ -1069,7 +1820,7 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
             });
         }
 
-        // إنشاء الرسالة
+        // إنشاء الرسالة (مع فحص الكلمات المحظورة)
         const message = await Message.create({
             chatType: 'conversation',
             conversation: conversationId,
@@ -1078,16 +1829,38 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
             type,
             mediaUrl: mediaUrl || null,
             mediaMetadata: mediaMetadata || null,
-            status: 'sent'
+            status: 'sent',
+            hasBannedWords: !bannedWordResult.isClean,
+            bannedWordsFound: bannedWordResult.foundWords.map(w => ({
+                word: w.word, severity: w.severity, action: w.action
+            })),
+            bannedWordSeverity: bannedWordResult.highestSeverity || null
         });
 
-        // تحديث آخر رسالة في المحادثة
+        // تنبيه الأدمن إذا وُجدت كلمات محظورة
+        if (!bannedWordResult.isClean && global.io) {
+            global.io.emit('banned-word-alert', {
+                messageId: message._id,
+                conversationId,
+                senderId: req.user._id,
+                senderName: req.user.name,
+                content: content.substring(0, 100),
+                wordsFound: bannedWordResult.foundWords,
+                severity: bannedWordResult.highestSeverity,
+                chatType: 'conversation',
+                timestamp: new Date()
+            });
+        }
+
+        // تحديث آخر رسالة + عداد الرسائل
         conversation.lastMessage = message._id;
+        if (!conversation.metadata) conversation.metadata = {};
+        conversation.metadata.totalMessages = (conversation.metadata.totalMessages || 0) + 1;
         await conversation.save();
 
         // جلب الرسالة مع بيانات المرسل
         const populatedMessage = await Message.findById(message._id)
-            .populate('sender', 'name email profileImage');
+            .populate('sender', 'name email profileImage isPremium verification.isVerified');
 
         // إرسال عبر Socket.IO
         console.log('🔥 About to emit new-message to room:', `conversation-${conversationId}`);
@@ -1174,7 +1947,7 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
             conversation: conversationId,
             isDeleted: false
         })
-            .populate('sender', 'name email profileImage')
+            .populate('sender', 'name email profileImage isPremium verification.isVerified')
             .sort({ createdAt: -1 })
             .limit(limit * 1)
             .skip((page - 1) * limit);
@@ -1394,7 +2167,7 @@ router.get('/notifications', protect, async (req, res) => {
         };
 
         const notifications = await Notification.find(query)
-            .populate('sender', 'name profileImage')
+            .populate('sender', 'name profileImage isPremium verification.isVerified')
             .sort({ createdAt: -1 })
             .limit(limit * 1)
             .skip((page - 1) * limit);
@@ -1640,7 +2413,7 @@ router.get('/rooms', protect, async (req, res) => {
 
         const rooms = await ChatRoom.find(filter)
             .select('name image description category memberCount messageCount isLocked lastMessage updatedAt members pinnedMessage')
-            .populate('lastMessage.sender', 'name profileImage')
+            .populate('lastMessage.sender', 'name profileImage isPremium verification.isVerified')
             .sort({ updatedAt: -1 })
             .skip((page - 1) * limit)
             .limit(parseInt(limit));
@@ -1659,7 +2432,7 @@ router.get('/rooms', protect, async (req, res) => {
             return {
                 id: room._id,
                 name: room.name,
-                image: room.image,
+                image: getFullUrl(room.image),
                 description: room.description?.substring(0, 100) || '',
                 category: room.category || 'عام',
                 members: room.memberCount || 0,
@@ -1729,7 +2502,7 @@ router.get('/rooms/:id/messages', protect, async (req, res) => {
 
         // جلب الرسائل
         const messages = await Message.find(filter)
-            .populate('sender', 'name profileImage')
+            .populate('sender', 'name profileImage isPremium verification.isVerified')
             .sort({ createdAt: -1 })
             .skip((parseInt(page) - 1) * parseInt(limit))
             .limit(parseInt(limit));
@@ -1745,7 +2518,7 @@ router.get('/rooms/:id/messages', protect, async (req, res) => {
                     sender: {
                         _id: msg.sender?._id,
                         name: msg.sender?.name,
-                        profileImage: msg.sender?.profileImage
+                        profileImage: getFullUrl(msg.sender?.profileImage)
                     },
                     content: msg.content,
                     type: msg.type || 'text',
@@ -1798,7 +2571,7 @@ router.get('/rooms/:id/online-members', protect, async (req, res) => {
 
         // جلب بيانات المستخدمين المتصلين
         const members = await User.find({ _id: { $in: onlineUserIds } })
-            .select('name profileImage')
+            .select('name profileImage isPremium verification.isVerified')
             .limit(100);
 
         res.json({
@@ -1808,7 +2581,9 @@ router.get('/rooms/:id/online-members', protect, async (req, res) => {
                 members: members.map(m => ({
                     _id: m._id,
                     name: m.name,
-                    profileImage: m.profileImage
+                    profileImage: getFullUrl(m.profileImage),
+                    isPremium: m.isPremium || false,
+                    isVerified: m.verification?.isVerified || false
                 }))
             }
         });
@@ -1925,6 +2700,138 @@ router.put('/rooms/:id/mute', protect, async (req, res) => {
     }
 });
 
+// @route   POST /api/mobile/rooms/:id/messages
+// @desc    إرسال رسالة نصية في الغرفة
+// @access  Protected
+router.post('/rooms/:id/messages', protect, async (req, res) => {
+    try {
+        const { id: roomId } = req.params;
+        const { content, type = 'text' } = req.body;
+        const senderId = req.user._id;
+
+        if (!content || !content.trim()) {
+            return res.status(400).json({
+                success: false,
+                message: 'محتوى الرسالة مطلوب'
+            });
+        }
+
+        // التحقق من وجود الغرفة
+        const room = await ChatRoom.findById(roomId);
+        if (!room) {
+            return res.status(404).json({
+                success: false,
+                message: 'الغرفة غير موجودة'
+            });
+        }
+
+        if (!room.isActive) {
+            return res.status(403).json({
+                success: false,
+                message: 'الغرفة غير نشطة'
+            });
+        }
+
+        if (room.isLocked) {
+            return res.status(403).json({
+                success: false,
+                message: 'الغرفة مقفلة'
+            });
+        }
+
+        // فحص الكلمات المحظورة
+        let bannedWordResult = { isClean: true, foundWords: [] };
+        if (type === 'text' && content) {
+            bannedWordResult = await BannedWord.checkText(content.trim(), 'word');
+        }
+
+        // إنشاء الرسالة
+        const message = new Message({
+            chatType: 'room',
+            room: roomId,
+            sender: senderId,
+            type: type,
+            content: content.trim(),
+            hasBannedWords: !bannedWordResult.isClean,
+            bannedWordsFound: bannedWordResult.foundWords.map(w => ({
+                word: w.word, severity: w.severity, action: w.action
+            })),
+            bannedWordSeverity: bannedWordResult.highestSeverity || null
+        });
+        await message.save();
+
+        // تنبيه الأدمن إذا وُجدت كلمات محظورة
+        if (!bannedWordResult.isClean && global.io) {
+            global.io.emit('banned-word-alert', {
+                messageId: message._id,
+                roomId,
+                senderId,
+                senderName: req.user.name,
+                content: content.substring(0, 100),
+                wordsFound: bannedWordResult.foundWords,
+                severity: bannedWordResult.highestSeverity,
+                chatType: 'room',
+                timestamp: new Date()
+            });
+        }
+
+        // تحديث آخر رسالة في الغرفة
+        room.lastMessage = {
+            content: content.substring(0, 50),
+            sender: senderId,
+            sentAt: new Date()
+        };
+        room.messageCount = (room.messageCount || 0) + 1;
+        await room.save();
+
+        // جلب بيانات المرسل
+        const populatedMessage = await Message.findById(message._id)
+            .populate('sender', 'name profileImage isPremium verification.isVerified');
+
+        // إرسال عبر Socket.IO لجميع المتصلين في الغرفة
+        if (global.io) {
+            global.io.to(`room-${roomId}`).emit('new-room-message', {
+                _id: populatedMessage._id,
+                roomId: roomId,
+                sender: {
+                    _id: populatedMessage.sender._id,
+                    name: populatedMessage.sender.name,
+                    profileImage: getFullUrl(populatedMessage.sender.profileImage)
+                },
+                content: populatedMessage.content,
+                type: populatedMessage.type,
+                createdAt: populatedMessage.createdAt
+            });
+        }
+
+        res.status(201).json({
+            success: true,
+            data: {
+                message: {
+                    _id: populatedMessage._id,
+                    roomId: roomId,
+                    sender: {
+                        _id: populatedMessage.sender._id,
+                        name: populatedMessage.sender.name,
+                        profileImage: getFullUrl(populatedMessage.sender.profileImage)
+                    },
+                    content: populatedMessage.content,
+                    type: populatedMessage.type,
+                    createdAt: populatedMessage.createdAt
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error('خطأ في إرسال رسالة الغرفة:', error);
+        res.status(500).json({
+            success: false,
+            message: 'فشل في إرسال الرسالة',
+            error: error.message
+        });
+    }
+});
+
 // @route   POST /api/mobile/rooms/:id/messages/image
 // @desc    إرسال صورة في الغرفة
 // @access  Protected
@@ -1982,7 +2889,7 @@ router.post('/rooms/:id/messages/image', protect, uploadMessageImage.single('ima
 
         // جلب بيانات المرسل
         const populatedMessage = await Message.findById(message._id)
-            .populate('sender', 'name profileImage');
+            .populate('sender', 'name profileImage isPremium verification.isVerified');
 
         // إرسال عبر Socket.IO
         global.io?.to(`room-${roomId}`).emit('new-room-message', {
@@ -2007,7 +2914,7 @@ router.post('/rooms/:id/messages/image', protect, uploadMessageImage.single('ima
                 sender: {
                     _id: populatedMessage.sender._id,
                     name: populatedMessage.sender.name,
-                    profileImage: populatedMessage.sender.profileImage
+                    profileImage: getFullUrl(populatedMessage.sender.profileImage)
                 },
                 content: populatedMessage.content,
                 type: 'image',

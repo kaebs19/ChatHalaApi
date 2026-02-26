@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../components/Toast';
+import ConfirmModal from '../components/ConfirmModal';
+import { getSeverityBadge } from '../utils/badgeHelpers';
 import api from '../services/api';
 import './BannedWords.css';
 
@@ -26,6 +28,7 @@ function BannedWords() {
     const [testText, setTestText] = useState('');
     const [testResult, setTestResult] = useState(null);
     const [submitting, setSubmitting] = useState(false);
+    const [deleteConfirm, setDeleteConfirm] = useState({ show: false, wordId: null });
 
     const fetchWords = useCallback(async () => {
         setLoading(true);
@@ -158,7 +161,7 @@ function BannedWords() {
 
     const handleToggleActive = async (wordId) => {
         try {
-            const response = await api.patch(`/banned-words/${wordId}/toggle`);
+            const response = await api.put(`/banned-words/${wordId}/toggle`);
             if (response.data.success) {
                 setWords(prev => prev.map(w => w._id === wordId ? response.data.data : w));
                 fetchStats();
@@ -170,8 +173,6 @@ function BannedWords() {
     };
 
     const handleDelete = async (wordId) => {
-        if (!window.confirm('هل أنت متأكد من حذف هذه الكلمة؟')) return;
-
         try {
             const response = await api.delete(`/banned-words/${wordId}`);
             if (response.data.success) {
@@ -181,6 +182,8 @@ function BannedWords() {
             }
         } catch (error) {
             showToast('فشل في حذف الكلمة', 'error');
+        } finally {
+            setDeleteConfirm({ show: false, wordId: null });
         }
     };
 
@@ -208,15 +211,7 @@ function BannedWords() {
         });
     };
 
-    const getSeverityBadge = (severity) => {
-        const badges = {
-            low: { text: 'منخفضة', class: 'low' },
-            medium: { text: 'متوسطة', class: 'medium' },
-            high: { text: 'عالية', class: 'high' },
-            critical: { text: 'حرجة', class: 'critical' }
-        };
-        return badges[severity] || badges.medium;
-    };
+    const severityLabels = { low: 'منخفضة', medium: 'متوسطة', high: 'عالية', critical: 'حرجة' };
 
     const getTypeBadge = (type) => {
         const types = {
@@ -325,9 +320,7 @@ function BannedWords() {
                                         <span className="type-badge">{getTypeBadge(word.type)}</span>
                                     </td>
                                     <td>
-                                        <span className={`severity-badge ${getSeverityBadge(word.severity).class}`}>
-                                            {getSeverityBadge(word.severity).text}
-                                        </span>
+                                        {getSeverityBadge(word.severity)}
                                     </td>
                                     <td>
                                         <span className="action-badge">{getActionBadge(word.action)}</span>
@@ -347,7 +340,7 @@ function BannedWords() {
                                         <button className="edit-btn" onClick={() => openEditModal(word)} title="تعديل">
                                             ✏️
                                         </button>
-                                        <button className="delete-btn" onClick={() => handleDelete(word._id)} title="حذف">
+                                        <button className="delete-btn" onClick={() => setDeleteConfirm({ show: true, wordId: word._id })} title="حذف">
                                             🗑️
                                         </button>
                                     </td>
@@ -491,6 +484,18 @@ function BannedWords() {
                 </div>
             )}
 
+            {/* Delete Confirmation */}
+            <ConfirmModal
+                isOpen={deleteConfirm.show}
+                onClose={() => setDeleteConfirm({ show: false, wordId: null })}
+                onConfirm={() => handleDelete(deleteConfirm.wordId)}
+                title="🗑️ حذف كلمة"
+                message="هل أنت متأكد من حذف هذه الكلمة؟"
+                confirmText="حذف"
+                cancelText="إلغاء"
+                variant="danger"
+            />
+
             {/* Test Text Modal */}
             {showTestModal && (
                 <div className="modal-overlay" onClick={() => { setShowTestModal(false); setTestResult(null); }}>
@@ -520,7 +525,7 @@ function BannedWords() {
                                 {!testResult.isClean && (
                                     <>
                                         <p><strong>الكلمات الموجودة:</strong> {testResult.foundWords?.join('، ')}</p>
-                                        <p><strong>أعلى خطورة:</strong> {getSeverityBadge(testResult.highestSeverity).text}</p>
+                                        <p><strong>أعلى خطورة:</strong> {severityLabels[testResult.highestSeverity] || testResult.highestSeverity}</p>
                                         <p><strong>الإجراء المقترح:</strong> {getActionBadge(testResult.suggestedAction)}</p>
                                     </>
                                 )}

@@ -72,6 +72,22 @@ const messageSchema = new mongoose.Schema({
         fileName: String,
         fileSize: Number,
         mimeType: String
+    },
+
+    // ============ فحص الكلمات المحظورة ============
+    hasBannedWords: {
+        type: Boolean,
+        default: false
+    },
+    bannedWordsFound: [{
+        word: String,
+        severity: String,
+        action: String
+    }],
+    bannedWordSeverity: {
+        type: String,
+        enum: ['low', 'medium', 'high', null],
+        default: null
     }
 }, {
     timestamps: true
@@ -84,6 +100,7 @@ messageSchema.index({ room: 1, createdAt: -1 });
 messageSchema.index({ sender: 1 });
 messageSchema.index({ isDeleted: 1 });
 messageSchema.index({ chatType: 1, conversation: 1, room: 1 });
+messageSchema.index({ hasBannedWords: 1, createdAt: -1 });
 
 // دالة للحذف الناعم
 messageSchema.methods.softDelete = function() {

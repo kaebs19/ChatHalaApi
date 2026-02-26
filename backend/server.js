@@ -18,9 +18,18 @@ const { errorHandler, notFound } = require('./middleware/errorHandler');
 const User = require('./models/User');
 const Conversation = require('./models/Conversation');
 const ChatRoom = require('./models/ChatRoom');
+const BannedWord = require('./models/BannedWord');
 
 // الاتصال بقاعدة البيانات
 connectDB();
+
+// Helper: تحويل المسار النسبي إلى URL كامل
+const getFullUrl = (imgPath) => {
+    if (!imgPath) return null;
+    if (imgPath.startsWith('http')) return imgPath;
+    const baseUrl = process.env.BASE_URL || 'https://halachat.khalafiati.io';
+    return `${baseUrl}${imgPath}`;
+};
 
 // إنشاء التطبيق
 const app = express();
@@ -176,6 +185,7 @@ app.use('/api/banned-words', require('./routes/bannedWords'));
 app.use('/api/mobile', require('./routes/mobile'));
 app.use('/api/privacy', require('./routes/privacy'));
 app.use('/api/categories', require('./routes/categories'));
+app.use('/api/verifications', require('./routes/verifications'));
 
 // Error Handlers - يجب أن تكون في النهاية
 app.use(notFound); // 404 Handler
@@ -285,7 +295,7 @@ io.on('connection', async (socket) => {
                 user: {
                     _id: socket.userId,
                     name: socket.user.name,
-                    profileImage: socket.user.profileImage
+                    profileImage: getFullUrl(socket.user.profileImage)
                 },
                 onlineCount: onlineCount
             });
@@ -369,15 +379,48 @@ io.on('connection', async (socket) => {
                 return socket.emit('error', { message: 'الغرفة مقفلة' });
             }
 
+            // فحص الكلمات المحظورة
+            let bannedWordResult = { isClean: true, foundWords: [] };
+            if (type === 'text' && content) {
+                try {
+                    bannedWordResult = await BannedWord.checkText(content, 'word');
+                } catch (bwError) {
+                    console.error('خطأ في فحص الكلمات المحظورة:', bwError);
+                }
+            }
+
             // إنشاء الرسالة
             const message = new Message({
                 chatType: 'room',
                 room: roomId,
                 sender: socket.userId,
                 content: content,
-                type: type
+                type: type,
+                hasBannedWords: !bannedWordResult.isClean,
+                bannedWordsFound: bannedWordResult.foundWords.map(w => ({
+                    word: w.word,
+                    severity: w.severity,
+                    action: w.action
+                })),
+                bannedWordSeverity: bannedWordResult.highestSeverity || null
             });
             await message.save();
+
+            // تنبيه الأدمن بالكلمات المحظورة
+            if (!bannedWordResult.isClean) {
+                io.emit('banned-word-alert', {
+                    messageId: message._id,
+                    roomId: roomId,
+                    roomName: chatRoom.name,
+                    senderId: socket.userId,
+                    senderName: socket.user.name,
+                    content: content.substring(0, 100),
+                    wordsFound: bannedWordResult.foundWords.map(w => w.word),
+                    severity: bannedWordResult.highestSeverity,
+                    chatType: 'room',
+                    timestamp: new Date()
+                });
+            }
 
             // تحديث آخر رسالة في الغرفة
             chatRoom.lastMessage = {
@@ -395,7 +438,7 @@ io.on('connection', async (socket) => {
                 sender: {
                     _id: socket.userId,
                     name: socket.user.name,
-                    profileImage: socket.user.profileImage
+                    profileImage: getFullUrl(socket.user.profileImage)
                 },
                 content: content,
                 type: type,

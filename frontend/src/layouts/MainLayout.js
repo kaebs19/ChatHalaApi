@@ -1,17 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
 import Dashboard from '../pages/Dashboard';
-import Users from '../pages/Users';
+import UsersManagement from '../pages/UsersManagement';
 import Conversations from '../pages/Conversations';
-import ChatRooms from '../pages/ChatRooms';
+import ChatRoomsManagement from '../pages/ChatRoomsManagement';
 import UserDetail from '../pages/UserDetail';
-import Reports from '../pages/Reports';
+import ReportsManagement from '../pages/ReportsManagement';
+import ConversationMessages from '../pages/ConversationMessages';
 import Stats from '../pages/Stats';
 import Settings from '../pages/Settings';
 import Profile from '../pages/Profile';
 import Notifications from '../pages/Notifications';
 import BannedWords from '../pages/BannedWords';
-import Categories from '../pages/Categories';
+import VerificationRequests from '../pages/VerificationRequests';
+import SuperLikes from '../pages/SuperLikes';
 import { getReportsStats, getNotifications } from '../services/api';
 import { useToast } from '../components/Toast';
 import config from '../config';
@@ -20,6 +22,8 @@ import './MainLayout.css';
 function MainLayout({ onLogout, user: initialUser }) {
     const [currentPage, setCurrentPage] = useState('dashboard');
     const [selectedUserId, setSelectedUserId] = useState(null);
+    const [previousPage, setPreviousPage] = useState('users');
+    const [viewingConversationFromReport, setViewingConversationFromReport] = useState(null);
     const [pendingReportsCount, setPendingReportsCount] = useState(0);
     const [unreadNotifications, setUnreadNotifications] = useState(0);
     const [user, setUser] = useState(initialUser);
@@ -118,12 +122,23 @@ function MainLayout({ onLogout, user: initialUser }) {
 
     const handleViewUserDetail = (userId) => {
         setSelectedUserId(userId);
+        setPreviousPage(currentPage);
         setCurrentPage('user-detail');
     };
 
     const handleBackFromUserDetail = () => {
         setSelectedUserId(null);
-        setCurrentPage('users');
+        setCurrentPage(previousPage);
+    };
+
+    const handleViewConversation = (conversationId) => {
+        setViewingConversationFromReport(conversationId);
+        setCurrentPage('report-conversation');
+    };
+
+    const handleBackFromReportConversation = () => {
+        setViewingConversationFromReport(null);
+        setCurrentPage('reports');
     };
 
     const renderPage = () => {
@@ -131,13 +146,21 @@ function MainLayout({ onLogout, user: initialUser }) {
             case 'dashboard':
                 return <Dashboard user={user} onPageChange={setCurrentPage} />;
             case 'users':
-                return <Users onViewDetail={handleViewUserDetail} />;
+                return <UsersManagement onViewDetail={handleViewUserDetail} initialTab="users" />;
+            case 'premium-users':
+                return <UsersManagement onViewDetail={handleViewUserDetail} initialTab="premium" />;
             case 'conversations':
                 return <Conversations />;
             case 'chat-rooms':
-                return <ChatRooms />;
+                return <ChatRoomsManagement initialTab="rooms" />;
+            case 'categories':
+                return <ChatRoomsManagement initialTab="categories" />;
             case 'reports':
-                return <Reports />;
+                return <ReportsManagement initialTab="reports" onViewUserDetail={handleViewUserDetail} onViewConversation={handleViewConversation} />;
+            case 'flagged-messages':
+                return <ReportsManagement initialTab="flagged" onViewUserDetail={handleViewUserDetail} onViewConversation={handleViewConversation} />;
+            case 'report-conversation':
+                return <ConversationMessages conversationId={viewingConversationFromReport} onBack={handleBackFromReportConversation} onViewUser={handleViewUserDetail} />;
             case 'stats':
                 return <Stats />;
             case 'settings':
@@ -148,8 +171,10 @@ function MainLayout({ onLogout, user: initialUser }) {
                 return <Notifications onNotificationRead={fetchNotificationsCount} />;
             case 'banned-words':
                 return <BannedWords />;
-            case 'categories':
-                return <Categories />;
+            case 'verification-requests':
+                return <VerificationRequests />;
+            case 'super-likes':
+                return <SuperLikes />;
             case 'user-detail':
                 return <UserDetail userId={selectedUserId} onBack={handleBackFromUserDetail} />;
             default:
@@ -170,17 +195,19 @@ function MainLayout({ onLogout, user: initialUser }) {
                 <header className="top-header">
                     <h1>
                         {currentPage === 'dashboard' && '📊 لوحة التحكم'}
-                        {currentPage === 'users' && '👥 إدارة المستخدمين'}
+                        {(currentPage === 'users' || currentPage === 'premium-users') && '👥 إدارة المستخدمين'}
                         {currentPage === 'conversations' && '💬 المحادثات'}
-                        {currentPage === 'chat-rooms' && '🏠 غرف المحادثة'}
-                        {currentPage === 'reports' && '⚠️ البلاغات'}
+                        {(currentPage === 'chat-rooms' || currentPage === 'categories') && '🏠 غرف المحادثة'}
+                        {(currentPage === 'reports' || currentPage === 'flagged-messages') && '⚠️ البلاغات والمخالفات'}
                         {currentPage === 'stats' && '📈 الإحصائيات'}
                         {currentPage === 'settings' && '⚙️ الإعدادات'}
                         {currentPage === 'profile' && '👤 الملف الشخصي'}
                         {currentPage === 'notifications' && '🔔 الإشعارات'}
                         {currentPage === 'banned-words' && '🚫 الكلمات المحظورة'}
-                        {currentPage === 'categories' && '📁 التصنيفات'}
+                        {currentPage === 'verification-requests' && '✅ طلبات التوثيق'}
+                        {currentPage === 'super-likes' && '⚡ Super Likes'}
                         {currentPage === 'user-detail' && '👤 تفاصيل المستخدم'}
+                        {currentPage === 'report-conversation' && '💬 رسائل المحادثة'}
                     </h1>
                     <div className="header-actions">
                         {/* زر إرسال إشعار */}

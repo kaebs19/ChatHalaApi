@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { getUserActivity } from '../services/api';
 import { useToast } from '../components/Toast';
 import { getImageUrl, getDefaultAvatar } from '../config';
+import { formatDateTimeLong, formatDateLong } from '../utils/formatters';
 import ConversationDetail from './ConversationDetail';
 import ConversationMessages from './ConversationMessages';
 import './UserDetail.css';
@@ -31,25 +32,8 @@ function UserDetail({ userId, onBack }) {
         }
     };
 
-    const formatDate = (date) => {
-        if (!date) return 'غير محدد';
-        return new Date(date).toLocaleDateString('ar-SA', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-    };
-
-    const formatBirthDate = (date) => {
-        if (!date) return 'غير محدد';
-        return new Date(date).toLocaleDateString('ar-SA', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-        });
-    };
+    const formatDate = (date) => formatDateTimeLong(date) === '-' ? 'غير محدد' : formatDateTimeLong(date);
+    const formatBirthDate = (date) => formatDateLong(date) === '-' ? 'غير محدد' : formatDateLong(date);
 
     const calculateAge = (birthDate) => {
         if (!birthDate) return null;
@@ -244,6 +228,27 @@ function UserDetail({ userId, onBack }) {
                                     <p className="info-value">{user.country || 'غير محدد'}</p>
                                 </div>
                             </div>
+                            {user.location && user.location.coordinates &&
+                             user.location.coordinates.length === 2 &&
+                             (user.location.coordinates[0] !== 0 || user.location.coordinates[1] !== 0) && (
+                                <div className="info-item">
+                                    <span className="info-icon">📍</span>
+                                    <div className="info-content">
+                                        <p className="info-label">الموقع الجغرافي</p>
+                                        <p className="info-value">
+                                            {user.location.coordinates[1].toFixed(4)}, {user.location.coordinates[0].toFixed(4)}
+                                            <a
+                                                href={`https://www.google.com/maps?q=${user.location.coordinates[1]},${user.location.coordinates[0]}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="map-link"
+                                            >
+                                                عرض على الخريطة
+                                            </a>
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
                             <div className="info-item">
                                 <span className="info-icon">🔐</span>
                                 <div className="info-content">

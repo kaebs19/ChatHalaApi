@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getPrivacyPolicy, getTerms, getAbout } from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { formatDateLong } from '../utils/formatters';
 import './PublicPage.css';
 
 function PublicPage({ type }) {
@@ -49,15 +50,6 @@ function PublicPage({ type }) {
         }
     };
 
-    const formatDate = (date) => {
-        if (!date) return '';
-        return new Date(date).toLocaleDateString('ar-SA', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-        });
-    };
-
     if (loading) {
         return <LoadingSpinner text="جاري تحميل المحتوى..." />;
     }
@@ -68,7 +60,7 @@ function PublicPage({ type }) {
                 <h1>{title}</h1>
                 {lastUpdated && (
                     <p className="last-updated">
-                        آخر تحديث: {formatDate(lastUpdated)}
+                        آخر تحديث: {formatDateLong(lastUpdated)}
                     </p>
                 )}
             </div>

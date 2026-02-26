@@ -154,18 +154,8 @@
     padding: 0;
 }
 
-/* Modal Styles */
-.modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 1000;
+/* Modal Styles — scoped overlay with blur */
+.main-layout .modal-overlay {
     backdrop-filter: blur(4px);
 }
 
@@ -190,19 +180,11 @@
     }
 }
 
-.modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+/* Scoped modal header/close for notification modal */
+.notification-modal .modal-header {
     margin-bottom: 25px;
     padding-bottom: 15px;
     border-bottom: 2px solid #f0f0f0;
-}
-
-.modal-header h3 {
-    margin: 0;
-    font-size: 20px;
-    color: #333;
 }
 
 .close-modal-btn {
@@ -224,94 +206,16 @@
     transform: rotate(90deg);
 }
 
-.notification-form .form-group {
-    margin-bottom: 20px;
-}
-
-.notification-form .form-group label {
-    display: block;
-    margin-bottom: 8px;
-    font-weight: 600;
-    color: #333;
-    font-size: 14px;
-}
-
-.notification-form .form-group input,
-.notification-form .form-group textarea,
-.notification-form .form-group select {
-    width: 100%;
-    padding: 12px 15px;
-    border: 2px solid #e0e0e0;
-    border-radius: 10px;
-    font-size: 14px;
-    transition: all 0.3s;
-    box-sizing: border-box;
-    font-family: inherit;
-}
-
-.notification-form .form-group input:focus,
-.notification-form .form-group textarea:focus,
-.notification-form .form-group select:focus {
-    outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-}
-
+/* Scoped notification form textarea height */
 .notification-form .form-group textarea {
-    resize: vertical;
     min-height: 100px;
 }
 
-.form-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 15px;
-}
-
-.modal-actions {
-    display: flex;
+/* Scoped modal-actions for notification modal */
+.notification-modal .modal-actions {
     justify-content: flex-end;
-    gap: 15px;
-    margin-top: 25px;
     padding-top: 20px;
     border-top: 2px solid #f0f0f0;
-}
-
-.cancel-btn {
-    background: #f5f5f5;
-    color: #666;
-    border: none;
-    padding: 12px 24px;
-    border-radius: 10px;
-    cursor: pointer;
-    font-weight: 600;
-    transition: all 0.2s;
-}
-
-.cancel-btn:hover:not(:disabled) {
-    background: #e0e0e0;
-}
-
-.submit-btn {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border: none;
-    padding: 12px 24px;
-    border-radius: 10px;
-    cursor: pointer;
-    font-weight: 600;
-    transition: all 0.2s;
-}
-
-.submit-btn:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-}
-
-.submit-btn:disabled,
-.cancel-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
 }
 
 /* Responsive */
@@ -331,9 +235,5 @@
     .notification-modal {
         width: 95%;
         padding: 20px;
-    }
-
-    .form-row {
-        grid-template-columns: 1fr;
     }
 }

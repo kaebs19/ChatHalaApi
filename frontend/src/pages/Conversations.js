@@ -11,6 +11,7 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import Pagination from '../components/Pagination';
 import ConversationDetail from './ConversationDetail';
 import ConversationMessages from './ConversationMessages';
+import { formatDate } from '../utils/formatters';
 import { getImageUrl, getDefaultAvatar } from '../config';
 import './Conversations.css';
 
@@ -44,7 +45,12 @@ function Conversations() {
             const filters = {};
             // فقط المحادثات الخاصة (بدون المجموعات)
             filters.type = 'private';
-            if (filterStatus !== 'all') filters.isActive = filterStatus === 'active';
+            if (filterStatus === 'active' || filterStatus === 'inactive') {
+                filters.isActive = filterStatus === 'active';
+            }
+            if (filterStatus === 'flagged') {
+                filters.hasFlaggedMessages = 'true';
+            }
 
             const response = await getAllConversations(currentPage, itemsPerPage, filters);
             if (response.success) {
@@ -117,14 +123,6 @@ function Conversations() {
     const openActionsModal = (conv) => {
         setSelectedConv(conv);
         setShowActionsModal(true);
-    };
-
-    const formatDate = (date) => {
-        return new Date(date).toLocaleDateString('ar-SA', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric'
-        });
     };
 
     const handleViewDetails = (convId) => {
@@ -232,6 +230,12 @@ function Conversations() {
                     >
                         غير نشطة
                     </button>
+                    <button
+                        className={`filter-btn flagged ${filterStatus === 'flagged' ? 'active' : ''}`}
+                        onClick={() => handleFilterChange('flagged')}
+                    >
+                        🚨 مُبلّغة
+                    </button>
                 </div>
             </div>
 
@@ -300,6 +304,11 @@ function Conversations() {
                                         <div className="conversation-badges">
                                             {conv.isLocked && <span className="badge locked">🔒</span>}
                                             {!conv.isActive && <span className="badge inactive">معطلة</span>}
+                                            {conv.flaggedMessagesCount > 0 && (
+                                                <span className="badge flagged">
+                                                    ⚠️ {conv.flaggedMessagesCount} مخالفة
+                                                </span>
+                                            )}
                                             <span className="message-count">
                                                 {conv.metadata?.totalMessages || 0} 💬
                                             </span>

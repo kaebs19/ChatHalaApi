@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { getConversationMessages, deleteMessage, getConversationById, sendMessage } from '../services/api';
+import { getConversationMessages, deleteMessage, getConversationById, sendMessage, toggleUserActive } from '../services/api';
 import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import socketService from '../services/socket';
 import notificationService from '../services/notifications';
 import { getImageUrl } from '../config';
+import { formatDate } from '../utils/formatters';
 import './ConversationMessages.css';
 
-function ConversationMessages({ conversationId, onBack }) {
+function ConversationMessages({ conversationId, onBack, onViewUser }) {
     const [messages, setMessages] = useState([]);
     const [conversation, setConversation] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -20,6 +21,9 @@ function ConversationMessages({ conversationId, onBack }) {
     const [onlineCount, setOnlineCount] = useState(0);
     const [newMessage, setNewMessage] = useState('');
     const [sending, setSending] = useState(false);
+    const [userActionMenu, setUserActionMenu] = useState(null);
+    const [showBanConfirm, setShowBanConfirm] = useState(false);
+    const [banningUser, setBanningUser] = useState(null);
     const messagesEndRef = useRef(null);
     const typingTimeoutRef = useRef(null);
     const typingDebounceRef = useRef(null);
@@ -168,14 +172,6 @@ function ConversationMessages({ conversationId, onBack }) {
         });
     };
 
-    const formatDate = (date) => {
-        return new Date(date).toLocaleDateString('ar-SA', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric'
-        });
-    };
-
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
@@ -297,9 +293,14 @@ function ConversationMessages({ conversationId, onBack }) {
                                             <span>{formatDate(message.createdAt)}</span>
                                         </div>
                                     )}
-                                    <div className={`message-bubble ${message.isDeleted ? 'deleted' : ''}`}>
+                                    <div className={`message-bubble ${message.isDeleted ? 'deleted' : ''} ${message.hasBannedWords ? 'flagged' : ''}`}>
                                         <div className="message-header">
-                                            <div className="sender-info">
+                                            <div className="sender-info" style={{cursor: 'pointer'}} onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (message.sender?._id) {
+                                                    setUserActionMenu({ userId: message.sender._id, userName: message.sender.name, x: e.clientX, y: e.clientY });
+                                                }
+                                            }}>
                                                 <div className="sender-avatar">
                                                     {message.sender?.name?.charAt(0) || '؟'}
                                                 </div>
@@ -351,6 +352,14 @@ function ConversationMessages({ conversationId, onBack }) {
                                                     {message.type === 'audio' && '🎵 صوت'}
                                                     {message.type === 'video' && '🎥 فيديو'}
                                                 </span>
+                                            )}
+                                            {message.hasBannedWords && message.bannedWordsFound?.length > 0 && (
+                                                <div className="banned-words-badges">
+                                                    <span className="banned-label">⚠️ كلمات محظورة:</span>
+                                                    {message.bannedWordsFound.map((w, i) => (
+                                                        <span key={i} className={`banned-word-badge ${w.severity}`}>{w.word}</span>
+                                                    ))}
+                                                </div>
                                             )}
                                         </div>
                                     </div>
@@ -417,6 +426,51 @@ function ConversationMessages({ conversationId, onBack }) {
                     >
                         التالي
                     </button>
+                </div>
+            )}
+
+            {/* User Action Menu */}
+            {userActionMenu && (
+                <div className="user-action-overlay" onClick={() => setUserActionMenu(null)}>
+                    <div className="user-action-menu"
+                         style={{ top: Math.min(userActionMenu.y, window.innerHeight - 150), left: Math.min(userActionMenu.x, window.innerWidth - 220) }}
+                         onClick={(e) => e.stopPropagation()}>
+                        <div className="user-action-header">{userActionMenu.userName}</div>
+                        <button className="user-action-btn view" onClick={() => {
+                            if (onViewUser) onViewUser(userActionMenu.userId);
+                            setUserActionMenu(null);
+                        }}>👤 عرض الملف الشخصي</button>
+                        <button className="user-action-btn ban" onClick={() => {
+                            setBanningUser({ id: userActionMenu.userId, name: userActionMenu.userName });
+                            setShowBanConfirm(true);
+                            setUserActionMenu(null);
+                        }}>🚫 حظر المستخدم</button>
+                    </div>
+                </div>
+            )}
+
+            {/* Ban Confirmation Modal */}
+            {showBanConfirm && banningUser && (
+                <div className="ban-modal-overlay" onClick={() => { setShowBanConfirm(false); setBanningUser(null); }}>
+                    <div className="ban-modal" onClick={(e) => e.stopPropagation()}>
+                        <h3>🚫 تأكيد الحظر</h3>
+                        <p>هل أنت متأكد من حظر المستخدم "{banningUser.name}"؟</p>
+                        <div className="ban-modal-actions">
+                            <button className="ban-cancel-btn" onClick={() => { setShowBanConfirm(false); setBanningUser(null); }}>إلغاء</button>
+                            <button className="ban-confirm-btn" onClick={async () => {
+                                try {
+                                    const response = await toggleUserActive(banningUser.id);
+                                    if (response.success) {
+                                        showToast('تم حظر المستخدم بنجاح', 'success');
+                                    }
+                                } catch (err) {
+                                    showToast('فشل في حظر المستخدم', 'error');
+                                }
+                                setShowBanConfirm(false);
+                                setBanningUser(null);
+                            }}>حظر</button>
+                        </div>
+                    </div>
                 </div>
             )}
 

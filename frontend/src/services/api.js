@@ -501,4 +501,61 @@ export const getBannedWordsStats = async () => {
     return response.data;
 };
 
+// ============ طلبات التوثيق (Admin) ============
+
+export const getVerificationRequests = async (params = {}) => {
+    const queryParams = new URLSearchParams();
+    if (params.status) queryParams.append('status', params.status);
+    if (params.page) queryParams.append('page', params.page);
+    if (params.limit) queryParams.append('limit', params.limit);
+    const response = await api.get(`/verifications?${queryParams}`);
+    return response.data;
+};
+
+export const reviewVerification = async (userId, action) => {
+    const response = await api.put(`/verifications/${userId}`, { action });
+    return response.data;
+};
+
+// ============ المستخدمين المميزين (Admin) ============
+
+export const getPremiumUsers = async (params = {}) => {
+    const queryParams = new URLSearchParams();
+    if (params.page) queryParams.append('page', params.page);
+    if (params.limit) queryParams.append('limit', params.limit);
+    if (params.plan) queryParams.append('plan', params.plan);
+    if (params.expired !== undefined) queryParams.append('expired', params.expired);
+    const response = await api.get(`/users/premium?${queryParams}`);
+    return response.data;
+};
+
+export const updateUserPremium = async (userId, premiumData) => {
+    const response = await api.put(`/users/${userId}/premium`, premiumData);
+    return response.data;
+};
+
+// ============ Super Likes (Admin) ============
+
+export const getSuperLikes = async (params = {}) => {
+    const queryParams = new URLSearchParams();
+    if (params.page) queryParams.append('page', params.page);
+    if (params.limit) queryParams.append('limit', params.limit);
+    if (params.startDate) queryParams.append('startDate', params.startDate);
+    if (params.endDate) queryParams.append('endDate', params.endDate);
+    const response = await api.get(`/stats/super-likes?${queryParams}`);
+    return response.data;
+};
+
+// ============ Flagged Messages (Admin) ============
+
+export const getFlaggedMessages = async (params = {}) => {
+    const queryParams = new URLSearchParams();
+    if (params.page) queryParams.append('page', params.page);
+    if (params.limit) queryParams.append('limit', params.limit);
+    if (params.severity) queryParams.append('severity', params.severity);
+    if (params.chatType) queryParams.append('chatType', params.chatType);
+    const response = await api.get(`/stats/flagged-messages?${queryParams}`);
+    return response.data;
+};
+
 export default api;

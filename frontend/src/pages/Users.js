@@ -5,6 +5,8 @@ import EditUserModal from '../components/EditUserModal';
 import Pagination from '../components/Pagination';
 import { TableRowSkeleton } from '../components/Skeleton';
 import { getImageUrl, getDefaultAvatar } from '../config';
+import { formatDate } from '../utils/formatters';
+import ConfirmModal from '../components/ConfirmModal';
 import './Users.css';
 
 function Users({ onViewDetail }) {
@@ -213,15 +215,6 @@ function Users({ onViewDetail }) {
             const errorMsg = err.response?.data?.message || 'فشل حذف المستخدم';
             toast.error(errorMsg);
         }
-    };
-
-    const formatDate = (dateString) => {
-        const date = new Date(dateString);
-        return date.toLocaleDateString('ar-SA', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric'
-        });
     };
 
     const getStatusBadge = (isActive) => {
@@ -483,32 +476,21 @@ function Users({ onViewDetail }) {
             )}
 
             {/* Delete Modal */}
-            {showDeleteModal && (
-                <div className="modal-overlay" onClick={() => setShowDeleteModal(false)}>
-                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                        <h3>تأكيد الحذف</h3>
-                        <p>هل أنت متأكد من حذف المستخدم؟</p>
-                        <div className="user-to-delete">
-                            <strong>{userToDelete?.name}</strong>
-                            <span>{userToDelete?.email}</span>
-                        </div>
-                        <div className="modal-actions">
-                            <button
-                                className="btn-cancel"
-                                onClick={() => setShowDeleteModal(false)}
-                            >
-                                إلغاء
-                            </button>
-                            <button
-                                className="btn-confirm-delete"
-                                onClick={handleDelete}
-                            >
-                                حذف نهائياً
-                            </button>
-                        </div>
-                    </div>
+            <ConfirmModal
+                isOpen={showDeleteModal}
+                onClose={() => { setShowDeleteModal(false); setUserToDelete(null); }}
+                onConfirm={handleDelete}
+                title="تأكيد الحذف"
+                message="هل أنت متأكد من حذف المستخدم؟"
+                confirmText="حذف نهائياً"
+                cancelText="إلغاء"
+                variant="danger"
+            >
+                <div className="user-to-delete">
+                    <strong>{userToDelete?.name}</strong>
+                    <span>{userToDelete?.email}</span>
                 </div>
-            )}
+            </ConfirmModal>
         </div>
     );
 }

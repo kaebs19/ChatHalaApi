@@ -121,6 +121,20 @@ class SocketService {
         }
     }
 
+    // الاستماع لتنبيهات الكلمات المحظورة
+    onBannedWordAlert(callback) {
+        if (this.socket) {
+            this.socket.on('banned-word-alert', callback);
+        }
+    }
+
+    // إزالة الاستماع لتنبيهات الكلمات المحظورة
+    offBannedWordAlert() {
+        if (this.socket) {
+            this.socket.off('banned-word-alert');
+        }
+    }
+
     // التحقق من حالة الاتصال
     isConnected() {
         return this.connected;

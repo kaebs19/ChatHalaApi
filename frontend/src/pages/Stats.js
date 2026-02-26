@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getDashboardStats, getConversationsStats } from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
+import StatCard from '../components/StatCard';
 import './Stats.css';
 
 function Stats() {
@@ -58,37 +59,10 @@ function Stats() {
             <section className="stats-section">
                 <h3 className="section-title">👥 إحصائيات المستخدمين</h3>
                 <div className="stats-grid">
-                    <div className="stat-card purple">
-                        <div className="stat-icon">👥</div>
-                        <div className="stat-info">
-                            <h3>{stats.totalUsers}</h3>
-                            <p>إجمالي المستخدمين</p>
-                        </div>
-                    </div>
-
-                    <div className="stat-card blue">
-                        <div className="stat-icon">✅</div>
-                        <div className="stat-info">
-                            <h3>{stats.activeUsers}</h3>
-                            <p>مستخدمين نشطين</p>
-                        </div>
-                    </div>
-
-                    <div className="stat-card green">
-                        <div className="stat-icon">🆕</div>
-                        <div className="stat-info">
-                            <h3>{stats.newUsers}</h3>
-                            <p>مستخدمين جدد (7 أيام)</p>
-                        </div>
-                    </div>
-
-                    <div className="stat-card orange">
-                        <div className="stat-icon">🟢</div>
-                        <div className="stat-info">
-                            <h3>{stats.recentLogins}</h3>
-                            <p>دخول مؤخراً (24 ساعة)</p>
-                        </div>
-                    </div>
+                    <StatCard icon="👥" value={stats.totalUsers} label="إجمالي المستخدمين" color="purple" />
+                    <StatCard icon="✅" value={stats.activeUsers} label="مستخدمين نشطين" color="blue" />
+                    <StatCard icon="🆕" value={stats.newUsers} label="مستخدمين جدد (7 أيام)" color="green" />
+                    <StatCard icon="🟢" value={stats.recentLogins} label="دخول مؤخراً (24 ساعة)" color="orange" />
                 </div>
 
                 {/* Progress Bars */}
@@ -132,45 +106,11 @@ function Stats() {
             <section className="stats-section">
                 <h3 className="section-title">💬 إحصائيات المحادثات</h3>
                 <div className="stats-grid">
-                    <div className="stat-card cyan">
-                        <div className="stat-icon">💬</div>
-                        <div className="stat-info">
-                            <h3>{conversationStats.totalConversations}</h3>
-                            <p>إجمالي المحادثات</p>
-                        </div>
-                    </div>
-
-                    <div className="stat-card teal">
-                        <div className="stat-icon">✨</div>
-                        <div className="stat-info">
-                            <h3>{conversationStats.activeConversations}</h3>
-                            <p>محادثات نشطة</p>
-                        </div>
-                    </div>
-
-                    <div className="stat-card pink">
-                        <div className="stat-icon">📨</div>
-                        <div className="stat-info">
-                            <h3>{conversationStats.totalMessages}</h3>
-                            <p>إجمالي الرسائل</p>
-                        </div>
-                    </div>
-
-                    <div className="stat-card indigo">
-                        <div className="stat-icon">👤</div>
-                        <div className="stat-info">
-                            <h3>{conversationStats.privateConversations}</h3>
-                            <p>محادثات خاصة</p>
-                        </div>
-                    </div>
-
-                    <div className="stat-card amber">
-                        <div className="stat-icon">👥</div>
-                        <div className="stat-info">
-                            <h3>{conversationStats.groupConversations}</h3>
-                            <p>محادثات جماعية</p>
-                        </div>
-                    </div>
+                    <StatCard icon="💬" value={conversationStats.totalConversations} label="إجمالي المحادثات" color="cyan" />
+                    <StatCard icon="✨" value={conversationStats.activeConversations} label="محادثات نشطة" color="teal" />
+                    <StatCard icon="📨" value={conversationStats.totalMessages} label="إجمالي الرسائل" color="pink" />
+                    <StatCard icon="👤" value={conversationStats.privateConversations} label="محادثات خاصة" color="indigo" />
+                    <StatCard icon="👥" value={conversationStats.groupConversations} label="محادثات جماعية" color="amber" />
                 </div>
 
                 {/* Pie Chart */}

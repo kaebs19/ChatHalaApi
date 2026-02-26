@@ -1,4 +1,4 @@
-/* Conversations Page - تصميم احترافي جديد */
+/* Conversations Page */
 .conversations-page {
     min-height: 100vh;
     background: #f5f5f5;
@@ -29,19 +29,13 @@
     font-size: 14px;
 }
 
-.refresh-btn {
-    padding: 10px 20px;
+.conversations-page .refresh-btn {
     background: white;
     color: #667eea;
     border: 2px solid #667eea;
-    border-radius: 10px;
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 600;
-    transition: all 0.3s;
 }
 
-.refresh-btn:hover {
+.conversations-page .refresh-btn:hover {
     background: #667eea;
     color: white;
 }
@@ -59,12 +53,12 @@
     flex-wrap: wrap;
 }
 
-.search-box {
+.conversations-filters .search-box {
     flex: 1;
     min-width: 250px;
 }
 
-.search-box input {
+.conversations-filters .search-box input {
     width: 100%;
     padding: 12px 15px;
     border: 2px solid #e0e0e0;
@@ -73,37 +67,10 @@
     transition: all 0.3s;
 }
 
-.search-box input:focus {
+.conversations-filters .search-box input:focus {
     outline: none;
     border-color: #667eea;
     box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-}
-
-.filter-buttons {
-    display: flex;
-    gap: 10px;
-}
-
-.filter-btn {
-    padding: 10px 20px;
-    border: 2px solid #e0e0e0;
-    background: white;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.3s;
-}
-
-.filter-btn:hover {
-    border-color: #667eea;
-    color: #667eea;
-}
-
-.filter-btn.active {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border-color: transparent;
 }
 
 /* No Conversations */
@@ -214,12 +181,12 @@
 }
 
 /* Conversation Info */
-.conversation-info {
+.conversations-page .conversation-info {
     flex: 1;
     min-width: 0;
 }
 
-.conversation-header {
+.conversations-page .conversation-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -280,6 +247,24 @@
 .conversation-badges .badge.inactive {
     background: #ffebee;
     color: #c62828;
+}
+
+.conversation-badges .badge.flagged {
+    background: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+    font-weight: 600;
+}
+
+.filter-btn.flagged {
+    border-color: #fecaca;
+    color: #dc2626;
+}
+
+.filter-btn.flagged.active {
+    background: #dc2626;
+    color: white;
+    border-color: #dc2626;
 }
 
 .message-count {
@@ -346,63 +331,16 @@
     box-shadow: 0 4px 12px rgba(0, 184, 148, 0.4);
 }
 
-/* Modal */
-.modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10000;
-    padding: 20px;
-    animation: fadeIn 0.3s ease;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-
-.modal-content {
-    background: white;
-    border-radius: 20px;
+/* Actions Modal */
+.actions-modal {
+    max-width: 500px;
     padding: 30px;
-    max-width: 450px;
-    width: 100%;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-    animation: slideUp 0.3s ease;
-}
-
-@keyframes slideUp {
-    from {
-        opacity: 0;
-        transform: translateY(30px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-.modal-content h3 {
-    margin: 0 0 10px 0;
-    font-size: 22px;
-    color: #333;
 }
 
 .modal-subtitle {
     color: #666;
     font-size: 14px;
     margin: 0 0 25px 0;
-}
-
-/* Actions Modal */
-.actions-modal {
-    max-width: 500px;
 }
 
 .action-list {
@@ -444,7 +382,7 @@
 .action-item.reports { color: #e67e22; }
 .action-item.delete { color: #c0392b; }
 
-.modal-close-btn {
+.conversations-page .modal-close-btn {
     width: 100%;
     padding: 12px;
     background: #f5f5f5;
@@ -456,42 +394,8 @@
     transition: background 0.3s;
 }
 
-.modal-close-btn:hover {
+.conversations-page .modal-close-btn:hover {
     background: #e0e0e0;
-}
-
-.modal-actions {
-    display: flex;
-    gap: 12px;
-}
-
-.modal-actions button {
-    flex: 1;
-    padding: 12px;
-    border: none;
-    border-radius: 10px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.3s;
-}
-
-.btn-cancel {
-    background: #f5f5f5;
-    color: #666;
-}
-
-.btn-cancel:hover {
-    background: #e0e0e0;
-}
-
-.btn-confirm-delete {
-    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-    color: white;
-}
-
-.btn-confirm-delete:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
 }
 
 /* Responsive */
@@ -511,11 +415,6 @@
         align-items: stretch;
     }
 
-    .filter-buttons {
-        justify-content: center;
-        flex-wrap: wrap;
-    }
-
     .conversation-item {
         flex-direction: column;
         text-align: center;
@@ -526,7 +425,7 @@
         justify-content: center;
     }
 
-    .conversation-header {
+    .conversations-page .conversation-header {
         flex-direction: column;
         gap: 5px;
     }

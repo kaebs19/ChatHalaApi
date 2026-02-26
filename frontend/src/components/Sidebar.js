@@ -29,41 +29,53 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick }) {
             adminOnly: true
         },
         {
-            id: 'categories',
-            name: 'التصنيفات',
-            icon: '📁',
-            adminOnly: true
-        },
-        {
             id: 'reports',
             name: 'البلاغات',
             icon: '⚠️',
             adminOnly: true
         },
         {
-            id: 'stats',
-            name: 'الإحصائيات',
-            icon: '📈',
-            adminOnly: true,
-            disabled: false
+            id: 'super-likes',
+            name: 'Super Likes',
+            icon: '⚡',
+            adminOnly: true
+        },
+        {
+            id: 'verification-requests',
+            name: 'طلبات التوثيق',
+            icon: '✅',
+            adminOnly: true
         },
         {
             id: 'banned-words',
             name: 'الكلمات المحظورة',
             icon: '🚫',
-            adminOnly: true,
-            disabled: false
+            adminOnly: true
+        },
+        {
+            id: 'stats',
+            name: 'الإحصائيات',
+            icon: '📈',
+            adminOnly: true
         },
         {
             id: 'settings',
             name: 'الإعدادات',
             icon: '⚙️',
-            adminOnly: true,
-            disabled: false
+            adminOnly: true
         }
     ];
 
     const isAdmin = user?.role === 'admin';
+
+    // تمييز العنصر الصحيح حتى عند التنقل من Dashboard بمعرّف قديم
+    const isActive = (itemId) => {
+        if (currentPage === itemId) return true;
+        if (itemId === 'users' && currentPage === 'premium-users') return true;
+        if (itemId === 'chat-rooms' && currentPage === 'categories') return true;
+        if (itemId === 'reports' && currentPage === 'flagged-messages') return true;
+        return false;
+    };
 
     return (
         <div className="sidebar">
@@ -83,7 +95,7 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick }) {
                     return (
                         <button
                             key={item.id}
-                            className={`nav-item ${currentPage === item.id ? 'active' : ''} ${item.disabled ? 'disabled' : ''}`}
+                            className={`nav-item ${isActive(item.id) ? 'active' : ''} ${item.disabled ? 'disabled' : ''}`}
                             onClick={() => !item.disabled && onPageChange(item.id)}
                             disabled={item.disabled}
                         >

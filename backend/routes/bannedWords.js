@@ -45,6 +45,51 @@ router.get('/', protect, adminOnly, async (req, res) => {
     }
 });
 
+// @route   GET /api/banned-words/stats
+// @desc    إحصائيات الكلمات المحظورة
+// @access  Admin
+router.get('/stats', protect, adminOnly, async (req, res) => {
+    try {
+        const total = await BannedWord.countDocuments();
+        const active = await BannedWord.countDocuments({ isActive: true });
+        const byType = await BannedWord.aggregate([
+            { $group: { _id: '$type', count: { $sum: 1 } } }
+        ]);
+        const bySeverity = await BannedWord.aggregate([
+            { $group: { _id: '$severity', count: { $sum: 1 } } }
+        ]);
+        const mostUsed = await BannedWord.find()
+            .sort({ usageCount: -1 })
+            .limit(10)
+            .select('word usageCount');
+
+        res.json({
+            success: true,
+            data: {
+                total,
+                active,
+                inactive: total - active,
+                byType: byType.reduce((acc, item) => {
+                    acc[item._id] = item.count;
+                    return acc;
+                }, {}),
+                bySeverity: bySeverity.reduce((acc, item) => {
+                    acc[item._id] = item.count;
+                    return acc;
+                }, {}),
+                mostUsed
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في جلب الإحصائيات:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            error: error.message
+        });
+    }
+});
+
 // @route   POST /api/banned-words
 // @desc    إضافة كلمة محظورة جديدة
 // @access  Admin
@@ -72,7 +117,7 @@ router.post('/', protect, adminOnly, async (req, res) => {
             word: word.toLowerCase().trim(),
             type: type || 'both',
             severity: severity || 'medium',
-            action: action || 'block',
+            action: action || 'filter',
             addedBy: req.user._id
         });
 
@@ -126,7 +171,7 @@ router.post('/bulk', protect, adminOnly, async (req, res) => {
                     word: normalizedWord,
                     type: type || 'both',
                     severity: severity || 'medium',
-                    action: action || 'block',
+                    action: action || 'filter',
                     addedBy: req.user._id
                 });
 
@@ -143,73 +188,6 @@ router.post('/bulk', protect, adminOnly, async (req, res) => {
         });
     } catch (error) {
         console.error('خطأ في إضافة الكلمات:', error);
-        res.status(500).json({
-            success: false,
-            message: 'خطأ في السيرفر',
-            error: error.message
-        });
-    }
-});
-
-// @route   PUT /api/banned-words/:id
-// @desc    تعديل كلمة محظورة
-// @access  Admin
-router.put('/:id', protect, adminOnly, async (req, res) => {
-    try {
-        const { word, type, severity, action, isActive } = req.body;
-
-        const bannedWord = await BannedWord.findById(req.params.id);
-        if (!bannedWord) {
-            return res.status(404).json({
-                success: false,
-                message: 'الكلمة غير موجودة'
-            });
-        }
-
-        if (word) bannedWord.word = word.toLowerCase().trim();
-        if (type) bannedWord.type = type;
-        if (severity) bannedWord.severity = severity;
-        if (action) bannedWord.action = action;
-        if (isActive !== undefined) bannedWord.isActive = isActive;
-
-        await bannedWord.save();
-
-        res.json({
-            success: true,
-            message: 'تم تحديث الكلمة بنجاح',
-            data: bannedWord
-        });
-    } catch (error) {
-        console.error('خطأ في تحديث الكلمة:', error);
-        res.status(500).json({
-            success: false,
-            message: 'خطأ في السيرفر',
-            error: error.message
-        });
-    }
-});
-
-// @route   DELETE /api/banned-words/:id
-// @desc    حذف كلمة محظورة
-// @access  Admin
-router.delete('/:id', protect, adminOnly, async (req, res) => {
-    try {
-        const bannedWord = await BannedWord.findById(req.params.id);
-        if (!bannedWord) {
-            return res.status(404).json({
-                success: false,
-                message: 'الكلمة غير موجودة'
-            });
-        }
-
-        await bannedWord.deleteOne();
-
-        res.json({
-            success: true,
-            message: 'تم حذف الكلمة بنجاح'
-        });
-    } catch (error) {
-        console.error('خطأ في حذف الكلمة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -279,43 +257,65 @@ router.put('/:id/toggle', protect, adminOnly, async (req, res) => {
     }
 });
 
-// @route   GET /api/banned-words/stats
-// @desc    إحصائيات الكلمات المحظورة
+// @route   PUT /api/banned-words/:id
+// @desc    تعديل كلمة محظورة
 // @access  Admin
-router.get('/stats', protect, adminOnly, async (req, res) => {
+router.put('/:id', protect, adminOnly, async (req, res) => {
     try {
-        const total = await BannedWord.countDocuments();
-        const active = await BannedWord.countDocuments({ isActive: true });
-        const byType = await BannedWord.aggregate([
-            { $group: { _id: '$type', count: { $sum: 1 } } }
-        ]);
-        const bySeverity = await BannedWord.aggregate([
-            { $group: { _id: '$severity', count: { $sum: 1 } } }
-        ]);
-        const mostUsed = await BannedWord.find()
-            .sort({ usageCount: -1 })
-            .limit(10)
-            .select('word usageCount');
+        const { word, type, severity, action, isActive } = req.body;
+
+        const bannedWord = await BannedWord.findById(req.params.id);
+        if (!bannedWord) {
+            return res.status(404).json({
+                success: false,
+                message: 'الكلمة غير موجودة'
+            });
+        }
+
+        if (word) bannedWord.word = word.toLowerCase().trim();
+        if (type) bannedWord.type = type;
+        if (severity) bannedWord.severity = severity;
+        if (action) bannedWord.action = action;
+        if (isActive !== undefined) bannedWord.isActive = isActive;
+
+        await bannedWord.save();
 
         res.json({
             success: true,
-            data: {
-                total,
-                active,
-                inactive: total - active,
-                byType: byType.reduce((acc, item) => {
-                    acc[item._id] = item.count;
-                    return acc;
-                }, {}),
-                bySeverity: bySeverity.reduce((acc, item) => {
-                    acc[item._id] = item.count;
-                    return acc;
-                }, {}),
-                mostUsed
-            }
+            message: 'تم تحديث الكلمة بنجاح',
+            data: bannedWord
         });
     } catch (error) {
-        console.error('خطأ في جلب الإحصائيات:', error);
+        console.error('خطأ في تحديث الكلمة:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            error: error.message
+        });
+    }
+});
+
+// @route   DELETE /api/banned-words/:id
+// @desc    حذف كلمة محظورة
+// @access  Admin
+router.delete('/:id', protect, adminOnly, async (req, res) => {
+    try {
+        const bannedWord = await BannedWord.findById(req.params.id);
+        if (!bannedWord) {
+            return res.status(404).json({
+                success: false,
+                message: 'الكلمة غير موجودة'
+            });
+        }
+
+        await bannedWord.deleteOne();
+
+        res.json({
+            success: true,
+            message: 'تم حذف الكلمة بنجاح'
+        });
+    } catch (error) {
+        console.error('خطأ في حذف الكلمة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
