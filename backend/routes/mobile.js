@@ -546,6 +546,84 @@ router.put('/users/stealth-mode', protect, requirePremium, async (req, res) => {
 });
 
 // ==========================================
+// إعدادات الخصوصية (Mobile)
+// ==========================================
+
+// @route   GET /api/mobile/privacy/settings
+// @desc    جلب إعدادات الخصوصية الحالية
+// @access  Private
+router.get('/privacy/settings', protect, async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id)
+            .select('privacySettings showDistance stealthMode');
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        }
+
+        res.json({
+            success: true,
+            data: {
+                profileVisibility: user.privacySettings?.profileVisibility || 'public',
+                showLastSeen: user.privacySettings?.showLastSeen ?? true,
+                notificationSound: user.privacySettings?.notificationSound ?? true,
+                showDistance: user.showDistance ?? true,
+                stealthMode: user.stealthMode || false
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في جلب إعدادات الخصوصية:', error);
+        res.status(500).json({ success: false, message: 'حدث خطأ في الخادم' });
+    }
+});
+
+// @route   PATCH /api/mobile/privacy/distance
+// @desc    تفعيل/تعطيل إظهار المسافة
+// @access  Private
+router.patch('/privacy/distance', protect, async (req, res) => {
+    try {
+        const { showDistance } = req.body;
+
+        if (typeof showDistance !== 'boolean') {
+            return res.status(400).json({ success: false, message: 'القيمة مطلوبة (true/false)' });
+        }
+
+        await User.findByIdAndUpdate(req.user._id, { showDistance });
+
+        res.json({
+            success: true,
+            message: showDistance ? 'تم إظهار المسافة' : 'تم إخفاء المسافة'
+        });
+    } catch (error) {
+        console.error('خطأ في تغيير إعداد المسافة:', error);
+        res.status(500).json({ success: false, message: 'فشل في تغيير الإعداد' });
+    }
+});
+
+// @route   PATCH /api/mobile/privacy/stealth
+// @desc    تفعيل/تعطيل وضع التخفي
+// @access  Private + Premium
+router.patch('/privacy/stealth', protect, requirePremium, async (req, res) => {
+    try {
+        const { stealthMode } = req.body;
+
+        if (typeof stealthMode !== 'boolean') {
+            return res.status(400).json({ success: false, message: 'القيمة مطلوبة (true/false)' });
+        }
+
+        await User.findByIdAndUpdate(req.user._id, { stealthMode });
+
+        res.json({
+            success: true,
+            message: stealthMode ? 'تم تفعيل وضع التخفي' : 'تم تعطيل وضع التخفي'
+        });
+    } catch (error) {
+        console.error('خطأ في تغيير وضع التخفي:', error);
+        res.status(500).json({ success: false, message: 'فشل في تغيير وضع التخفي' });
+    }
+});
+
+// ==========================================
 // نظام Super Like
 // ==========================================
 

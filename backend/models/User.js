@@ -177,6 +177,8 @@ const userSchema = new mongoose.Schema({
 
     // وضع التخفي (للمشتركين فقط)
     stealthMode: { type: Boolean, default: false },
+    // إخفاء/إظهار المسافة عن المستخدمين الآخرين
+    showDistance: { type: Boolean, default: true },
 
     // توثيق الحساب
     verification: {
