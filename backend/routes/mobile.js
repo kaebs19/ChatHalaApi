@@ -232,7 +232,7 @@ router.get('/users/search', protect, async (req, res) => {
                     $project: {
                         name: 1, email: 1, profileImage: 1, birthDate: 1,
                         gender: 1, country: 1, bio: 1, isOnline: 1, lastLogin: 1,
-                        'verification.isVerified': 1, isPremium: 1, stealthMode: 1, distance: 1
+                        isVerified: '$verification.isVerified', isPremium: 1, stealthMode: 1, distance: 1
                     }
                 },
                 { $sort: { isOnline: -1, distance: 1 } },
@@ -289,6 +289,8 @@ router.get('/users/search', protect, async (req, res) => {
                     userObj.lastLogin = null;
                 }
                 delete userObj.stealthMode;
+                userObj.isVerified = userObj.verification?.isVerified || false;
+                delete userObj.verification;
                 userObj.distance = null;
                 userObj.distanceLabel = null;
                 return userObj;
