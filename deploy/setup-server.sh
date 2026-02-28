@@ -32,7 +32,7 @@ print_error() {
 }
 
 DOMAIN="halachat.khalafiati.io"
-APP_DIR="/var/www/halachat"
+APP_DIR="/var/www/HalaChat"
 LOG_DIR="/var/log/halachat"
 
 echo "=============================================="

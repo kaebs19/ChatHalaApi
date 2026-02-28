@@ -4,7 +4,7 @@ module.exports = {
         {
             name: 'halachat-api',
             script: './backend/server.js',
-            cwd: '/var/www/halachat',
+            cwd: '/var/www/HalaChat',
             instances: 1,
             exec_mode: 'fork',
             watch: false,
