@@ -250,6 +250,7 @@ router.get('/users/search', protect, async (req, res) => {
                     distanceLabel: getDistanceLabel(u.distance),
                     lastActive: u.stealthMode ? null : u.lastLogin
                 };
+                result.profileImage = getFullUrl(u.profileImage);
                 delete result.lastLogin;
                 delete result.stealthMode;
                 return result;
@@ -287,6 +288,7 @@ router.get('/users/search', protect, async (req, res) => {
                 userObj.lastActive = userObj.stealthMode ? null : userObj.lastLogin;
                 delete userObj.lastLogin;
                 delete userObj.stealthMode;
+                userObj.profileImage = getFullUrl(userObj.profileImage);
                 userObj.isVerified = userObj.verification?.isVerified || false;
                 delete userObj.verification;
                 userObj.distance = null;
@@ -1786,7 +1788,7 @@ router.post('/conversations/:conversationId/messages/image', protect, uploadMess
         }
 
         // رابط الصورة
-        const baseUrl = process.env.BASE_URL || 'https://halachat.com';
+        const baseUrl = process.env.BASE_URL || 'https://halachat.khalafiati.io';
         const mediaUrl = `${baseUrl}/uploads/messages/${req.file.filename}`;
 
         // إنشاء الرسالة
@@ -2943,7 +2945,7 @@ router.post('/rooms/:id/messages/image', protect, uploadMessageImage.single('ima
         }
 
         // رابط الصورة
-        const mediaUrl = `${process.env.BASE_URL || 'https://halachat.com'}/uploads/messages/${req.file.filename}`;
+        const mediaUrl = `${process.env.BASE_URL || 'https://halachat.khalafiati.io'}/uploads/messages/${req.file.filename}`;
 
         // إنشاء الرسالة
         const message = new Message({
