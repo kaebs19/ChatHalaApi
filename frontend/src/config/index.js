@@ -15,6 +15,10 @@ const config = {
 // دالة مساعدة للحصول على رابط الصورة الكامل
 export const getImageUrl = (imagePath) => {
     if (!imagePath || imagePath.trim() === '') return null;
+    // تصحيح الدومين القديم
+    if (imagePath.includes('halachat.com')) {
+        return imagePath.replace('https://halachat.com', config.SERVER_URL);
+    }
     if (imagePath.startsWith('http')) return imagePath;
     if (imagePath.startsWith('data:')) return imagePath; // Base64 images
     // إزالة أي slashes مكررة
