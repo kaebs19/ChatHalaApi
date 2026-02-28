@@ -201,7 +201,8 @@ function Settings() {
         const contentMap = {
             privacy: pageContents.privacyPolicy,
             terms: pageContents.termsOfService,
-            about: pageContents.aboutApp
+            about: pageContents.aboutApp,
+            contact: pageContents.contactUs
         };
 
         const content = contentMap[type];
