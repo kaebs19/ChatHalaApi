@@ -37,7 +37,7 @@ router.get('/conversation/:conversationId', protect, adminOnly, async (req, res)
 
         // الحصول على الرسائل مع pagination
         const messages = await Message.find(filter)
-            .populate('sender', 'name email profilePicture')
+            .populate('sender', 'name email profileImage')
             .sort({ createdAt: -1 })
             .limit(limit * 1)
             .skip((page - 1) * limit);
@@ -70,7 +70,7 @@ router.get('/conversation/:conversationId', protect, adminOnly, async (req, res)
 router.get('/:id', protect, adminOnly, async (req, res) => {
     try {
         const message = await Message.findById(req.params.id)
-            .populate('sender', 'name email profilePicture')
+            .populate('sender', 'name email profileImage')
             .populate('conversation', 'title type');
 
         if (!message) {
@@ -183,7 +183,7 @@ router.post('/send', protect, adminOnly, async (req, res) => {
 
         // جلب الرسالة مع بيانات المرسل
         const populatedMessage = await Message.findById(message._id)
-            .populate('sender', 'name email profilePicture');
+            .populate('sender', 'name email profileImage');
 
         // إرسال الرسالة عبر Socket.IO لكل المتصلين بهذه المحادثة
         if (global.io) {
