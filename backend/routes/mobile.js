@@ -246,12 +246,11 @@ router.get('/users/search', protect, async (req, res) => {
             users = users.map(u => {
                 const result = {
                     ...u,
-                    distance: Math.round(u.distance),
-                    distanceLabel: getDistanceLabel(u.distance)
+                    distance: Math.round(u.distance / 100) / 10,
+                    distanceLabel: getDistanceLabel(u.distance),
+                    lastActive: u.stealthMode ? null : u.lastLogin
                 };
-                if (u.stealthMode) {
-                    result.lastLogin = null;
-                }
+                delete result.lastLogin;
                 delete result.stealthMode;
                 return result;
             });
@@ -285,9 +284,8 @@ router.get('/users/search', protect, async (req, res) => {
             // إخفاء lastLogin للمتخفين + إضافة distance: null + حذف stealthMode
             users = users.map(u => {
                 const userObj = u.toObject();
-                if (userObj.stealthMode) {
-                    userObj.lastLogin = null;
-                }
+                userObj.lastActive = userObj.stealthMode ? null : userObj.lastLogin;
+                delete userObj.lastLogin;
                 delete userObj.stealthMode;
                 userObj.isVerified = userObj.verification?.isVerified || false;
                 delete userObj.verification;
@@ -302,8 +300,8 @@ router.get('/users/search', protect, async (req, res) => {
             data: {
                 users,
                 page: pageNum,
-                totalPages: Math.ceil(totalUsers / limitNum),
-                totalUsers
+                limit: limitNum,
+                total: totalUsers
             }
         });
 
