@@ -40,7 +40,7 @@ Thumbs.db
 
 # Build outputs
 dist/
-build/
+# build/ — مرفوع لأن السيرفر لا يستطيع البناء محلياً
 *.tsbuildinfo
 
 # Testing
