@@ -151,7 +151,7 @@ router.post('/login', loginValidation, validate, async (req, res) => {
         }
 
         // التحقق من أن الحساب مفعل
-        if (!user.isActive) {
+        if (user.isActive === false) {
             return res.status(401).json({
                 success: false,
                 message: 'الحساب غير مفعل، تواصل مع الإدارة'
