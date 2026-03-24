@@ -133,7 +133,7 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'"],  // Swagger UI needs inline scripts
             styleSrc: ["'self'", "'unsafe-inline'"],
             imgSrc: ["'self'", "data:", "https:"],
             connectSrc: ["'self'", "wss:", "ws:"],
@@ -216,6 +216,10 @@ app.use(hpp());
 
 // 8. Static Files - تقديم الملفات المرفوعة
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Swagger API Documentation
+const { setupSwagger } = require('./config/swagger');
+setupSwagger(app);
 
 // Route تجريبي للتأكد من عمل السيرفر
 app.get('/', (req, res) => {

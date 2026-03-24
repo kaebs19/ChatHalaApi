@@ -58,7 +58,7 @@ const categorySchema = new mongoose.Schema({
 
 // فهرس للترتيب والحالة
 categorySchema.index({ order: 1, isActive: 1 });
-categorySchema.index({ name: 1 });
+
 
 // دالة لتحديث عدد الغرف
 categorySchema.statics.updateRoomsCount = async function(categoryId) {
