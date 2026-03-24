@@ -36,6 +36,12 @@ router.post('/messages/send', protect, async (req, res) => {
             bannedWordResult = await BannedWord.checkText(content, 'word');
         }
 
+        // تنظيف المحتوى من الكلمات المحظورة
+        let filteredContent = null;
+        if (!bannedWordResult.isClean) {
+            filteredContent = await BannedWord.cleanText(content, '*****');
+        }
+
         // التحقق من المحادثة
         const conversation = await Conversation.findById(conversationId)
             .populate('participants', 'name email deviceToken');
@@ -87,6 +93,8 @@ router.post('/messages/send', protect, async (req, res) => {
             mediaUrl: mediaUrl || null,
             mediaMetadata: mediaMetadata || null,
             status: 'sent',
+            filteredContent: filteredContent,
+            reviewStatus: !bannedWordResult.isClean ? 'pending' : 'none',
             hasBannedWords: !bannedWordResult.isClean,
             bannedWordsFound: bannedWordResult.foundWords.map(w => ({
                 word: w.word, severity: w.severity, action: w.action
@@ -124,12 +132,21 @@ router.post('/messages/send', protect, async (req, res) => {
         if (messageObj.sender) messageObj.sender.profileImage = getFullUrl(messageObj.sender.profileImage);
         if (messageObj.mediaUrl) messageObj.mediaUrl = getFullUrl(messageObj.mediaUrl);
 
+        // استبدال المحتوى بالمحتوى المفلتر للموبايل
+        if (messageObj.filteredContent) {
+            messageObj.content = messageObj.filteredContent;
+        }
+
         // إرسال عبر Socket.IO
         logger.debug('About to emit new-message to room:', `conversation-${conversationId}`);
         logger.debug('global.io exists:', !!global.io);
         if (global.io) {
+            const socketMessage = { ...messageObj };
+            if (filteredContent) {
+                socketMessage.content = filteredContent;
+            }
             global.io.to(`conversation-${conversationId}`).emit('new-message', {
-                message: messageObj
+                message: socketMessage
             });
             logger.debug('Emitted!');
         } else {
@@ -143,6 +160,7 @@ router.post('/messages/send', protect, async (req, res) => {
 
         logger.debug('عدد المستقبلين:', recipients.length);
 
+        const pushContent = filteredContent || content;
         for (const recipient of recipients) {
             const recipientId = recipient._id.toString();
 
@@ -157,7 +175,7 @@ router.post('/messages/send', protect, async (req, res) => {
                 const pushResult = await pushNotificationService.sendNewMessageNotification(
                     recipient._id,
                     req.user.name,
-                    type === 'text' ? (content.length > 100 ? content.substring(0, 100) + '...' : content) : `أرسل ${type === 'image' ? 'صورة' : type === 'audio' ? 'رسالة صوتية' : type === 'video' ? 'فيديو' : 'ملف'}`,
+                    type === 'text' ? (pushContent.length > 100 ? pushContent.substring(0, 100) + '...' : pushContent) : `أرسل ${type === 'image' ? 'صورة' : type === 'audio' ? 'رسالة صوتية' : type === 'video' ? 'فيديو' : 'ملف'}`,
                     conversationId
                 );
                 logger.debug('نتيجة الإشعار:', JSON.stringify(pushResult));
@@ -316,6 +334,12 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
             bannedWordResult = await BannedWord.checkText(content, 'word');
         }
 
+        // تنظيف المحتوى من الكلمات المحظورة
+        let filteredContent = null;
+        if (!bannedWordResult.isClean) {
+            filteredContent = await BannedWord.cleanText(content, '*****');
+        }
+
         // التحقق من المحادثة
         const conversation = await Conversation.findById(conversationId)
             .populate('participants', 'name email deviceToken fcmToken');
@@ -349,6 +373,8 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
             mediaUrl: mediaUrl || null,
             mediaMetadata: mediaMetadata || null,
             status: 'sent',
+            filteredContent: filteredContent,
+            reviewStatus: !bannedWordResult.isClean ? 'pending' : 'none',
             hasBannedWords: !bannedWordResult.isClean,
             bannedWordsFound: bannedWordResult.foundWords.map(w => ({
                 word: w.word, severity: w.severity, action: w.action
@@ -386,12 +412,21 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
         if (altMsgObj.sender) altMsgObj.sender.profileImage = getFullUrl(altMsgObj.sender.profileImage);
         if (altMsgObj.mediaUrl) altMsgObj.mediaUrl = getFullUrl(altMsgObj.mediaUrl);
 
+        // استبدال المحتوى بالمحتوى المفلتر للموبايل
+        if (altMsgObj.filteredContent) {
+            altMsgObj.content = altMsgObj.filteredContent;
+        }
+
         // إرسال عبر Socket.IO
         logger.debug('About to emit new-message to room:', `conversation-${conversationId}`);
         logger.debug('global.io exists:', !!global.io);
         if (global.io) {
+            const socketMessage = { ...altMsgObj };
+            if (filteredContent) {
+                socketMessage.content = filteredContent;
+            }
             global.io.to(`conversation-${conversationId}`).emit('new-message', {
-                message: altMsgObj
+                message: socketMessage
             });
             logger.debug('Emitted!');
         }
@@ -403,6 +438,7 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
 
         logger.debug('عدد المستقبلين:', recipients.length);
 
+        const pushContent = filteredContent || content;
         for (const recipient of recipients) {
             const recipientId = recipient._id.toString();
             const isOnline = global.connectedUsers && global.connectedUsers.has(recipientId);
@@ -414,7 +450,7 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
                 const pushResult = await pushNotificationService.sendNewMessageNotification(
                     recipient._id,
                     req.user.name,
-                    type === 'text' ? (content.length > 100 ? content.substring(0, 100) + '...' : content) : `أرسل ${type === 'image' ? 'صورة' : type === 'audio' ? 'رسالة صوتية' : type === 'video' ? 'فيديو' : 'ملف'}`,
+                    type === 'text' ? (pushContent.length > 100 ? pushContent.substring(0, 100) + '...' : pushContent) : `أرسل ${type === 'image' ? 'صورة' : type === 'audio' ? 'رسالة صوتية' : type === 'video' ? 'فيديو' : 'ملف'}`,
                     conversationId
                 );
                 logger.debug('نتيجة الإشعار:', JSON.stringify(pushResult));
@@ -481,11 +517,14 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
             isDeleted: false
         });
 
-        // تحويل الصور إلى URLs كاملة
+        // تحويل الصور إلى URLs كاملة + استبدال المحتوى بالمفلتر للموبايل
         const messagesWithFullUrls = messages.reverse().map(msg => {
             const msgObj = msg.toObject();
             if (msgObj.sender) msgObj.sender.profileImage = getFullUrl(msgObj.sender.profileImage);
             if (msgObj.mediaUrl) msgObj.mediaUrl = getFullUrl(msgObj.mediaUrl);
+            if (msgObj.filteredContent) {
+                msgObj.content = msgObj.filteredContent;
+            }
             return msgObj;
         });
 

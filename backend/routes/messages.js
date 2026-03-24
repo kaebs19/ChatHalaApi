@@ -69,6 +69,125 @@ router.get('/conversation/:conversationId', protect, adminOnly, async (req, res)
     }
 });
 
+// @route   GET /api/messages/flagged
+// @desc    الرسائل المحظورة للمراجعة
+// @access  Admin
+router.get('/flagged', protect, adminOnly, async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+        const status = req.query.status || 'pending'; // pending, reviewed, dismissed, all
+        const severity = req.query.severity; // low, medium, high
+        const chatType = req.query.chatType; // conversation, room
+
+        const filter = { hasBannedWords: true };
+        if (status !== 'all') filter.reviewStatus = status;
+        if (severity) filter.bannedWordSeverity = severity;
+        if (chatType) filter.chatType = chatType;
+
+        const messages = await Message.find(filter)
+            .populate('sender', 'name email profileImage')
+            .populate('conversation', 'participants')
+            .populate('room', 'name')
+            .populate('reviewedBy', 'name')
+            .sort({ createdAt: -1 })
+            .skip((page - 1) * limit)
+            .limit(limit)
+            .lean();
+
+        const total = await Message.countDocuments(filter);
+
+        res.json({
+            success: true,
+            messages,
+            pagination: {
+                current: page,
+                pages: Math.ceil(total / limit),
+                total
+            }
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في جلب الرسائل المحظورة',
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
+        });
+    }
+});
+
+// @route   GET /api/messages/flagged/stats
+// @desc    إحصائيات المراجعة
+// @access  Admin
+router.get('/flagged/stats', protect, adminOnly, async (req, res) => {
+    try {
+        const [pending, reviewed, dismissed, total] = await Promise.all([
+            Message.countDocuments({ hasBannedWords: true, reviewStatus: 'pending' }),
+            Message.countDocuments({ hasBannedWords: true, reviewStatus: 'reviewed' }),
+            Message.countDocuments({ hasBannedWords: true, reviewStatus: 'dismissed' }),
+            Message.countDocuments({ hasBannedWords: true })
+        ]);
+
+        const bySeverity = await Message.aggregate([
+            { $match: { hasBannedWords: true, reviewStatus: 'pending' } },
+            { $group: { _id: '$bannedWordSeverity', count: { $sum: 1 } } }
+        ]);
+
+        res.json({
+            success: true,
+            stats: { pending, reviewed, dismissed, total },
+            bySeverity: bySeverity.reduce((acc, s) => { acc[s._id || 'unknown'] = s.count; return acc; }, {})
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في جلب الإحصائيات',
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
+        });
+    }
+});
+
+// @route   PUT /api/messages/:id/review
+// @desc    تحديث حالة المراجعة
+// @access  Admin
+router.put('/:id/review', protect, adminOnly, async (req, res) => {
+    try {
+        const { status, action } = req.body; // status: reviewed/dismissed, action: delete/warn/none
+
+        if (!['reviewed', 'dismissed'].includes(status)) {
+            return res.status(400).json({ success: false, message: 'حالة المراجعة غير صالحة' });
+        }
+
+        const message = await Message.findById(req.params.id);
+        if (!message) {
+            return res.status(404).json({ success: false, message: 'الرسالة غير موجودة' });
+        }
+
+        message.reviewStatus = status;
+        message.reviewedBy = req.user._id;
+        message.reviewedAt = new Date();
+
+        // إذا طلب حذف الرسالة
+        if (action === 'delete') {
+            message.isDeleted = true;
+            message.deletedAt = new Date();
+        }
+
+        await message.save();
+
+        res.json({
+            success: true,
+            message: 'تم تحديث حالة المراجعة',
+            data: message
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في تحديث المراجعة',
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
+        });
+    }
+});
+
 // @route   GET /api/messages/:id
 // @desc    جلب رسالة واحدة
 // @access  Admin

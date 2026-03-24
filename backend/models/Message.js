@@ -75,6 +75,10 @@ const messageSchema = new mongoose.Schema({
     },
 
     // ============ فحص الكلمات المحظورة ============
+    filteredContent: {
+        type: String,
+        default: null // النص بعد استبدال الكلمات المحظورة بنجوم
+    },
     hasBannedWords: {
         type: Boolean,
         default: false
@@ -88,7 +92,18 @@ const messageSchema = new mongoose.Schema({
         type: String,
         enum: ['low', 'medium', 'high', null],
         default: null
-    }
+    },
+    // ============ نظام مراجعة الأدمن ============
+    reviewStatus: {
+        type: String,
+        enum: ['none', 'pending', 'reviewed', 'dismissed'],
+        default: 'none'
+    },
+    reviewedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    },
+    reviewedAt: Date
 }, {
     timestamps: true
 });
@@ -101,6 +116,7 @@ messageSchema.index({ sender: 1 });
 messageSchema.index({ isDeleted: 1 });
 messageSchema.index({ chatType: 1, conversation: 1, room: 1 });
 messageSchema.index({ hasBannedWords: 1, createdAt: -1 });
+messageSchema.index({ reviewStatus: 1, createdAt: -1 });
 
 // دالة للحذف الناعم
 messageSchema.methods.softDelete = function() {

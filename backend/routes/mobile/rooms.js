@@ -143,19 +143,22 @@ router.get('/rooms/:id/messages', protect, async (req, res) => {
         res.json({
             success: true,
             data: {
-                messages: messages.map(msg => ({
-                    _id: msg._id,
-                    roomId: msg.room,
-                    sender: {
-                        _id: msg.sender?._id,
-                        name: msg.sender?.name,
-                        profileImage: getFullUrl(msg.sender?.profileImage)
-                    },
-                    content: msg.content,
-                    type: msg.type || 'text',
-                    mediaUrl: getFullUrl(msg.mediaUrl) || null,
-                    createdAt: msg.createdAt
-                })),
+                messages: messages.map(msg => {
+                    const m = msg.toObject ? msg.toObject() : { ...msg };
+                    return {
+                        _id: m._id,
+                        roomId: m.room,
+                        sender: {
+                            _id: msg.sender?._id,
+                            name: msg.sender?.name,
+                            profileImage: getFullUrl(msg.sender?.profileImage)
+                        },
+                        content: m.filteredContent || m.content,
+                        type: m.type || 'text',
+                        mediaUrl: getFullUrl(m.mediaUrl) || null,
+                        createdAt: m.createdAt
+                    };
+                }),
                 page: parseInt(page),
                 totalPages: Math.ceil(total / parseInt(limit))
             }
@@ -376,6 +379,12 @@ router.post('/rooms/:id/messages', protect, async (req, res) => {
             bannedWordResult = await BannedWord.checkText(content.trim(), 'word');
         }
 
+        // تنظيف النص من الكلمات المحظورة
+        let filteredContent = null;
+        if (!bannedWordResult.isClean) {
+            filteredContent = await BannedWord.cleanText(content.trim(), '*****');
+        }
+
         // إنشاء الرسالة
         const message = new Message({
             chatType: 'room',
@@ -383,6 +392,8 @@ router.post('/rooms/:id/messages', protect, async (req, res) => {
             sender: senderId,
             type: type,
             content: content.trim(),
+            filteredContent: filteredContent,
+            reviewStatus: !bannedWordResult.isClean ? 'pending' : 'none',
             hasBannedWords: !bannedWordResult.isClean,
             bannedWordsFound: bannedWordResult.foundWords.map(w => ({
                 word: w.word, severity: w.severity, action: w.action
@@ -429,7 +440,7 @@ router.post('/rooms/:id/messages', protect, async (req, res) => {
                     name: populatedMessage.sender.name,
                     profileImage: getFullUrl(populatedMessage.sender.profileImage)
                 },
-                content: populatedMessage.content,
+                content: filteredContent || populatedMessage.content,
                 type: populatedMessage.type,
                 createdAt: populatedMessage.createdAt
             });

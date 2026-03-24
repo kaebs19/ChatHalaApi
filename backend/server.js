@@ -493,6 +493,12 @@ io.on('connection', async (socket) => {
                 }
             }
 
+            // تنظيف النص من الكلمات المحظورة
+            let filteredContent = null;
+            if (!bannedWordResult.isClean) {
+                filteredContent = await BannedWord.cleanText(content, '*****');
+            }
+
             // إنشاء الرسالة
             const message = new Message({
                 chatType: 'room',
@@ -500,6 +506,8 @@ io.on('connection', async (socket) => {
                 sender: socket.userId,
                 content: content,
                 type: type,
+                filteredContent: filteredContent,
+                reviewStatus: !bannedWordResult.isClean ? 'pending' : 'none',
                 hasBannedWords: !bannedWordResult.isClean,
                 bannedWordsFound: bannedWordResult.foundWords.map(w => ({
                     word: w.word,
@@ -544,7 +552,7 @@ io.on('connection', async (socket) => {
                     name: socket.user.name,
                     profileImage: getFullUrl(socket.user.profileImage)
                 },
-                content: content,
+                content: filteredContent || content,
                 type: type,
                 createdAt: message.createdAt
             });
