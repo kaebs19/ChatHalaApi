@@ -153,7 +153,7 @@ router.get('/rooms/:id/messages', protect, async (req, res) => {
                     },
                     content: msg.content,
                     type: msg.type || 'text',
-                    mediaUrl: msg.mediaUrl || null,
+                    mediaUrl: getFullUrl(msg.mediaUrl) || null,
                     createdAt: msg.createdAt
                 })),
                 page: parseInt(page),
@@ -529,7 +529,7 @@ router.post('/rooms/:id/messages/image', protect, uploadMessageImage.single('ima
             sender: {
                 _id: populatedMessage.sender._id,
                 name: populatedMessage.sender.name,
-                profileImage: populatedMessage.sender.profileImage
+                profileImage: getFullUrl(populatedMessage.sender.profileImage)
             },
             content: populatedMessage.content,
             type: 'image',

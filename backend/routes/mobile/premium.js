@@ -9,6 +9,7 @@ const Conversation = require('../../models/Conversation');
 const SuperLike = require('../../models/SuperLike');
 const { protect } = require('../../middleware/auth');
 const pushNotificationService = require('../../services/pushNotificationService');
+const { getFullUrl } = require('./helpers');
 
 // Helper: إنشاء JWT لـ App Store Server API
 function generateAppStoreJWT() {
@@ -116,7 +117,7 @@ router.post('/super-like', protect, async (req, res) => {
                 from: {
                     _id: senderId,
                     name: req.user.name,
-                    profileImage: req.user.profileImage
+                    profileImage: getFullUrl(req.user.profileImage)
                 }
             });
         }

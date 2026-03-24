@@ -7,6 +7,7 @@ const logger = require('../../utils/logger');
 const User = require('../../models/User');
 const Notification = require('../../models/Notification');
 const { protect } = require('../../middleware/auth');
+const { getFullUrl } = require('./helpers');
 
 // ==========================================
 // نظام الإشعارات
@@ -42,10 +43,19 @@ router.get('/notifications', protect, async (req, res) => {
             'readBy.user': { $ne: req.user._id }
         });
 
+        // تحويل صور المرسلين إلى URLs كاملة
+        const notificationsWithFullUrls = notifications.map(n => {
+            const nObj = n.toObject();
+            if (nObj.sender && nObj.sender.profileImage) {
+                nObj.sender.profileImage = getFullUrl(nObj.sender.profileImage);
+            }
+            return nObj;
+        });
+
         res.status(200).json({
             success: true,
             data: {
-                notifications,
+                notifications: notificationsWithFullUrls,
                 total,
                 unreadCount,
                 currentPage: parseInt(page),

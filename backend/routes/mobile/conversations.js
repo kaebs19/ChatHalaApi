@@ -12,6 +12,7 @@ const { protect } = require('../../middleware/auth');
 const { validate } = require('../../middleware/validation');
 const { conversationRequestValidation, mongoIdParam } = require('../../validators/mobile.validator');
 const pushNotificationService = require('../../services/pushNotificationService');
+const { getFullUrl } = require('./helpers');
 
 // ==========================================
 // نظام المحادثات (طلب/قبول/رفض)
@@ -131,7 +132,7 @@ router.post('/conversations/request', protect, conversationRequestValidation, va
                 from: {
                     _id: req.user._id,
                     name: req.user.name,
-                    profileImage: req.user.profileImage
+                    profileImage: getFullUrl(req.user.profileImage)
                 }
             });
         }
@@ -447,6 +448,13 @@ router.get('/conversations/pending', protect, async (req, res) => {
             const convObj = conv.toObject();
             convObj.isSuperLike = superLikeSet.has(conv.creator._id.toString());
             convObj.creator.isVerified = conv.creator.verification?.isVerified || false;
+            convObj.creator.profileImage = getFullUrl(convObj.creator.profileImage);
+            if (convObj.participants) {
+                convObj.participants = convObj.participants.map(p => ({
+                    ...p,
+                    profileImage: getFullUrl(p.profileImage)
+                }));
+            }
             return convObj;
         });
 
@@ -513,6 +521,10 @@ router.get('/conversations', protect, async (req, res) => {
         const unreadMap = new Map(unreadCounts.map(u => [u._id.toString(), u.count]));
         const conversationsWithUnread = conversations.map(conv => ({
             ...conv,
+            participants: conv.participants ? conv.participants.map(p => ({
+                ...p,
+                profileImage: getFullUrl(p.profileImage)
+            })) : conv.participants,
             unreadCount: unreadMap.get(conv._id.toString()) || 0
         }));
 

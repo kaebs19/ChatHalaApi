@@ -7,6 +7,7 @@ const logger = require('../../utils/logger');
 const User = require('../../models/User');
 const Conversation = require('../../models/Conversation');
 const { protect } = require('../../middleware/auth');
+const { getFullUrl } = require('./helpers');
 
 // ==========================================
 // نظام حظر المستخدمين
@@ -106,10 +107,18 @@ router.get('/users/blocked', protect, async (req, res) => {
         const user = await User.findById(req.user._id)
             .populate('blockedUsers', 'name email profileImage isPremium verification.isVerified');
 
+        const blockedWithFullUrls = (user.blockedUsers || []).map(u => {
+            const userObj = u.toObject ? u.toObject() : u;
+            return {
+                ...userObj,
+                profileImage: getFullUrl(userObj.profileImage)
+            };
+        });
+
         res.json({
             success: true,
             data: {
-                blockedUsers: user.blockedUsers || []
+                blockedUsers: blockedWithFullUrls
             }
         });
 

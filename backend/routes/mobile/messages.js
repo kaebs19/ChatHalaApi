@@ -10,7 +10,7 @@ const Conversation = require('../../models/Conversation');
 const BannedWord = require('../../models/BannedWord');
 const { protect } = require('../../middleware/auth');
 const pushNotificationService = require('../../services/pushNotificationService');
-const { uploadMessageImage } = require('./helpers');
+const { uploadMessageImage, getFullUrl } = require('./helpers');
 
 // ==========================================
 // نظام الرسائل
@@ -119,12 +119,17 @@ router.post('/messages/send', protect, async (req, res) => {
         const populatedMessage = await Message.findById(message._id)
             .populate('sender', 'name email profileImage isPremium verification.isVerified');
 
+        // تحويل الصور إلى URLs كاملة
+        const messageObj = populatedMessage.toObject();
+        if (messageObj.sender) messageObj.sender.profileImage = getFullUrl(messageObj.sender.profileImage);
+        if (messageObj.mediaUrl) messageObj.mediaUrl = getFullUrl(messageObj.mediaUrl);
+
         // إرسال عبر Socket.IO
         logger.debug('About to emit new-message to room:', `conversation-${conversationId}`);
         logger.debug('global.io exists:', !!global.io);
         if (global.io) {
             global.io.to(`conversation-${conversationId}`).emit('new-message', {
-                message: populatedMessage
+                message: messageObj
             });
             logger.debug('Emitted!');
         } else {
@@ -162,7 +167,7 @@ router.post('/messages/send', protect, async (req, res) => {
         res.status(201).json({
             success: true,
             message: 'تم إرسال الرسالة',
-            data: { message: populatedMessage }
+            data: { message: messageObj }
         });
 
     } catch (error) {
@@ -239,10 +244,15 @@ router.post('/conversations/:conversationId/messages/image', protect, uploadMess
         const populatedMessage = await Message.findById(message._id)
             .populate('sender', 'name profileImage isPremium verification.isVerified');
 
+        // تحويل الصور إلى URLs كاملة
+        const imgMsgObj = populatedMessage.toObject();
+        if (imgMsgObj.sender) imgMsgObj.sender.profileImage = getFullUrl(imgMsgObj.sender.profileImage);
+        if (imgMsgObj.mediaUrl) imgMsgObj.mediaUrl = getFullUrl(imgMsgObj.mediaUrl);
+
         // إرسال عبر Socket.IO
         if (global.io) {
             global.io.to(`conversation-${conversationId}`).emit('new-message', {
-                message: populatedMessage
+                message: imgMsgObj
             });
         }
 
@@ -268,7 +278,7 @@ router.post('/conversations/:conversationId/messages/image', protect, uploadMess
         res.status(201).json({
             success: true,
             message: 'تم إرسال الصورة',
-            data: { message: populatedMessage }
+            data: { message: imgMsgObj }
         });
 
     } catch (error) {
@@ -371,12 +381,17 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
         const populatedMessage = await Message.findById(message._id)
             .populate('sender', 'name email profileImage isPremium verification.isVerified');
 
+        // تحويل الصور إلى URLs كاملة
+        const altMsgObj = populatedMessage.toObject();
+        if (altMsgObj.sender) altMsgObj.sender.profileImage = getFullUrl(altMsgObj.sender.profileImage);
+        if (altMsgObj.mediaUrl) altMsgObj.mediaUrl = getFullUrl(altMsgObj.mediaUrl);
+
         // إرسال عبر Socket.IO
         logger.debug('About to emit new-message to room:', `conversation-${conversationId}`);
         logger.debug('global.io exists:', !!global.io);
         if (global.io) {
             global.io.to(`conversation-${conversationId}`).emit('new-message', {
-                message: populatedMessage
+                message: altMsgObj
             });
             logger.debug('Emitted!');
         }
@@ -409,7 +424,7 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
         res.status(201).json({
             success: true,
             message: 'تم إرسال الرسالة',
-            data: { message: populatedMessage }
+            data: { message: altMsgObj }
         });
 
     } catch (error) {
@@ -466,10 +481,18 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
             isDeleted: false
         });
 
+        // تحويل الصور إلى URLs كاملة
+        const messagesWithFullUrls = messages.reverse().map(msg => {
+            const msgObj = msg.toObject();
+            if (msgObj.sender) msgObj.sender.profileImage = getFullUrl(msgObj.sender.profileImage);
+            if (msgObj.mediaUrl) msgObj.mediaUrl = getFullUrl(msgObj.mediaUrl);
+            return msgObj;
+        });
+
         res.status(200).json({
             success: true,
             data: {
-                messages: messages.reverse(), // عكس الترتيب للعرض
+                messages: messagesWithFullUrls, // عكس الترتيب للعرض
                 total,
                 currentPage: parseInt(page),
                 totalPages: Math.ceil(total / limit)
