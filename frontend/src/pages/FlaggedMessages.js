@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { getFlaggedMessages } from '../services/api';
+import React, { useState, useEffect, useCallback } from 'react';
+import { getFlaggedMessages, getFlaggedMessagesStats, reviewMessage } from '../services/api';
 import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import StatCard from '../components/StatCard';
@@ -11,43 +11,97 @@ import './FlaggedMessages.css';
 
 function FlaggedMessages() {
     const [messages, setMessages] = useState([]);
-    const [stats, setStats] = useState({ total: 0, high: 0, medium: 0, low: 0 });
+    const [stats, setStats] = useState({ pending: 0, reviewed: 0, dismissed: 0, total: 0 });
+    const [bySeverity, setBySeverity] = useState({});
     const [loading, setLoading] = useState(true);
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [total, setTotal] = useState(0);
+    const [statusFilter, setStatusFilter] = useState('pending');
     const [severityFilter, setSeverityFilter] = useState('');
     const [chatTypeFilter, setChatTypeFilter] = useState('');
+    const [reviewingId, setReviewingId] = useState(null);
     const { showToast } = useToast();
 
-    useEffect(() => {
-        fetchFlaggedMessages();
-    }, [page, severityFilter, chatTypeFilter]);
+    const fetchStats = useCallback(async () => {
+        try {
+            const response = await getFlaggedMessagesStats();
+            if (response.success) {
+                setStats(response.stats || { pending: 0, reviewed: 0, dismissed: 0, total: 0 });
+                setBySeverity(response.bySeverity || {});
+            }
+        } catch (error) {
+            console.error('خطأ في جلب الإحصائيات:', error);
+        }
+    }, []);
 
-    const fetchFlaggedMessages = async () => {
+    const fetchMessages = useCallback(async () => {
         try {
             setLoading(true);
-            const params = { page, limit: 20 };
+            const params = { page, limit: 20, status: statusFilter };
             if (severityFilter) params.severity = severityFilter;
             if (chatTypeFilter) params.chatType = chatTypeFilter;
 
             const response = await getFlaggedMessages(params);
             if (response.success) {
-                setMessages(response.data.messages || []);
-                setStats(response.data.stats || {});
-                setTotalPages(response.data.totalPages || 1);
-                setTotal(response.data.total || 0);
+                setMessages(response.messages || []);
+                setTotalPages(response.pagination?.pages || 1);
+                setTotal(response.pagination?.total || 0);
             }
         } catch (error) {
-            console.error('خطأ في جلب الرسائل المُبلّغة:', error);
+            console.error('خطأ في جلب الرسائل:', error);
             showToast('فشل في جلب البيانات', 'error');
         } finally {
             setLoading(false);
         }
+    }, [page, statusFilter, severityFilter, chatTypeFilter, showToast]);
+
+    useEffect(() => {
+        fetchStats();
+    }, [fetchStats]);
+
+    useEffect(() => {
+        fetchMessages();
+    }, [fetchMessages]);
+
+    const handleReview = async (messageId, status, action = 'none') => {
+        try {
+            setReviewingId(messageId);
+            const response = await reviewMessage(messageId, { status, action });
+            if (response.success) {
+                showToast(
+                    status === 'reviewed' ? 'تمت المراجعة بنجاح' : 'تم تجاهل الرسالة',
+                    'success'
+                );
+                fetchMessages();
+                fetchStats();
+            }
+        } catch (error) {
+            showToast('فشل في تحديث المراجعة', 'error');
+        } finally {
+            setReviewingId(null);
+        }
+    };
+
+    const handleDelete = async (messageId) => {
+        if (!window.confirm('هل تريد حذف هذه الرسالة نهائياً؟')) return;
+        try {
+            setReviewingId(messageId);
+            const response = await reviewMessage(messageId, { status: 'reviewed', action: 'delete' });
+            if (response.success) {
+                showToast('تم حذف الرسالة', 'success');
+                fetchMessages();
+                fetchStats();
+            }
+        } catch (error) {
+            showToast('فشل في حذف الرسالة', 'error');
+        } finally {
+            setReviewingId(null);
+        }
     };
 
     if (loading && page === 1) {
-        return <LoadingSpinner text="جاري تحميل الرسائل المُبلّغة..." />;
+        return <LoadingSpinner text="جاري تحميل الرسائل للمراجعة..." />;
     }
 
     const columns = [
@@ -63,10 +117,7 @@ function FlaggedMessages() {
                         onError={(e) => { e.target.onerror = null; e.target.src = getDefaultAvatar(msg.sender?.name); }}
                     />
                     <div>
-                        <span className="fm-name">
-                            {msg.sender?.name || 'محذوف'}
-                            {msg.sender?.isPremium && <span className="premium-badge">👑</span>}
-                        </span>
+                        <span className="fm-name">{msg.sender?.name || 'محذوف'}</span>
                         <small className="fm-email">{msg.sender?.email || ''}</small>
                     </div>
                 </div>
@@ -76,8 +127,8 @@ function FlaggedMessages() {
             key: 'content',
             label: 'محتوى الرسالة',
             render: (msg) => (
-                <div className="fm-content-text">
-                    {msg.content?.substring(0, 80)}{msg.content?.length > 80 ? '...' : ''}
+                <div className="fm-content-text" title={msg.content}>
+                    {msg.content?.substring(0, 100)}{msg.content?.length > 100 ? '...' : ''}
                 </div>
             )
         },
@@ -100,12 +151,57 @@ function FlaggedMessages() {
         {
             key: 'chatType',
             label: 'النوع',
-            render: (msg) => getChatTypeBadge(msg.chatType)
+            render: (msg) => (
+                <div>
+                    {getChatTypeBadge(msg.chatType)}
+                    {msg.room && <small className="fm-room-name">{msg.room.name}</small>}
+                </div>
+            )
         },
         {
             key: 'date',
             label: 'التاريخ',
             render: (msg) => <span className="fm-date">{formatDateTime(msg.createdAt)}</span>
+        },
+        {
+            key: 'actions',
+            label: 'إجراءات',
+            render: (msg) => (
+                <div className="fm-actions">
+                    {msg.reviewStatus === 'pending' ? (
+                        <>
+                            <button
+                                className="btn-review btn-approve"
+                                onClick={() => handleReview(msg._id, 'reviewed')}
+                                disabled={reviewingId === msg._id}
+                                title="تمت المراجعة"
+                            >
+                                ✅
+                            </button>
+                            <button
+                                className="btn-review btn-dismiss"
+                                onClick={() => handleReview(msg._id, 'dismissed')}
+                                disabled={reviewingId === msg._id}
+                                title="تجاهل"
+                            >
+                                ❌
+                            </button>
+                            <button
+                                className="btn-review btn-delete"
+                                onClick={() => handleDelete(msg._id)}
+                                disabled={reviewingId === msg._id}
+                                title="حذف الرسالة"
+                            >
+                                🗑️
+                            </button>
+                        </>
+                    ) : (
+                        <span className={`review-status ${msg.reviewStatus}`}>
+                            {msg.reviewStatus === 'reviewed' ? '✅ تمت المراجعة' : '⏭️ تم التجاهل'}
+                        </span>
+                    )}
+                </div>
+            )
         }
     ];
 
@@ -113,14 +209,23 @@ function FlaggedMessages() {
         <div className="flagged-messages-page">
             {/* بطاقات الإحصائيات */}
             <div className="stats-grid">
+                <StatCard icon="⏳" value={stats.pending} label="بانتظار المراجعة" color="orange" />
+                <StatCard icon="✅" value={stats.reviewed} label="تمت مراجعتها" color="green" />
+                <StatCard icon="⏭️" value={stats.dismissed} label="تم تجاهلها" color="gray" />
                 <StatCard icon="⚠️" value={stats.total} label="إجمالي المُبلّغة" color="purple" />
-                <StatCard icon="🔴" value={stats.high} label="خطورة عالية" color="red" className="high" />
-                <StatCard icon="🟠" value={stats.medium} label="خطورة متوسطة" color="orange" className="medium" />
-                <StatCard icon="🔵" value={stats.low} label="خطورة منخفضة" color="blue" className="low" />
             </div>
 
             {/* الفلاتر */}
             <div className="fm-filters">
+                <div className="filter-group">
+                    <label>الحالة:</label>
+                    <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>
+                        <option value="pending">بانتظار المراجعة</option>
+                        <option value="reviewed">تمت المراجعة</option>
+                        <option value="dismissed">تم التجاهل</option>
+                        <option value="all">الكل</option>
+                    </select>
+                </div>
                 <div className="filter-group">
                     <label>الخطورة:</label>
                     <select value={severityFilter} onChange={(e) => { setSeverityFilter(e.target.value); setPage(1); }}>
@@ -145,9 +250,9 @@ function FlaggedMessages() {
                 columns={columns}
                 data={messages}
                 loading={loading && page > 1}
-                headerTitle={`الرسائل المُبلّغة (${total})`}
+                headerTitle={`رسائل للمراجعة (${total})`}
                 emptyIcon="✅"
-                emptyMessage="لا توجد رسائل مُبلّغة"
+                emptyMessage="لا توجد رسائل للمراجعة"
                 rowClassName={(msg) => msg.bannedWordSeverity === 'high' ? 'fm-row-high' : ''}
             >
                 {totalPages > 1 && (

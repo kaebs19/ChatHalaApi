@@ -554,7 +554,18 @@ export const getFlaggedMessages = async (params = {}) => {
     if (params.limit) queryParams.append('limit', params.limit);
     if (params.severity) queryParams.append('severity', params.severity);
     if (params.chatType) queryParams.append('chatType', params.chatType);
-    const response = await api.get(`/stats/flagged-messages?${queryParams}`);
+    if (params.status) queryParams.append('status', params.status);
+    const response = await api.get(`/messages/flagged?${queryParams}`);
+    return response.data;
+};
+
+export const getFlaggedMessagesStats = async () => {
+    const response = await api.get('/messages/flagged/stats');
+    return response.data;
+};
+
+export const reviewMessage = async (messageId, data) => {
+    const response = await api.put(`/messages/${messageId}/review`, data);
     return response.data;
 };
 

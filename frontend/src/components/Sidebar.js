@@ -48,8 +48,14 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick }) {
         },
         {
             id: 'banned-words',
-            name: 'الكلمات المحظورة',
+            name: 'كلمات محظورة',
             icon: '🚫',
+            adminOnly: true
+        },
+        {
+            id: 'flagged-messages',
+            name: 'رسائل للمراجعة',
+            icon: '⚠️',
             adminOnly: true
         },
         {
