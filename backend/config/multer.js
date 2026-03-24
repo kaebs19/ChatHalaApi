@@ -4,6 +4,7 @@
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 // التأكد من وجود مجلد الرفع
 const uploadDir = path.join(__dirname, '..', 'uploads', 'profile-images');
@@ -17,8 +18,8 @@ const storage = multer.diskStorage({
         cb(null, uploadDir);
     },
     filename: function (req, file, cb) {
-        // إنشاء اسم فريد للملف
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        // إنشاء اسم فريد وآمن للملف
+        const uniqueSuffix = Date.now() + '-' + crypto.randomBytes(8).toString('hex');
         const ext = path.extname(file.originalname);
         cb(null, 'profile-' + uniqueSuffix + ext);
     }

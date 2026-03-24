@@ -3,6 +3,7 @@
 
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 
 const userSchema = new mongoose.Schema({
     name: {
@@ -239,11 +240,10 @@ userSchema.methods.toJSON = function() {
 
 // دالة لتوليد رمز إعادة تعيين كلمة المرور
 userSchema.methods.generateResetToken = function() {
-    // توليد رمز عشوائي مكون من 6 أرقام
-    const resetToken = Math.floor(100000 + Math.random() * 900000).toString();
+    // توليد رمز عشوائي آمن مكون من 6 أرقام باستخدام crypto
+    const resetToken = crypto.randomInt(100000, 999999).toString();
 
     // حفظ الرمز مشفر في قاعدة البيانات
-    const crypto = require('crypto');
     this.resetPasswordToken = crypto
         .createHash('sha256')
         .update(resetToken)
@@ -259,7 +259,7 @@ userSchema.methods.generateResetToken = function() {
 userSchema.index({ name: 'text' });
 userSchema.index({ gender: 1, country: 1 });
 userSchema.index({ isOnline: -1, lastLogin: -1 });
-userSchema.index({ email: 1 }, { unique: true });
+// email index already defined as unique in schema
 userSchema.index({ location: '2dsphere' });
 userSchema.index({ isPremium: 1 });
 userSchema.index({ 'verification.status': 1 });

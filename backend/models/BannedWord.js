@@ -41,7 +41,7 @@ const bannedWordSchema = new mongoose.Schema({
 });
 
 // Index للبحث السريع
-bannedWordSchema.index({ word: 1 });
+// word index already defined as unique in schema
 bannedWordSchema.index({ type: 1, isActive: 1 });
 
 // دالة للتحقق من النص

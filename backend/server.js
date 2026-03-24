@@ -13,6 +13,8 @@ const mongoSanitize = require('express-mongo-sanitize');
 const hpp = require('hpp');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
+const validateEnv = require('./config/validateEnv');
+validateEnv(); // التحقق من متغيرات البيئة قبل بدء التشغيل
 const connectDB = require('./config/database');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 const User = require('./models/User');
@@ -106,9 +108,20 @@ app.use(compression({
     }
 }));
 
-// 3. CORS - السماح بالطلبات من Frontend فقط
+// 3. CORS - السماح بالطلبات من Frontend و Mobile
+const allowedOrigins = [
+    process.env.FRONTEND_URL || 'http://localhost:3000',
+    ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : [])
+];
 app.use(cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: function (origin, callback) {
+        // السماح بالطلبات بدون origin (مثل تطبيقات الموبايل و Postman)
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('غير مسموح بواسطة CORS'));
+        }
+    },
     credentials: true
 }));
 
@@ -138,6 +151,8 @@ const authLimiter = rateLimit({
     legacyHeaders: false,
 });
 app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/forgot-password', authLimiter);
+app.use('/api/auth/reset-password', authLimiter);
 
 // 5. Body parser
 app.use(express.json({ limit: '10mb' })); // تحديد حجم الطلبات
@@ -157,35 +172,50 @@ app.get('/', (req, res) => {
     res.json({
         message: 'مرحباً بك في HalaChat Dashboard API',
         status: 'working',
-        version: '2.0'
+        version: '2.1',
+        apiVersions: ['v1'],
+        docs: '/api/v1/'
     });
 });
 
 // Route للتحقق من حالة API
 app.get('/api/health', (req, res) => {
-    res.json({ 
-        status: 'success',
-        message: 'السيرفر يعمل بنجاح ✅',
-        database: 'connected'
+    const mongoose = require('mongoose');
+    const dbState = mongoose.connection.readyState;
+    const dbStatus = { 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' };
+
+    res.status(dbState === 1 ? 200 : 503).json({
+        status: dbState === 1 ? 'success' : 'error',
+        message: dbState === 1 ? 'السيرفر يعمل بنجاح' : 'مشكلة في الاتصال',
+        database: dbStatus[dbState] || 'unknown',
+        uptime: Math.floor(process.uptime()) + 's'
     });
 });
 
-// Routes
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/users', require('./routes/users'));
-app.use('/api/stats', require('./routes/stats'));
-app.use('/api/conversations', require('./routes/conversations'));
-app.use('/api/reports', require('./routes/reports'));
-app.use('/api/messages', require('./routes/messages'));
-app.use('/api/settings', require('./routes/settings'));
-app.use('/api/notifications', require('./routes/notifications'));
-app.use('/api/chat-rooms', require('./routes/chatRooms'));
-app.use('/api/activity-logs', require('./routes/activityLogs'));
-app.use('/api/banned-words', require('./routes/bannedWords'));
-app.use('/api/mobile', require('./routes/mobile'));
-app.use('/api/privacy', require('./routes/privacy'));
-app.use('/api/categories', require('./routes/categories'));
-app.use('/api/verifications', require('./routes/verifications'));
+// Routes - v1 مع توافق عكسي
+const apiRoutes = {
+    auth: require('./routes/auth'),
+    users: require('./routes/users'),
+    stats: require('./routes/stats'),
+    conversations: require('./routes/conversations'),
+    reports: require('./routes/reports'),
+    messages: require('./routes/messages'),
+    settings: require('./routes/settings'),
+    notifications: require('./routes/notifications'),
+    'chat-rooms': require('./routes/chatRooms'),
+    'activity-logs': require('./routes/activityLogs'),
+    'banned-words': require('./routes/bannedWords'),
+    mobile: require('./routes/mobile'),
+    privacy: require('./routes/privacy'),
+    categories: require('./routes/categories'),
+    verifications: require('./routes/verifications')
+};
+
+// تسجيل المسارات مع دعم /api/v1/ و /api/ (للتوافق العكسي)
+Object.entries(apiRoutes).forEach(([path, router]) => {
+    app.use(`/api/v1/${path}`, router); // المسار الجديد
+    app.use(`/api/${path}`, router);     // التوافق العكسي
+});
 
 // Error Handlers - يجب أن تكون في النهاية
 app.use(notFound); // 404 Handler
@@ -481,6 +511,17 @@ io.on('connection', async (socket) => {
             userName: socket.user.name
         });
     });
+});
+
+// معالجة الأخطاء غير المعالجة
+process.on('uncaughtException', (err) => {
+    console.error('❌ Uncaught Exception:', err.message);
+    console.error(err.stack);
+    process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ Unhandled Rejection:', reason);
 });
 
 // تشغيل السيرفر

@@ -59,7 +59,7 @@ router.get('/conversation/:conversationId', protect, adminOnly, async (req, res)
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب الرسائل',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
         });
     }
 });
@@ -89,7 +89,7 @@ router.get('/:id', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب الرسالة',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
         });
     }
 });
@@ -120,7 +120,7 @@ router.delete('/:id', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في حذف الرسالة',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
         });
     }
 });
@@ -150,7 +150,7 @@ router.delete('/:id/permanent', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في حذف الرسالة',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
         });
     }
 });
@@ -202,7 +202,7 @@ router.post('/send', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في إرسال الرسالة',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
         });
     }
 });
@@ -233,7 +233,7 @@ router.get('/stats/:conversationId', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب الإحصائيات',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
         });
     }
 });

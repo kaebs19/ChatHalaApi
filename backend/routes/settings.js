@@ -67,7 +67,7 @@ router.get('/', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب الإعدادات',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
         });
     }
 });
@@ -126,7 +126,7 @@ router.put('/', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في تحديث الإعدادات',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
         });
     }
 });
@@ -148,7 +148,7 @@ router.get('/privacy-policy', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب سياسة الخصوصية',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
         });
     }
 });
@@ -170,7 +170,7 @@ router.get('/terms', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب شروط الاستخدام',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
         });
     }
 });
@@ -194,7 +194,7 @@ router.get('/about', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب معلومات التطبيق',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
         });
     }
 });
@@ -220,7 +220,7 @@ router.get('/contact-us', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب معلومات الاتصال',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
         });
     }
 });
@@ -279,7 +279,7 @@ router.put('/content/:type', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في تحديث المحتوى',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
         });
     }
 });

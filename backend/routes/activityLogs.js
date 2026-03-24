@@ -95,7 +95,7 @@ router.get('/', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب سجلات النشاطات',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
         });
     }
 });
@@ -130,7 +130,7 @@ router.get('/user/:userId', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب سجلات المستخدم',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
         });
     }
 });
@@ -233,7 +233,7 @@ router.get('/stats/overview', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب إحصائيات السجلات',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
         });
     }
 });
@@ -263,7 +263,7 @@ router.get('/:id', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب السجل',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
         });
     }
 });
@@ -293,7 +293,7 @@ router.delete('/:id', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في حذف السجل',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
         });
     }
 });
@@ -322,7 +322,7 @@ router.delete('/bulk/delete', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في الحذف الجماعي',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
         });
     }
 });

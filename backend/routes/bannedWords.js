@@ -40,7 +40,7 @@ router.get('/', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
         });
     }
 });
@@ -85,7 +85,7 @@ router.get('/stats', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
         });
     }
 });
@@ -131,7 +131,7 @@ router.post('/', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
         });
     }
 });
@@ -191,7 +191,7 @@ router.post('/bulk', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
         });
     }
 });
@@ -221,7 +221,7 @@ router.post('/check', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
         });
     }
 });
@@ -252,7 +252,7 @@ router.put('/:id/toggle', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
         });
     }
 });
@@ -290,7 +290,7 @@ router.put('/:id', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
         });
     }
 });
@@ -319,7 +319,7 @@ router.delete('/:id', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
         });
     }
 });

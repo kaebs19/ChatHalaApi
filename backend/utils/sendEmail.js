@@ -27,7 +27,7 @@ const createTransporter = () => {
             pass: process.env.EMAIL_PASSWORD // يجب أن يكون App Password
         },
         tls: {
-            rejectUnauthorized: false
+            rejectUnauthorized: process.env.NODE_ENV === 'production'
         }
     });
 };

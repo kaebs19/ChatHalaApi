@@ -9,6 +9,7 @@ const fs = require('fs');
 const User = require('../models/User');
 const ActivityLog = require('../models/ActivityLog');
 const generateToken = require('../utils/generateToken');
+const { generateRefreshToken, verifyRefreshToken } = require('../utils/generateToken');
 const sendEmail = require('../utils/sendEmail');
 const { protect } = require('../middleware/auth');
 const { validate } = require('../middleware/validation');
@@ -89,7 +90,8 @@ router.post('/register', registerValidation, validate, async (req, res) => {
                     role: user.role,
                     profileImage: user.profileImage || null
                 },
-                token: generateToken(user._id)
+                token: generateToken(user._id),
+                refreshToken: generateRefreshToken(user._id)
             }
         });
 
@@ -97,8 +99,7 @@ router.post('/register', registerValidation, validate, async (req, res) => {
         console.error('خطأ في التسجيل:', error);
         res.status(500).json({
             success: false,
-            message: 'خطأ في السيرفر',
-            error: error.message
+            message: 'خطأ في السيرفر'
         });
     }
 });
@@ -181,7 +182,8 @@ router.post('/login', loginValidation, validate, async (req, res) => {
                     profileImage: user.profileImage,
                     lastLogin: user.lastLogin
                 },
-                token: generateToken(user._id)
+                token: generateToken(user._id),
+                refreshToken: generateRefreshToken(user._id)
             }
         });
 
@@ -190,7 +192,7 @@ router.post('/login', loginValidation, validate, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 });
@@ -295,7 +297,7 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 });
@@ -348,7 +350,7 @@ router.put('/change-password', protect, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 });
@@ -416,7 +418,7 @@ router.post('/forgot-password', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في إرسال البريد الإلكتروني',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 });
@@ -498,7 +500,7 @@ router.post('/reset-password', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 });
@@ -585,15 +587,7 @@ router.put('/upload-profile-image', protect, upload.single('profileImage'), opti
 // @access  Private
 router.delete('/delete-account', protect, async (req, res) => {
     try {
-        const { password } = req.body;
-
-        // التحقق من كلمة المرور
-        if (!password) {
-            return res.status(400).json({
-                success: false,
-                message: 'كلمة المرور مطلوبة لتأكيد حذف الحساب'
-            });
-        }
+        const { password, confirmDelete } = req.body;
 
         const user = await User.findById(req.user.id).select('+password');
 
@@ -604,13 +598,30 @@ router.delete('/delete-account', protect, async (req, res) => {
             });
         }
 
-        // التحقق من كلمة المرور
-        const isMatch = await user.comparePassword(password);
-        if (!isMatch) {
-            return res.status(401).json({
-                success: false,
-                message: 'كلمة المرور غير صحيحة'
-            });
+        // التحقق حسب نوع التسجيل
+        if (user.authProvider === 'app') {
+            // مستخدم عادي: يحتاج كلمة مرور
+            if (!password) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'كلمة المرور مطلوبة لتأكيد حذف الحساب'
+                });
+            }
+            const isMatch = await user.comparePassword(password);
+            if (!isMatch) {
+                return res.status(401).json({
+                    success: false,
+                    message: 'كلمة المرور غير صحيحة'
+                });
+            }
+        } else {
+            // مستخدم Google/Apple: يحتاج تأكيد صريح
+            if (confirmDelete !== true) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'يجب تأكيد حذف الحساب عبر إرسال confirmDelete: true'
+                });
+            }
         }
 
         // حذف صورة الملف الشخصي إذا كانت موجودة
@@ -652,7 +663,7 @@ router.delete('/delete-account', protect, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 });
@@ -761,6 +772,7 @@ router.post('/google', async (req, res) => {
                     lastLogin: user.lastLogin
                 },
                 token: generateToken(user._id),
+                refreshToken: generateRefreshToken(user._id),
                 isNewUser
             }
         });
@@ -770,7 +782,7 @@ router.post('/google', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 });
@@ -883,6 +895,7 @@ router.post('/apple', async (req, res) => {
                     lastLogin: user.lastLogin
                 },
                 token: generateToken(user._id),
+                refreshToken: generateRefreshToken(user._id),
                 isNewUser
             }
         });
@@ -892,7 +905,7 @@ router.post('/apple', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 });
@@ -934,7 +947,67 @@ router.put('/device-token', protect, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
+        });
+    }
+});
+
+// @route   POST /api/auth/refresh-token
+// @desc    تجديد Access Token باستخدام Refresh Token
+// @access  Public
+router.post('/refresh-token', async (req, res) => {
+    try {
+        const { refreshToken } = req.body;
+
+        if (!refreshToken) {
+            return res.status(400).json({
+                success: false,
+                message: 'Refresh Token مطلوب'
+            });
+        }
+
+        // التحقق من Refresh Token
+        let decoded;
+        try {
+            decoded = verifyRefreshToken(refreshToken);
+        } catch (err) {
+            return res.status(401).json({
+                success: false,
+                message: 'Refresh Token غير صالح أو منتهي الصلاحية'
+            });
+        }
+
+        if (decoded.type !== 'refresh') {
+            return res.status(401).json({
+                success: false,
+                message: 'نوع التوكن غير صحيح'
+            });
+        }
+
+        // التحقق من المستخدم
+        const user = await User.findById(decoded.id);
+        if (!user || !user.isActive) {
+            return res.status(401).json({
+                success: false,
+                message: 'المستخدم غير موجود أو غير مفعل'
+            });
+        }
+
+        // توليد توكنات جديدة
+        res.status(200).json({
+            success: true,
+            message: 'تم تجديد التوكن بنجاح',
+            data: {
+                token: generateToken(user._id),
+                refreshToken: generateRefreshToken(user._id)
+            }
+        });
+
+    } catch (error) {
+        console.error('خطأ في تجديد التوكن:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر'
         });
     }
 });
