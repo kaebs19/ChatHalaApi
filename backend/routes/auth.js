@@ -120,7 +120,7 @@ router.post('/login', loginValidation, validate, async (req, res) => {
         }
 
         // البحث عن المستخدم (مع كلمة المرور)
-        const user = await User.findOne({ email }).select('+password loginAttempts lockUntil');
+        const user = await User.findOne({ email }).select('+password +loginAttempts +lockUntil');
 
         if (!user) {
             return res.status(401).json({
