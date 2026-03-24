@@ -3,6 +3,7 @@
 
 const express = require('express');
 const router = express.Router();
+const logger = require('../../utils/logger');
 const User = require('../../models/User');
 const Conversation = require('../../models/Conversation');
 const SuperLike = require('../../models/SuperLike');
@@ -132,7 +133,7 @@ router.post('/super-like', protect, async (req, res) => {
                 conversationId: conversation ? conversation._id.toString() : existingConversation._id.toString()
             });
         } catch (notifError) {
-            console.error('خطأ في إرسال إشعار Super Like:', notifError);
+            logger.error('خطأ في إرسال إشعار Super Like:', notifError);
         }
 
         res.json({
@@ -145,7 +146,7 @@ router.post('/super-like', protect, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في Super Like:', error);
+        logger.error('خطأ في Super Like:', error);
         res.status(500).json({ success: false, message: 'فشل في إرسال Super Like' });
     }
 });
@@ -183,7 +184,7 @@ router.get('/super-like/remaining', protect, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في جلب بيانات Super Like:', error);
+        logger.error('خطأ في جلب بيانات Super Like:', error);
         res.status(500).json({ success: false, message: 'فشل في جلب البيانات' });
     }
 });
@@ -236,7 +237,7 @@ router.post('/subscription/verify', protect, async (req, res) => {
                         });
                     }
                 } catch (appleError) {
-                    console.error('خطأ في التحقق من Apple:', appleError);
+                    logger.error('خطأ في التحقق من Apple:', appleError);
                     return res.status(500).json({
                         success: false,
                         message: 'فشل الاتصال بخوادم Apple'
@@ -269,7 +270,7 @@ router.post('/subscription/verify', protect, async (req, res) => {
                         });
                     }
                 } catch (appleError) {
-                    console.error('خطأ في التحقق من Apple Receipt:', appleError);
+                    logger.error('خطأ في التحقق من Apple Receipt:', appleError);
                     return res.status(500).json({
                         success: false,
                         message: 'فشل الاتصال بخوادم Apple'
@@ -319,7 +320,7 @@ router.post('/subscription/verify', protect, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في التحقق من الاشتراك:', error);
+        logger.error('خطأ في التحقق من الاشتراك:', error);
         res.status(500).json({ success: false, message: 'فشل في التحقق من الاشتراك' });
     }
 });
@@ -343,7 +344,7 @@ router.get('/subscription/status', protect, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في جلب حالة الاشتراك:', error);
+        logger.error('خطأ في جلب حالة الاشتراك:', error);
         res.status(500).json({ success: false, message: 'فشل في جلب حالة الاشتراك' });
     }
 });

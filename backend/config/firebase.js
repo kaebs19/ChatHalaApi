@@ -7,14 +7,18 @@ const path = require('path');
 // تحميل ملف بيانات الاعتماد
 const serviceAccount = require('./serviceAccount.json');
 
-// تهيئة Firebase Admin
+// تهيئة Firebase Admin (مع تجنب التهيئة المكررة)
 let firebaseApp;
 
 try {
-    firebaseApp = admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-        projectId: serviceAccount.project_id
-    });
+    if (admin.apps.length) {
+        firebaseApp = admin.app();
+    } else {
+        firebaseApp = admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount),
+            projectId: serviceAccount.project_id
+        });
+    }
     console.log('✅ Firebase Admin SDK تم تهيئته بنجاح');
 } catch (error) {
     console.error('❌ خطأ في تهيئة Firebase:', error.message);

@@ -3,6 +3,7 @@
 
 const express = require('express');
 const router = express.Router();
+const logger = require('../../utils/logger');
 const User = require('../../models/User');
 const Conversation = require('../../models/Conversation');
 const { protect } = require('../../middleware/auth');
@@ -52,7 +53,7 @@ router.post('/users/block/:userId', protect, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في حظر المستخدم:', error);
+        logger.error('خطأ في حظر المستخدم:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -88,7 +89,7 @@ router.post('/users/unblock/:userId', protect, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في إلغاء حظر المستخدم:', error);
+        logger.error('خطأ في إلغاء حظر المستخدم:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -113,7 +114,7 @@ router.get('/users/blocked', protect, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في جلب المحظورين:', error);
+        logger.error('خطأ في جلب المحظورين:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',

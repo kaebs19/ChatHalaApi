@@ -13,6 +13,7 @@ const mongoSanitize = require('express-mongo-sanitize');
 const hpp = require('hpp');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
+const logger = require('./utils/logger');
 const validateEnv = require('./config/validateEnv');
 validateEnv(); // التحقق من متغيرات البيئة قبل بدء التشغيل
 const connectDB = require('./config/database');
@@ -76,10 +77,10 @@ io.use(async (socket, next) => {
         socket.userId = user._id.toString();
         socket.user = user;
 
-        console.log(`✅ مستخدم معتمد: ${user.name} (${user.email})`);
+        logger.info(`مستخدم معتمد: ${user.name} (${user.email})`);
         next();
     } catch (error) {
-        console.error('❌ خطأ في التحقق من Socket.IO:', error.message);
+        logger.error('خطأ في التحقق من Socket.IO:', error.message);
         next(new Error('Authentication error: Invalid token'));
     }
 });
@@ -128,7 +129,21 @@ const PORT = process.env.PORT || 5000;
 
 // Security Middlewares
 // 1. Helmet - حماية HTTP headers
-app.use(helmet());
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'"],
+            styleSrc: ["'self'", "'unsafe-inline'"],
+            imgSrc: ["'self'", "data:", "https:"],
+            connectSrc: ["'self'", "wss:", "ws:"],
+            fontSrc: ["'self'"],
+            objectSrc: ["'none'"],
+            frameSrc: ["'none'"],
+        }
+    },
+    crossOriginEmbedderPolicy: false // للسماح بتحميل الصور الخارجية
+}));
 
 // 2. Compression - ضغط gzip للردود
 app.use(compression({
@@ -258,7 +273,7 @@ app.use(errorHandler); // Error Handler
 
 // Socket.IO Connection Handler
 io.on('connection', async (socket) => {
-    console.log(`👤 مستخدم متصل: ${socket.user.name} (${socket.id})`);
+    logger.info(`مستخدم متصل: ${socket.user.name} (${socket.id})`);
 
     // إضافة المستخدم إلى قائمة المتصلين
     connectedUsers.set(socket.userId, {
@@ -308,14 +323,14 @@ io.on('connection', async (socket) => {
             }
 
             socket.join(`conversation-${conversationId}`);
-            console.log(`📥 ${socket.user.name} انضم للمحادثة ${conversationId}`);
+            logger.info(`${socket.user.name} انضم للمحادثة ${conversationId}`);
 
             // إرسال عدد المتصلين للجميع
             const room = io.sockets.adapter.rooms.get(`conversation-${conversationId}`);
             const onlineCount = room ? room.size : 0;
             io.to(`conversation-${conversationId}`).emit('users-online', { count: onlineCount });
         } catch (error) {
-            console.error('خطأ في join-conversation:', error);
+            logger.error('خطأ في join-conversation:', error);
             socket.emit('error', { message: 'حدث خطأ أثناء الانضمام للمحادثة' });
         }
     });
@@ -346,7 +361,7 @@ io.on('connection', async (socket) => {
             }
 
             socket.join(`room-${roomId}`);
-            console.log(`🏠 ${socket.user.name} انضم للغرفة ${roomId}`);
+            logger.info(`${socket.user.name} انضم للغرفة ${roomId}`);
 
             const room = io.sockets.adapter.rooms.get(`room-${roomId}`);
             const onlineCount = room ? room.size : 0;
@@ -365,7 +380,7 @@ io.on('connection', async (socket) => {
                 onlineCount: onlineCount
             });
         } catch (error) {
-            console.error('خطأ في join-room:', error);
+            logger.error('خطأ في join-room:', error);
             socket.emit('error', { message: 'حدث خطأ أثناء الانضمام للغرفة' });
         }
     });
@@ -373,7 +388,7 @@ io.on('connection', async (socket) => {
     // عند مغادرة محادثة
     socket.on('leave-conversation', (conversationId) => {
         socket.leave(`conversation-${conversationId}`);
-        console.log(`📤 ${socket.user.name} غادر المحادثة ${conversationId}`);
+        logger.info(`${socket.user.name} غادر المحادثة ${conversationId}`);
 
         // تحديث عدد المتصلين بعد المغادرة
         setTimeout(() => {
@@ -386,7 +401,7 @@ io.on('connection', async (socket) => {
     // عند مغادرة غرفة
     socket.on('leave-room', (roomId) => {
         socket.leave(`room-${roomId}`);
-        console.log(`🚪 ${socket.user.name} غادر الغرفة ${roomId}`);
+        logger.info(`${socket.user.name} غادر الغرفة ${roomId}`);
 
         setTimeout(() => {
             const room = io.sockets.adapter.rooms.get(`room-${roomId}`);
@@ -412,7 +427,7 @@ io.on('connection', async (socket) => {
             userName,
             isTyping: true
         });
-        console.log(`⌨️ ${userName} يكتب في المحادثة ${conversationId}`);
+        logger.debug(`${userName} يكتب في المحادثة ${conversationId}`);
     });
 
     // عند التوقف عن الكتابة
@@ -470,7 +485,7 @@ io.on('connection', async (socket) => {
                 try {
                     bannedWordResult = await BannedWord.checkText(content, 'word');
                 } catch (bwError) {
-                    console.error('خطأ في فحص الكلمات المحظورة:', bwError);
+                    logger.error('خطأ في فحص الكلمات المحظورة:', bwError);
                 }
             }
 
@@ -530,9 +545,9 @@ io.on('connection', async (socket) => {
                 createdAt: message.createdAt
             });
 
-            console.log(`💬 رسالة جديدة في الغرفة ${roomId} من ${socket.user.name}`);
+            logger.info(`رسالة جديدة في الغرفة ${roomId} من ${socket.user.name}`);
         } catch (error) {
-            console.error('خطأ في room-message:', error);
+            logger.error('خطأ في room-message:', error);
             socket.emit('error', { message: 'فشل في إرسال الرسالة' });
         }
     });
@@ -549,7 +564,7 @@ io.on('connection', async (socket) => {
 
     // عند قطع الاتصال
     socket.on('disconnect', async () => {
-        console.log(`👋 ${socket.user.name} قطع الاتصال (${socket.id})`);
+        logger.info(`${socket.user.name} قطع الاتصال (${socket.id})`);
         connectedUsers.delete(socket.userId);
 
         // تنظيف rate limits
@@ -578,19 +593,19 @@ io.on('connection', async (socket) => {
 
 // معالجة الأخطاء غير المعالجة
 process.on('uncaughtException', (err) => {
-    console.error('❌ Uncaught Exception:', err.message);
-    console.error(err.stack);
+    logger.error('Uncaught Exception:', err.message);
+    logger.error(err.stack);
     process.exit(1);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-    console.error('❌ Unhandled Rejection:', reason);
+    logger.error('Unhandled Rejection:', reason);
 });
 
 // تشغيل السيرفر
 server.listen(PORT, () => {
-    console.log(`✅ السيرفر يعمل على المنفذ ${PORT}`);
-    console.log(`🔗 http://localhost:${PORT}`);
-    console.log(`📝 البيئة: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`🔌 Socket.IO جاهز للاتصال`);
+    logger.info(`السيرفر يعمل على المنفذ ${PORT}`);
+    logger.info(`http://localhost:${PORT}`);
+    logger.info(`البيئة: ${process.env.NODE_ENV || 'development'}`);
+    logger.info(`Socket.IO جاهز للاتصال`);
 });

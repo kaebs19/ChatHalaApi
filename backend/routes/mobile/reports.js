@@ -3,6 +3,7 @@
 
 const express = require('express');
 const router = express.Router();
+const logger = require('../../utils/logger');
 const User = require('../../models/User');
 const Report = require('../../models/Report');
 const Notification = require('../../models/Notification');
@@ -135,7 +136,7 @@ router.post('/reports', protect, async (req, res) => {
                 }
             }
         } catch (notifError) {
-            console.error('خطأ في إرسال إشعار البلاغ:', notifError);
+            logger.error('خطأ في إرسال إشعار البلاغ:', notifError);
             // نكمل حتى لو فشل الإشعار
         }
 
@@ -145,7 +146,7 @@ router.post('/reports', protect, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في إنشاء البلاغ:', error);
+        logger.error('خطأ في إنشاء البلاغ:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -169,7 +170,7 @@ router.get('/reports/my', protect, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في جلب البلاغات:', error);
+        logger.error('خطأ في جلب البلاغات:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',

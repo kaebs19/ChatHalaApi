@@ -3,6 +3,7 @@
 
 const express = require('express');
 const router = express.Router();
+const logger = require('../../utils/logger');
 const User = require('../../models/User');
 const Message = require('../../models/Message');
 const ChatRoom = require('../../models/ChatRoom');
@@ -93,7 +94,7 @@ router.get('/rooms', protect, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في جلب الغرف:', error);
+        logger.error('خطأ في جلب الغرف:', error);
         res.status(500).json({
             success: false,
             message: 'فشل في جلب الغرف',
@@ -160,7 +161,7 @@ router.get('/rooms/:id/messages', protect, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في جلب رسائل الغرفة:', error);
+        logger.error('خطأ في جلب رسائل الغرفة:', error);
         res.status(500).json({
             success: false,
             message: 'فشل في جلب الرسائل',
@@ -218,7 +219,7 @@ router.get('/rooms/:id/online-members', protect, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في جلب الأعضاء المتصلين:', error);
+        logger.error('خطأ في جلب الأعضاء المتصلين:', error);
         res.status(500).json({
             success: false,
             message: 'فشل في جلب الأعضاء المتصلين',
@@ -271,7 +272,7 @@ router.post('/rooms/:id/report', protect, async (req, res) => {
             message: 'تم إرسال البلاغ بنجاح'
         });
     } catch (error) {
-        console.error('خطأ في إرسال البلاغ:', error);
+        logger.error('خطأ في إرسال البلاغ:', error);
         res.status(500).json({
             success: false,
             message: 'فشل في إرسال البلاغ',
@@ -321,7 +322,7 @@ router.put('/rooms/:id/mute', protect, async (req, res) => {
             muted
         });
     } catch (error) {
-        console.error('خطأ في تحديث حالة الكتم:', error);
+        logger.error('خطأ في تحديث حالة الكتم:', error);
         res.status(500).json({
             success: false,
             message: 'فشل في تحديث حالة الكتم',
@@ -453,7 +454,7 @@ router.post('/rooms/:id/messages', protect, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في إرسال رسالة الغرفة:', error);
+        logger.error('خطأ في إرسال رسالة الغرفة:', error);
         res.status(500).json({
             success: false,
             message: 'فشل في إرسال الرسالة',
@@ -553,7 +554,7 @@ router.post('/rooms/:id/messages/image', protect, uploadMessageImage.single('ima
             }
         });
     } catch (error) {
-        console.error('خطأ في إرسال الصورة:', error);
+        logger.error('خطأ في إرسال الصورة:', error);
         res.status(500).json({
             success: false,
             message: 'فشل في إرسال الصورة',
@@ -583,7 +584,7 @@ router.get('/categories', async (req, res) => {
             count: categories.length
         });
     } catch (error) {
-        console.error('خطأ في جلب التصنيفات:', error);
+        logger.error('خطأ في جلب التصنيفات:', error);
         res.status(500).json({
             success: false,
             message: 'فشل في جلب التصنيفات'

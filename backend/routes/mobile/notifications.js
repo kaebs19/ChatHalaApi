@@ -3,6 +3,7 @@
 
 const express = require('express');
 const router = express.Router();
+const logger = require('../../utils/logger');
 const User = require('../../models/User');
 const Notification = require('../../models/Notification');
 const { protect } = require('../../middleware/auth');
@@ -53,7 +54,7 @@ router.get('/notifications', protect, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في جلب الإشعارات:', error);
+        logger.error('خطأ في جلب الإشعارات:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -88,7 +89,7 @@ router.put('/notifications/:id/read', protect, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في تحديث الإشعار:', error);
+        logger.error('خطأ في تحديث الإشعار:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -121,7 +122,7 @@ router.put('/notifications/read-all', protect, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في تحديث الإشعارات:', error);
+        logger.error('خطأ في تحديث الإشعارات:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -169,7 +170,7 @@ router.post('/device/register-token', protect, async (req, res) => {
 
         await User.findByIdAndUpdate(req.user._id, updateData);
 
-        console.log(`📱 تم تسجيل Token للمستخدم ${req.user.name}`);
+        logger.info(`تم تسجيل Token للمستخدم ${req.user.name}`);
 
         res.status(200).json({
             success: true,
@@ -177,7 +178,7 @@ router.post('/device/register-token', protect, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في تسجيل Token:', error);
+        logger.error('خطأ في تسجيل Token:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -195,7 +196,7 @@ router.delete('/device/unregister-token', protect, async (req, res) => {
             $unset: { fcmToken: 1, deviceToken: 1 }
         });
 
-        console.log(`📴 تم إلغاء تسجيل Token للمستخدم ${req.user.name}`);
+        logger.info(`تم إلغاء تسجيل Token للمستخدم ${req.user.name}`);
 
         res.status(200).json({
             success: true,
@@ -203,7 +204,7 @@ router.delete('/device/unregister-token', protect, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في إلغاء تسجيل Token:', error);
+        logger.error('خطأ في إلغاء تسجيل Token:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -238,7 +239,7 @@ router.put('/device/update-token', protect, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في تحديث Token:', error);
+        logger.error('خطأ في تحديث Token:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',

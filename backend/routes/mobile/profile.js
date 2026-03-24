@@ -3,6 +3,7 @@
 
 const express = require('express');
 const router = express.Router();
+const logger = require('../../utils/logger');
 const User = require('../../models/User');
 const ProfileView = require('../../models/ProfileView');
 const { protect } = require('../../middleware/auth');
@@ -71,7 +72,7 @@ router.post('/profile-views', protect, async (req, res) => {
 
         res.json({ success: true, message: 'تم تسجيل الزيارة' });
     } catch (error) {
-        console.error('خطأ في تسجيل زيارة البروفايل:', error);
+        logger.error('خطأ في تسجيل زيارة البروفايل:', error);
         res.status(500).json({ success: false, message: 'فشل في تسجيل الزيارة' });
     }
 });
@@ -146,7 +147,7 @@ router.get('/profile-views', protect, async (req, res) => {
             });
         }
     } catch (error) {
-        console.error('خطأ في جلب زيارات البروفايل:', error);
+        logger.error('خطأ في جلب زيارات البروفايل:', error);
         res.status(500).json({ success: false, message: 'فشل في جلب الزيارات' });
     }
 });
@@ -183,7 +184,7 @@ router.post('/verification/submit', protect, requirePremium, uploadVerificationS
             data: { status: 'pending' }
         });
     } catch (error) {
-        console.error('خطأ في طلب التوثيق:', error);
+        logger.error('خطأ في طلب التوثيق:', error);
         res.status(500).json({ success: false, message: 'فشل في إرسال طلب التوثيق' });
     }
 });
@@ -204,7 +205,7 @@ router.get('/verification/status', protect, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في جلب حالة التوثيق:', error);
+        logger.error('خطأ في جلب حالة التوثيق:', error);
         res.status(500).json({ success: false, message: 'فشل في جلب حالة التوثيق' });
     }
 });
@@ -232,7 +233,7 @@ router.put('/users/stealth-mode', protect, requirePremium, async (req, res) => {
             data: { stealthMode: enabled }
         });
     } catch (error) {
-        console.error('خطأ في تغيير وضع التخفي:', error);
+        logger.error('خطأ في تغيير وضع التخفي:', error);
         res.status(500).json({ success: false, message: 'فشل في تغيير وضع التخفي' });
     }
 });
@@ -264,7 +265,7 @@ router.get('/privacy/settings', protect, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في جلب إعدادات الخصوصية:', error);
+        logger.error('خطأ في جلب إعدادات الخصوصية:', error);
         res.status(500).json({ success: false, message: 'حدث خطأ في الخادم' });
     }
 });
@@ -287,7 +288,7 @@ router.patch('/privacy/distance', protect, async (req, res) => {
             message: showDistance ? 'تم إظهار المسافة' : 'تم إخفاء المسافة'
         });
     } catch (error) {
-        console.error('خطأ في تغيير إعداد المسافة:', error);
+        logger.error('خطأ في تغيير إعداد المسافة:', error);
         res.status(500).json({ success: false, message: 'فشل في تغيير الإعداد' });
     }
 });
@@ -310,7 +311,7 @@ router.patch('/privacy/stealth', protect, requirePremium, async (req, res) => {
             message: stealthMode ? 'تم تفعيل وضع التخفي' : 'تم تعطيل وضع التخفي'
         });
     } catch (error) {
-        console.error('خطأ في تغيير وضع التخفي:', error);
+        logger.error('خطأ في تغيير وضع التخفي:', error);
         res.status(500).json({ success: false, message: 'فشل في تغيير وضع التخفي' });
     }
 });

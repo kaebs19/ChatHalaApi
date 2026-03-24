@@ -120,7 +120,7 @@ router.post('/login', loginValidation, validate, async (req, res) => {
         }
 
         // البحث عن المستخدم (مع كلمة المرور)
-        const user = await User.findOne({ email }).select('+password');
+        const user = await User.findOne({ email }).select('+password loginAttempts lockUntil');
 
         if (!user) {
             return res.status(401).json({
@@ -129,10 +129,21 @@ router.post('/login', loginValidation, validate, async (req, res) => {
             });
         }
 
+        // التحقق من قفل الحساب
+        if (user.isLocked) {
+            const remainingMs = user.lockUntil - Date.now();
+            const remainingMin = Math.ceil(remainingMs / 60000);
+            return res.status(423).json({
+                success: false,
+                message: `الحساب مقفل مؤقتاً. حاول بعد ${remainingMin} دقيقة`
+            });
+        }
+
         // التحقق من كلمة المرور
         const isPasswordMatch = await user.comparePassword(password);
 
         if (!isPasswordMatch) {
+            await user.incrementLoginAttempts();
             return res.status(401).json({
                 success: false,
                 message: 'البريد الإلكتروني أو كلمة المرور خاطئة'
@@ -145,6 +156,11 @@ router.post('/login', loginValidation, validate, async (req, res) => {
                 success: false,
                 message: 'الحساب غير مفعل، تواصل مع الإدارة'
             });
+        }
+
+        // إعادة تعيين محاولات تسجيل الدخول
+        if (user.loginAttempts > 0) {
+            await user.resetLoginAttempts();
         }
 
         // تحديث آخر تسجيل دخول

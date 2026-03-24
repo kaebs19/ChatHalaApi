@@ -198,7 +198,11 @@ const userSchema = new mongoose.Schema({
     superLikes: {
         daily: { type: Number, default: 0 },
         lastReset: { type: Date, default: Date.now }
-    }
+    },
+
+    // حماية من هجمات القوة الغاشمة
+    loginAttempts: { type: Number, default: 0 },
+    lockUntil: { type: Date, default: null },
 }, {
     timestamps: true // يضيف createdAt و updatedAt تلقائياً
 });
@@ -253,6 +257,39 @@ userSchema.methods.generateResetToken = function() {
     this.resetPasswordExpire = Date.now() + 10 * 60 * 1000;
 
     return resetToken;
+};
+
+// التحقق من قفل الحساب
+userSchema.virtual('isLocked').get(function() {
+    return !!(this.lockUntil && this.lockUntil > Date.now());
+});
+
+// زيادة عدد محاولات تسجيل الدخول الفاشلة
+userSchema.methods.incrementLoginAttempts = async function() {
+    // إذا انتهت فترة القفل، أعد تعيين المحاولات
+    if (this.lockUntil && this.lockUntil < Date.now()) {
+        return this.updateOne({
+            $set: { loginAttempts: 1 },
+            $unset: { lockUntil: 1 }
+        });
+    }
+
+    const updates = { $inc: { loginAttempts: 1 } };
+
+    // قفل الحساب بعد 5 محاولات فاشلة
+    if (this.loginAttempts + 1 >= 5) {
+        updates.$set = { lockUntil: Date.now() + 15 * 60 * 1000 }; // 15 دقيقة
+    }
+
+    return this.updateOne(updates);
+};
+
+// إعادة تعيين محاولات تسجيل الدخول بعد نجاح
+userSchema.methods.resetLoginAttempts = function() {
+    return this.updateOne({
+        $set: { loginAttempts: 0 },
+        $unset: { lockUntil: 1 }
+    });
 };
 
 // Indexes للبحث السريع

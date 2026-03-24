@@ -3,6 +3,7 @@
 
 const express = require('express');
 const router = express.Router();
+const logger = require('../../utils/logger');
 const fs = require('fs');
 const Message = require('../../models/Message');
 const Conversation = require('../../models/Conversation');
@@ -119,15 +120,15 @@ router.post('/messages/send', protect, async (req, res) => {
             .populate('sender', 'name email profileImage isPremium verification.isVerified');
 
         // إرسال عبر Socket.IO
-        console.log('🔥 About to emit new-message to room:', `conversation-${conversationId}`);
-        console.log('🔥 global.io exists:', !!global.io);
+        logger.debug('About to emit new-message to room:', `conversation-${conversationId}`);
+        logger.debug('global.io exists:', !!global.io);
         if (global.io) {
             global.io.to(`conversation-${conversationId}`).emit('new-message', {
                 message: populatedMessage
             });
-            console.log('🔥 Emitted!');
+            logger.debug('Emitted!');
         } else {
-            console.log('❌ global.io is undefined!');
+            logger.error('global.io is undefined!');
         }
 
         // إرسال إشعارات للمستقبلين الـ offline فقط عبر FCM
@@ -135,7 +136,7 @@ router.post('/messages/send', protect, async (req, res) => {
             p => p._id.toString() !== req.user._id.toString()
         );
 
-        console.log('📲 عدد المستقبلين:', recipients.length);
+        logger.debug('عدد المستقبلين:', recipients.length);
 
         for (const recipient of recipients) {
             const recipientId = recipient._id.toString();
@@ -144,9 +145,9 @@ router.post('/messages/send', protect, async (req, res) => {
             const isOnline = global.connectedUsers && global.connectedUsers.has(recipientId);
 
             if (isOnline) {
-                console.log(`📲 ${recipient.name} متصل بالسوكت - لا حاجة لـ Push`);
+                logger.debug(`${recipient.name} متصل بالسوكت - لا حاجة لـ Push`);
             } else {
-                console.log(`📲 ${recipient.name} غير متصل - إرسال Push Notification`);
+                logger.debug(`${recipient.name} غير متصل - إرسال Push Notification`);
                 // إرسال Push Notification عبر Firebase للـ offline users فقط
                 const pushResult = await pushNotificationService.sendNewMessageNotification(
                     recipient._id,
@@ -154,7 +155,7 @@ router.post('/messages/send', protect, async (req, res) => {
                     type === 'text' ? (content.length > 100 ? content.substring(0, 100) + '...' : content) : `أرسل ${type === 'image' ? 'صورة' : type === 'audio' ? 'رسالة صوتية' : type === 'video' ? 'فيديو' : 'ملف'}`,
                     conversationId
                 );
-                console.log('📲 نتيجة الإشعار:', JSON.stringify(pushResult));
+                logger.debug('نتيجة الإشعار:', JSON.stringify(pushResult));
             }
         }
 
@@ -165,7 +166,7 @@ router.post('/messages/send', protect, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في إرسال الرسالة:', error);
+        logger.error('خطأ في إرسال الرسالة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -271,7 +272,7 @@ router.post('/conversations/:conversationId/messages/image', protect, uploadMess
         });
 
     } catch (error) {
-        console.error('خطأ في إرسال الصورة:', error);
+        logger.error('خطأ في إرسال الصورة:', error);
         // حذف الصورة إذا حدث خطأ
         if (req.file && fs.existsSync(req.file.path)) {
             fs.unlinkSync(req.file.path);
@@ -371,13 +372,13 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
             .populate('sender', 'name email profileImage isPremium verification.isVerified');
 
         // إرسال عبر Socket.IO
-        console.log('🔥 About to emit new-message to room:', `conversation-${conversationId}`);
-        console.log('🔥 global.io exists:', !!global.io);
+        logger.debug('About to emit new-message to room:', `conversation-${conversationId}`);
+        logger.debug('global.io exists:', !!global.io);
         if (global.io) {
             global.io.to(`conversation-${conversationId}`).emit('new-message', {
                 message: populatedMessage
             });
-            console.log('🔥 Emitted!');
+            logger.debug('Emitted!');
         }
 
         // إرسال إشعارات للمستقبلين الـ offline فقط عبر FCM
@@ -385,23 +386,23 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
             p => p._id.toString() !== req.user._id.toString()
         );
 
-        console.log('📲 عدد المستقبلين:', recipients.length);
+        logger.debug('عدد المستقبلين:', recipients.length);
 
         for (const recipient of recipients) {
             const recipientId = recipient._id.toString();
             const isOnline = global.connectedUsers && global.connectedUsers.has(recipientId);
 
             if (isOnline) {
-                console.log(`📲 ${recipient.name} متصل بالسوكت - لا حاجة لـ Push`);
+                logger.debug(`${recipient.name} متصل بالسوكت - لا حاجة لـ Push`);
             } else {
-                console.log(`📲 ${recipient.name} غير متصل - إرسال Push Notification`);
+                logger.debug(`${recipient.name} غير متصل - إرسال Push Notification`);
                 const pushResult = await pushNotificationService.sendNewMessageNotification(
                     recipient._id,
                     req.user.name,
                     type === 'text' ? (content.length > 100 ? content.substring(0, 100) + '...' : content) : `أرسل ${type === 'image' ? 'صورة' : type === 'audio' ? 'رسالة صوتية' : type === 'video' ? 'فيديو' : 'ملف'}`,
                     conversationId
                 );
-                console.log('📲 نتيجة الإشعار:', JSON.stringify(pushResult));
+                logger.debug('نتيجة الإشعار:', JSON.stringify(pushResult));
             }
         }
 
@@ -412,7 +413,7 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
         });
 
     } catch (error) {
-        console.error('خطأ في إرسال الرسالة:', error);
+        logger.error('خطأ في إرسال الرسالة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -476,7 +477,7 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في جلب الرسائل:', error);
+        logger.error('خطأ في جلب الرسائل:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',

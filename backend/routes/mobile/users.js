@@ -3,6 +3,7 @@
 
 const express = require('express');
 const router = express.Router();
+const logger = require('../../utils/logger');
 const User = require('../../models/User');
 const { protect } = require('../../middleware/auth');
 const { getFullUrl } = require('./helpers');
@@ -46,7 +47,7 @@ router.put('/users/location', protect, async (req, res) => {
 
         res.json({ success: true, message: 'تم تحديث الموقع بنجاح' });
     } catch (error) {
-        console.error('خطأ في تحديث الموقع:', error);
+        logger.error('خطأ في تحديث الموقع:', error);
         res.status(500).json({ success: false, message: 'فشل في تحديث الموقع' });
     }
 });
@@ -230,7 +231,7 @@ router.get('/users/search', protect, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في البحث عن المستخدمين:', error);
+        logger.error('خطأ في البحث عن المستخدمين:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',

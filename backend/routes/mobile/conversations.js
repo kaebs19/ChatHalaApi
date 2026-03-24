@@ -3,6 +3,7 @@
 
 const express = require('express');
 const router = express.Router();
+const logger = require('../../utils/logger');
 const User = require('../../models/User');
 const Message = require('../../models/Message');
 const Conversation = require('../../models/Conversation');
@@ -158,7 +159,7 @@ router.post('/conversations/request', protect, conversationRequestValidation, va
                 }
             );
         } catch (notifError) {
-            console.error('خطأ في إرسال إشعار طلب المحادثة:', notifError);
+            logger.error('خطأ في إرسال إشعار طلب المحادثة:', notifError);
         }
 
         res.status(201).json({
@@ -172,7 +173,7 @@ router.post('/conversations/request', protect, conversationRequestValidation, va
         });
 
     } catch (error) {
-        console.error('خطأ في طلب المحادثة:', error);
+        logger.error('خطأ في طلب المحادثة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -256,7 +257,7 @@ router.put('/conversations/:id/accept', protect, mongoIdParam, validate, async (
         });
 
     } catch (error) {
-        console.error('خطأ في قبول المحادثة:', error);
+        logger.error('خطأ في قبول المحادثة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -339,7 +340,7 @@ router.put('/conversations/:id/reject', protect, mongoIdParam, validate, async (
         });
 
     } catch (error) {
-        console.error('خطأ في رفض المحادثة:', error);
+        logger.error('خطأ في رفض المحادثة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -411,7 +412,7 @@ router.put('/conversations/:id/read', protect, mongoIdParam, validate, async (re
         });
 
     } catch (error) {
-        console.error('خطأ في تحديث حالة القراءة:', error);
+        logger.error('خطأ في تحديث حالة القراءة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -462,7 +463,7 @@ router.get('/conversations/pending', protect, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في جلب الطلبات المعلقة:', error);
+        logger.error('خطأ في جلب الطلبات المعلقة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -536,7 +537,7 @@ router.get('/conversations', protect, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في جلب المحادثات:', error);
+        logger.error('خطأ في جلب المحادثات:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -598,7 +599,7 @@ router.put('/conversations/:id/mute', protect, mongoIdParam, validate, async (re
             message: muted ? 'تم كتم المحادثة' : 'تم إلغاء كتم المحادثة'
         });
     } catch (error) {
-        console.error('خطأ في كتم المحادثة:', error);
+        logger.error('خطأ في كتم المحادثة:', error);
         res.status(500).json({
             success: false,
             message: 'فشل في تحديث حالة الكتم',
