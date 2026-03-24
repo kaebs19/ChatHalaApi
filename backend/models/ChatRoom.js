@@ -165,7 +165,6 @@ const chatRoomSchema = new mongoose.Schema({
 });
 
 // Indexes للبحث السريع
-chatRoomSchema.index({ name: 1 });
 chatRoomSchema.index({ accessType: 1, isActive: 1 });
 chatRoomSchema.index({ createdBy: 1 });
 chatRoomSchema.index({ members: 1 });
