@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const fs = require('fs');
+const fsPromises = require('fs').promises;
 const ChatRoom = require('../models/ChatRoom');
 const Message = require('../models/Message');
 const Report = require('../models/Report');
@@ -17,6 +18,11 @@ const {
     queryValidation
 } = require('../validators/chatRoom.validator');
 
+// Helper: تنظيف المدخلات من أحرف Regex الخاصة لمنع NoSQL Injection
+function escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // @route   GET /api/chat-rooms
 // @desc    الحصول على جميع غرف المحادثة
 // @access  Admin
@@ -28,8 +34,8 @@ router.get('/', protect, adminOnly, queryValidation, validate, async (req, res) 
 
         if (search) {
             query.$or = [
-                { name: { $regex: search, $options: 'i' } },
-                { description: { $regex: search, $options: 'i' } }
+                { name: { $regex: escapeRegex(search), $options: 'i' } },
+                { description: { $regex: escapeRegex(search), $options: 'i' } }
             ];
         }
 
@@ -59,7 +65,7 @@ router.get('/', protect, adminOnly, queryValidation, validate, async (req, res) 
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب غرف المحادثة',
-            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 });
@@ -86,7 +92,7 @@ router.get('/public', protect, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب الغرف العامة',
-            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 });
@@ -127,7 +133,7 @@ router.get('/:id', protect, mongoIdValidation, validate, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب الغرفة',
-            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 });
@@ -179,7 +185,7 @@ router.post('/', protect, adminOnly, createChatRoomValidation, validate, async (
         res.status(500).json({
             success: false,
             message: 'خطأ في إنشاء الغرفة',
-            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 });
@@ -223,7 +229,7 @@ router.put('/:id', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في تحديث الغرفة',
-            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 });
@@ -253,7 +259,7 @@ router.delete('/:id', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في حذف الغرفة',
-            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 });
@@ -293,7 +299,7 @@ router.delete('/:id/messages', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في حذف الرسائل',
-            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 });
@@ -325,7 +331,7 @@ router.put('/:id/toggle-active', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في تغيير حالة الغرفة',
-            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 });
@@ -357,7 +363,7 @@ router.put('/:id/toggle-lock', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في تغيير قفل الغرفة',
-            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 });
@@ -405,7 +411,7 @@ router.get('/:id/stats', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب الإحصائيات',
-            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 });
@@ -451,7 +457,7 @@ router.put('/:id/pin', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في تثبيت الإعلان',
-            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 });
@@ -472,7 +478,7 @@ router.post('/:id/upload-image', protect, adminOnly, upload.single('roomImage'),
 
         if (!room) {
             // حذف الملف المرفوع
-            fs.unlinkSync(req.file.path);
+            await fsPromises.unlink(req.file.path).catch(() => {});
             return res.status(404).json({
                 success: false,
                 message: 'الغرفة غير موجودة'
@@ -482,9 +488,7 @@ router.post('/:id/upload-image', protect, adminOnly, upload.single('roomImage'),
         // حذف الصورة القديمة إذا كانت محلية
         if (room.image && room.image.startsWith('/uploads/')) {
             const oldImagePath = path.join(__dirname, '..', room.image);
-            if (fs.existsSync(oldImagePath)) {
-                fs.unlinkSync(oldImagePath);
-            }
+            await fsPromises.unlink(oldImagePath).catch(() => {});
         }
 
         // تحديث مسار الصورة
@@ -504,7 +508,7 @@ router.post('/:id/upload-image', protect, adminOnly, upload.single('roomImage'),
     } catch (error) {
         // حذف الملف في حالة حدوث خطأ
         if (req.file) {
-            fs.unlinkSync(req.file.path);
+            await fsPromises.unlink(req.file.path).catch(() => {});
         }
 
         console.error('خطأ في رفع صورة الغرفة:', error);
@@ -537,7 +541,7 @@ router.get('/:id/messages', protect, adminOnly, async (req, res) => {
         };
 
         if (search) {
-            query.content = { $regex: search, $options: 'i' };
+            query.content = { $regex: escapeRegex(search), $options: 'i' };
         }
 
         const messages = await Message.find(query)
@@ -562,7 +566,7 @@ router.get('/:id/messages', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب الرسائل',
-            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 });
@@ -614,7 +618,7 @@ router.get('/:id/reports', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب البلاغات',
-            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 });

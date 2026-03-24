@@ -8,6 +8,8 @@ const Message = require('../../models/Message');
 const Conversation = require('../../models/Conversation');
 const SuperLike = require('../../models/SuperLike');
 const { protect } = require('../../middleware/auth');
+const { validate } = require('../../middleware/validation');
+const { conversationRequestValidation, mongoIdParam } = require('../../validators/mobile.validator');
 const pushNotificationService = require('../../services/pushNotificationService');
 
 // ==========================================
@@ -17,7 +19,7 @@ const pushNotificationService = require('../../services/pushNotificationService'
 // @route   POST /api/mobile/conversations/request
 // @desc    طلب بدء محادثة مع مستخدم
 // @access  Private
-router.post('/conversations/request', protect, async (req, res) => {
+router.post('/conversations/request', protect, conversationRequestValidation, validate, async (req, res) => {
     try {
         const { targetUserId, initialMessage, isSuperLike } = req.body;
 
@@ -182,7 +184,7 @@ router.post('/conversations/request', protect, async (req, res) => {
 // @route   PUT /api/mobile/conversations/:id/accept
 // @desc    قبول طلب محادثة
 // @access  Private
-router.put('/conversations/:id/accept', protect, async (req, res) => {
+router.put('/conversations/:id/accept', protect, mongoIdParam, validate, async (req, res) => {
     try {
         const conversation = await Conversation.findById(req.params.id)
             .populate('participants', 'name email deviceToken fcmToken');
@@ -266,7 +268,7 @@ router.put('/conversations/:id/accept', protect, async (req, res) => {
 // @route   PUT /api/mobile/conversations/:id/reject
 // @desc    رفض طلب محادثة
 // @access  Private
-router.put('/conversations/:id/reject', protect, async (req, res) => {
+router.put('/conversations/:id/reject', protect, mongoIdParam, validate, async (req, res) => {
     try {
         const conversation = await Conversation.findById(req.params.id)
             .populate('participants', 'name email deviceToken fcmToken');
@@ -349,7 +351,7 @@ router.put('/conversations/:id/reject', protect, async (req, res) => {
 // @route   PUT /api/mobile/conversations/:id/read
 // @desc    تحديث الرسائل كمقروءة في المحادثة
 // @access  Private
-router.put('/conversations/:id/read', protect, async (req, res) => {
+router.put('/conversations/:id/read', protect, mongoIdParam, validate, async (req, res) => {
     try {
         const conversationId = req.params.id;
         const userId = req.user._id;
@@ -489,17 +491,29 @@ router.get('/conversations', protect, async (req, res) => {
             .skip((page - 1) * limit)
             .lean(); // استخدام lean للتعديل على النتائج
 
-        // حساب عدد الرسائل غير المقروءة لكل محادثة
-        const conversationsWithUnread = await Promise.all(
-            conversations.map(async (conv) => {
-                const unreadCount = await Message.countDocuments({
-                    conversation: conv._id,
-                    sender: { $ne: userId }, // رسائل الآخرين فقط
-                    'readBy.user': { $ne: userId } // لم يقرأها هذا المستخدم
-                });
-                return { ...conv, unreadCount };
-            })
-        );
+        // حساب عدد الرسائل غير المقروءة لكل محادثة (aggregation واحد بدل N+1 queries)
+        const conversationIds = conversations.map(c => c._id);
+        const unreadCounts = await Message.aggregate([
+            {
+                $match: {
+                    conversation: { $in: conversationIds },
+                    sender: { $ne: userId },
+                    'readBy.user': { $ne: userId }
+                }
+            },
+            {
+                $group: {
+                    _id: '$conversation',
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        const unreadMap = new Map(unreadCounts.map(u => [u._id.toString(), u.count]));
+        const conversationsWithUnread = conversations.map(conv => ({
+            ...conv,
+            unreadCount: unreadMap.get(conv._id.toString()) || 0
+        }));
 
         const total = await Conversation.countDocuments({
             participants: userId,
@@ -534,7 +548,7 @@ router.get('/conversations', protect, async (req, res) => {
 // @route   PUT /api/mobile/conversations/:id/mute
 // @desc    كتم/إلغاء كتم إشعارات محادثة
 // @access  Private
-router.put('/conversations/:id/mute', protect, async (req, res) => {
+router.put('/conversations/:id/mute', protect, mongoIdParam, validate, async (req, res) => {
     try {
         const { id } = req.params;
         const { muted, mutedUntil } = req.body;

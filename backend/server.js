@@ -88,6 +88,41 @@ io.use(async (socket, next) => {
 global.io = io;
 global.connectedUsers = new Map();
 
+// Socket.IO Rate Limiter
+const socketRateLimits = new Map();
+function checkSocketRate(socketId, event, maxPerMinute = 30) {
+    const key = `${socketId}:${event}`;
+    const now = Date.now();
+    const windowMs = 60 * 1000;
+
+    if (!socketRateLimits.has(key)) {
+        socketRateLimits.set(key, []);
+    }
+
+    const timestamps = socketRateLimits.get(key).filter(t => now - t < windowMs);
+
+    if (timestamps.length >= maxPerMinute) {
+        return false;
+    }
+
+    timestamps.push(now);
+    socketRateLimits.set(key, timestamps);
+    return true;
+}
+
+// تنظيف rate limits كل 5 دقائق
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, timestamps] of socketRateLimits.entries()) {
+        const valid = timestamps.filter(t => now - t < 60000);
+        if (valid.length === 0) {
+            socketRateLimits.delete(key);
+        } else {
+            socketRateLimits.set(key, valid);
+        }
+    }
+}, 5 * 60 * 1000);
+
 // الإعدادات الأساسية
 const PORT = process.env.PORT || 5000;
 
@@ -371,6 +406,7 @@ io.on('connection', async (socket) => {
 
     // عند الكتابة
     socket.on('typing', ({ conversationId, userName }) => {
+        if (!checkSocketRate(socket.id, 'typing', 10)) return;
         socket.to(`conversation-${conversationId}`).emit('user-typing', {
             conversationId,
             userName,
@@ -393,8 +429,27 @@ io.on('connection', async (socket) => {
     // ==========================================
 
     // إرسال رسالة في الغرفة
-    socket.on('room-message', async ({ roomId, content, type = 'text' }) => {
+    socket.on('room-message', async (data) => {
         try {
+            const roomId = data?.roomId;
+            let content = data?.content;
+            const type = data?.type || 'text';
+
+            // Rate limiting
+            if (!checkSocketRate(socket.id, 'room-message', 20)) {
+                return socket.emit('error', { message: 'أنت ترسل رسائل بسرعة كبيرة. انتظر قليلاً' });
+            }
+
+            // Message validation
+            if (!content || typeof content !== 'string') {
+                return socket.emit('error', { message: 'محتوى الرسالة غير صالح' });
+            }
+
+            content = content.trim();
+            if (content.length === 0 || content.length > 5000) {
+                return socket.emit('error', { message: 'الرسالة يجب أن تكون بين 1 و 5000 حرف' });
+            }
+
             const ChatRoom = require('./models/ChatRoom');
             const Message = require('./models/Message');
 
@@ -484,6 +539,7 @@ io.on('connection', async (socket) => {
 
     // الكتابة في الغرفة
     socket.on('room-typing', ({ roomId, userName, isTyping }) => {
+        if (!checkSocketRate(socket.id, 'typing', 10)) return;
         socket.to(`room-${roomId}`).emit('room-user-typing', {
             roomId,
             userName,
@@ -495,6 +551,13 @@ io.on('connection', async (socket) => {
     socket.on('disconnect', async () => {
         console.log(`👋 ${socket.user.name} قطع الاتصال (${socket.id})`);
         connectedUsers.delete(socket.userId);
+
+        // تنظيف rate limits
+        for (const key of socketRateLimits.keys()) {
+            if (key.startsWith(socket.id + ':')) {
+                socketRateLimits.delete(key);
+            }
+        }
 
         // تحديث حالة المستخدم: غير متصل
         await User.findByIdAndUpdate(socket.userId, {

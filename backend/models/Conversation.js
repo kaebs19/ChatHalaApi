@@ -92,8 +92,11 @@ const conversationSchema = new mongoose.Schema({
     timestamps: true
 });
 
-// Index للبحث السريع
+// Indexes للبحث السريع
 conversationSchema.index({ participants: 1 });
+conversationSchema.index({ participants: 1, status: 1 }); // للبحث عن محادثات pending/accepted
+conversationSchema.index({ participants: 1, type: 1 }); // للبحث عن محادثات خاصة
+conversationSchema.index({ status: 1, updatedAt: -1 }); // للترتيب حسب النشاط
 conversationSchema.index({ createdAt: -1 });
 conversationSchema.index({ isActive: 1 });
 

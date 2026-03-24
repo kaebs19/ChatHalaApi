@@ -11,6 +11,11 @@ const BannedWord = require('../../models/BannedWord');
 const { protect } = require('../../middleware/auth');
 const { getFullUrl, uploadMessageImage } = require('./helpers');
 
+// Helper: تنظيف المدخلات من أحرف Regex الخاصة لمنع NoSQL Injection
+function escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // ==========================================
 // غرف المحادثة العامة (Rooms)
 // ==========================================
@@ -31,8 +36,8 @@ router.get('/rooms', protect, async (req, res) => {
         if (category) filter.category = category;
         if (search) {
             filter.$or = [
-                { name: { $regex: search, $options: 'i' } },
-                { description: { $regex: search, $options: 'i' } }
+                { name: { $regex: escapeRegex(search), $options: 'i' } },
+                { description: { $regex: escapeRegex(search), $options: 'i' } }
             ];
         }
 
@@ -122,7 +127,7 @@ router.get('/rooms/:id/messages', protect, async (req, res) => {
 
         // البحث في المحتوى
         if (search) {
-            filter.content = { $regex: search, $options: 'i' };
+            filter.content = { $regex: escapeRegex(search), $options: 'i' };
         }
 
         // جلب الرسائل

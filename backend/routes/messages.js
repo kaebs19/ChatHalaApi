@@ -7,6 +7,11 @@ const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const { protect, adminOnly } = require('../middleware/auth');
 
+// Helper: تنظيف المدخلات من أحرف Regex الخاصة لمنع NoSQL Injection
+function escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // @route   GET /api/messages/conversation/:conversationId
 // @desc    جلب جميع رسائل محادثة معينة
 // @access  Admin
@@ -32,7 +37,7 @@ router.get('/conversation/:conversationId', protect, adminOnly, async (req, res)
 
         // البحث في المحتوى
         if (search) {
-            filter.content = { $regex: search, $options: 'i' };
+            filter.content = { $regex: escapeRegex(search), $options: 'i' };
         }
 
         // الحصول على الرسائل مع pagination
@@ -59,7 +64,7 @@ router.get('/conversation/:conversationId', protect, adminOnly, async (req, res)
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب الرسائل',
-            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 });
@@ -89,7 +94,7 @@ router.get('/:id', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب الرسالة',
-            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 });
@@ -120,7 +125,7 @@ router.delete('/:id', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في حذف الرسالة',
-            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 });
@@ -150,7 +155,7 @@ router.delete('/:id/permanent', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في حذف الرسالة',
-            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 });
@@ -202,7 +207,7 @@ router.post('/send', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في إرسال الرسالة',
-            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 });
@@ -233,7 +238,7 @@ router.get('/stats/:conversationId', protect, adminOnly, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب الإحصائيات',
-            ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 });

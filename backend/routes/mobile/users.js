@@ -7,6 +7,11 @@ const User = require('../../models/User');
 const { protect } = require('../../middleware/auth');
 const { getFullUrl } = require('./helpers');
 
+// Helper: تنظيف المدخلات من أحرف Regex الخاصة لمنع NoSQL Injection
+function escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // ==========================================
 // نظام الموقع الجغرافي
 // ==========================================
@@ -85,7 +90,7 @@ router.get('/users/search', protect, async (req, res) => {
 
         // فلتر الاسم (اختياري)
         if (q && q.length >= 2) {
-            filter.name = { $regex: q, $options: 'i' };
+            filter.name = { $regex: escapeRegex(q), $options: 'i' };
         }
 
         // فلتر الجنس

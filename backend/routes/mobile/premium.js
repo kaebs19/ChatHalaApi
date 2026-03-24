@@ -9,6 +9,24 @@ const SuperLike = require('../../models/SuperLike');
 const { protect } = require('../../middleware/auth');
 const pushNotificationService = require('../../services/pushNotificationService');
 
+// Helper: إنشاء JWT لـ App Store Server API
+function generateAppStoreJWT() {
+    const jwt = require('jsonwebtoken');
+    const fs = require('fs');
+
+    const privateKey = fs.readFileSync(
+        process.env.APNS_KEY_PATH || './config/AuthKey.p8'
+    );
+
+    return jwt.sign({}, privateKey, {
+        algorithm: 'ES256',
+        keyid: process.env.APNS_KEY_ID,
+        issuer: process.env.APPLE_TEAM_ID,
+        audience: 'appstoreconnect-v1',
+        expiresIn: '20m'
+    });
+}
+
 // ==========================================
 // نظام Super Like
 // ==========================================
@@ -197,9 +215,68 @@ router.post('/subscription/verify', protect, async (req, res) => {
             return res.status(400).json({ success: false, message: 'خطة غير صالحة' });
         }
 
-        // TODO: التحقق الفعلي من Apple في بيئة الإنتاج
-        // StoreKit 1: التحقق من receipt عبر Apple verifyReceipt API
-        // StoreKit 2: التحقق من transactionId عبر App Store Server API v2
+        // التحقق من Apple
+        if (process.env.NODE_ENV === 'production') {
+            // StoreKit 2: التحقق عبر App Store Server API v2
+            if (transactionId) {
+                try {
+                    const verifyResponse = await fetch(
+                        `https://api.storekit.itunes.apple.com/inApps/v1/transactions/${transactionId}`,
+                        {
+                            headers: {
+                                'Authorization': `Bearer ${generateAppStoreJWT()}`
+                            }
+                        }
+                    );
+
+                    if (!verifyResponse.ok) {
+                        return res.status(400).json({
+                            success: false,
+                            message: 'فشل التحقق من المعاملة مع Apple'
+                        });
+                    }
+                } catch (appleError) {
+                    console.error('خطأ في التحقق من Apple:', appleError);
+                    return res.status(500).json({
+                        success: false,
+                        message: 'فشل الاتصال بخوادم Apple'
+                    });
+                }
+            }
+
+            // StoreKit 1: التحقق من receipt
+            if (receipt && !transactionId) {
+                try {
+                    const verifyResponse = await fetch(
+                        'https://buy.itunes.apple.com/verifyReceipt',
+                        {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                'receipt-data': receipt,
+                                'password': process.env.APPLE_SHARED_SECRET,
+                                'exclude-old-transactions': true
+                            })
+                        }
+                    );
+
+                    const appleResponse = await verifyResponse.json();
+
+                    if (appleResponse.status !== 0) {
+                        return res.status(400).json({
+                            success: false,
+                            message: 'إيصال الشراء غير صالح'
+                        });
+                    }
+                } catch (appleError) {
+                    console.error('خطأ في التحقق من Apple Receipt:', appleError);
+                    return res.status(500).json({
+                        success: false,
+                        message: 'فشل الاتصال بخوادم Apple'
+                    });
+                }
+            }
+        }
 
         // حساب تاريخ الانتهاء
         const now = new Date();
