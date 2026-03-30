@@ -102,19 +102,29 @@ router.post('/messages/send', protect, async (req, res) => {
             bannedWordSeverity: bannedWordResult.highestSeverity || null
         });
 
-        // تنبيه الأدمن إذا وُجدت كلمات محظورة
-        if (!bannedWordResult.isClean && global.io) {
-            global.io.emit('banned-word-alert', {
-                messageId: message._id,
-                conversationId,
-                senderId: req.user._id,
-                senderName: req.user.name,
-                content: content.substring(0, 100),
-                wordsFound: bannedWordResult.foundWords,
-                severity: bannedWordResult.highestSeverity,
-                chatType: 'conversation',
-                timestamp: new Date()
-            });
+        // تنبيه الأدمن + تحذير المرسل إذا وُجدت كلمات محظورة
+        if (!bannedWordResult.isClean) {
+            if (global.io) {
+                global.io.emit('banned-word-alert', {
+                    messageId: message._id,
+                    conversationId,
+                    senderId: req.user._id,
+                    senderName: req.user.name,
+                    content: content.substring(0, 100),
+                    wordsFound: bannedWordResult.foundWords,
+                    severity: bannedWordResult.highestSeverity,
+                    chatType: 'conversation',
+                    timestamp: new Date()
+                });
+                // تحذير المرسل
+                global.io.to(`user:${req.user._id}`).emit('notification', {
+                    title: '⚠️ تنبيه',
+                    body: 'رسالتك تحتوي على كلمات محظورة. تكرار المخالفة يعرض حسابك للتعليق والحظر.'
+                });
+            }
+            // زيادة عداد المخالفات
+            const User = require('../../models/User');
+            await User.findByIdAndUpdate(req.user._id, { $inc: { violationCount: 1 } });
         }
 
         // تحديث آخر رسالة + عداد الرسائل
@@ -393,19 +403,29 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
             bannedWordSeverity: bannedWordResult.highestSeverity || null
         });
 
-        // تنبيه الأدمن إذا وُجدت كلمات محظورة
-        if (!bannedWordResult.isClean && global.io) {
-            global.io.emit('banned-word-alert', {
-                messageId: message._id,
-                conversationId,
-                senderId: req.user._id,
-                senderName: req.user.name,
-                content: content.substring(0, 100),
-                wordsFound: bannedWordResult.foundWords,
-                severity: bannedWordResult.highestSeverity,
-                chatType: 'conversation',
-                timestamp: new Date()
-            });
+        // تنبيه الأدمن + تحذير المرسل إذا وُجدت كلمات محظورة
+        if (!bannedWordResult.isClean) {
+            if (global.io) {
+                global.io.emit('banned-word-alert', {
+                    messageId: message._id,
+                    conversationId,
+                    senderId: req.user._id,
+                    senderName: req.user.name,
+                    content: content.substring(0, 100),
+                    wordsFound: bannedWordResult.foundWords,
+                    severity: bannedWordResult.highestSeverity,
+                    chatType: 'conversation',
+                    timestamp: new Date()
+                });
+                // تحذير المرسل
+                global.io.to(`user:${req.user._id}`).emit('notification', {
+                    title: '⚠️ تنبيه',
+                    body: 'رسالتك تحتوي على كلمات محظورة. تكرار المخالفة يعرض حسابك للتعليق والحظر.'
+                });
+            }
+            // زيادة عداد المخالفات
+            const User = require('../../models/User');
+            await User.findByIdAndUpdate(req.user._id, { $inc: { violationCount: 1 } });
         }
 
         // تحديث آخر رسالة + عداد الرسائل
