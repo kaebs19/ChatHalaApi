@@ -6,6 +6,8 @@ const router = express.Router();
 const User = require('../models/User');
 const { protect, adminOnly } = require('../middleware/auth');
 const { get, set, CACHE_KEYS, CACHE_TTL, invalidateUsers } = require('../utils/cache');
+const Notification = require('../models/Notification');
+const pushNotificationService = require('../services/pushNotificationService');
 
 // @route   GET /api/users
 // @desc    الحصول على جميع المستخدمين
@@ -391,7 +393,18 @@ router.put('/:id/suspend', protect, adminOnly, async (req, res) => {
         user.isActive = false;
         user.suspendedUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
         user.suspendReason = reason;
+        user.violationCount = (user.violationCount || 0) + 1;
+        user.warnings.push({ reason: reason || `تعليق ${days} يوم`, action: 'suspend', adminId: req.user._id });
         await user.save();
+
+        // إشعار في DB + FCM push
+        const notifTitle = 'تم تعليق حسابك';
+        const notifBody = `تم تعليق حسابك لمدة ${days} يوم. السبب: ${reason || 'مخالفة سياسة الاستخدام'}`;
+        await Notification.create({
+            title: notifTitle, body: notifBody, type: 'system',
+            sender: req.user._id, targetUsers: [user._id], recipients: 'specific'
+        });
+        await pushNotificationService.sendNotificationToUser(user._id, { title: notifTitle, body: notifBody }, { type: 'system' }, false);
 
         // قطع اتصال Socket
         if (global.connectedUsers && global.connectedUsers.has(user._id.toString())) {
@@ -426,22 +439,16 @@ router.put('/:id/reset-avatar', protect, adminOnly, async (req, res) => {
         user.warnings.push({ reason: 'حذف الصورة الشخصية من قبل الإدارة', action: 'avatar_reset', adminId: req.user._id });
         await user.save();
 
-        // إشعار المستخدم
-        const Notification = require('../models/Notification');
+        // إشعار في DB + FCM push + Socket
+        const notifTitle = 'تنبيه من الإدارة';
+        const notifBody = 'تم حذف صورتك الشخصية لمخالفتها سياسة الاستخدام';
         await Notification.create({
-            title: 'تنبيه من الإدارة',
-            body: 'تم حذف صورتك الشخصية لمخالفتها سياسة الاستخدام',
-            type: 'system',
-            targetUsers: [user._id],
-            recipients: 'specific'
+            title: notifTitle, body: notifBody, type: 'system',
+            sender: req.user._id, targetUsers: [user._id], recipients: 'specific'
         });
-
-        // إشعار push
+        await pushNotificationService.sendNotificationToUser(user._id, { title: notifTitle, body: notifBody }, { type: 'system' }, false);
         if (global.io) {
-            global.io.to(`user:${user._id}`).emit('notification', {
-                title: 'تنبيه من الإدارة',
-                body: 'تم حذف صورتك الشخصية'
-            });
+            global.io.to(`user:${user._id}`).emit('notification', { title: notifTitle, body: notifBody });
         }
 
         invalidateUsers();
@@ -467,19 +474,15 @@ router.put('/:id/ban-name', protect, adminOnly, async (req, res) => {
         user.warnings.push({ reason: `حظر الاسم: ${oldName}`, action: 'name_ban', adminId: req.user._id });
         await user.save();
 
-        const Notification = require('../models/Notification');
+        const notifTitle = 'تنبيه من الإدارة';
+        const notifBody = 'تم حظر اسمك لمخالفته سياسة الاستخدام. يرجى تغيير الاسم.';
         await Notification.create({
-            title: 'تنبيه من الإدارة',
-            body: 'تم حظر اسمك لمخالفته سياسة الاستخدام. يرجى تغيير الاسم.',
-            type: 'system',
-            targetUsers: [user._id],
-            recipients: 'specific'
+            title: notifTitle, body: notifBody, type: 'system',
+            sender: req.user._id, targetUsers: [user._id], recipients: 'specific'
         });
-
+        await pushNotificationService.sendNotificationToUser(user._id, { title: notifTitle, body: notifBody }, { type: 'system' }, false);
         if (global.io) {
-            global.io.to(`user:${user._id}`).emit('notification', {
-                title: 'تنبيه', body: 'تم حظر اسمك - يرجى تغييره'
-            });
+            global.io.to(`user:${user._id}`).emit('notification', { title: notifTitle, body: notifBody });
         }
 
         invalidateUsers();
@@ -521,22 +524,17 @@ router.put('/:id/warn', protect, adminOnly, async (req, res) => {
 
         await user.save();
 
-        const Notification = require('../models/Notification');
+        const notifTitle = autoSuspended ? 'تم تعليق حسابك' : 'تحذير من الإدارة';
+        const notifBody = autoSuspended
+            ? 'تم تعليق حسابك لمدة 24 ساعة بسبب تكرار المخالفات'
+            : `تحذير: ${reason}. عدد المخالفات: ${user.violationCount}/5`;
         await Notification.create({
-            title: autoSuspended ? 'تم تعليق حسابك' : 'تحذير من الإدارة',
-            body: autoSuspended
-                ? 'تم تعليق حسابك لمدة 24 ساعة بسبب تكرار المخالفات'
-                : `تحذير: ${reason}. عدد المخالفات: ${user.violationCount}/5`,
-            type: 'system',
-            targetUsers: [user._id],
-            recipients: 'specific'
+            title: notifTitle, body: notifBody, type: 'system',
+            sender: req.user._id, targetUsers: [user._id], recipients: 'specific'
         });
-
+        await pushNotificationService.sendNotificationToUser(user._id, { title: notifTitle, body: notifBody }, { type: 'system' }, false);
         if (global.io) {
-            global.io.to(`user:${user._id}`).emit('notification', {
-                title: autoSuspended ? 'تم تعليق حسابك' : 'تحذير',
-                body: autoSuspended ? 'حسابك معلق 24 ساعة' : `تحذير: ${reason}`
-            });
+            global.io.to(`user:${user._id}`).emit('notification', { title: notifTitle, body: notifBody });
         }
 
         invalidateUsers();
