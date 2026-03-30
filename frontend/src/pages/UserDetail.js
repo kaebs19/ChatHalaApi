@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getUserActivity } from '../services/api';
+import { getUserActivity, getUserViolations, warnUser, resetUserAvatar, banUserName, suspendUser, toggleUserActive } from '../services/api';
 import { useToast } from '../components/Toast';
 import { getImageUrl, getDefaultAvatar } from '../config';
 import { formatDateTimeLong, formatDateLong } from '../utils/formatters';
@@ -13,6 +13,7 @@ function UserDetail({ userId, onBack }) {
     const [activeTab, setActiveTab] = useState('info');
     const [viewingConversationId, setViewingConversationId] = useState(null);
     const [viewingConversationMessages, setViewingConversationMessages] = useState(false);
+    const [violations, setViolations] = useState(null);
     const { showToast } = useToast();
 
     useEffect(() => {
@@ -30,6 +31,63 @@ function UserDetail({ userId, onBack }) {
         } finally {
             setLoading(false);
         }
+    };
+
+    const fetchViolations = async () => {
+        try {
+            const response = await getUserViolations(userId);
+            setViolations(response.data);
+        } catch (error) {
+            console.error('Error fetching violations:', error);
+        }
+    };
+
+    const handleWarn = async () => {
+        const reason = window.prompt('سبب التحذير:', 'مخالفة سياسة الاستخدام');
+        if (!reason) return;
+        try {
+            const result = await warnUser(userId, reason);
+            showToast(result.message, 'success');
+            fetchUserActivity();
+            fetchViolations();
+        } catch (error) { showToast('فشل', 'error'); }
+    };
+
+    const handleResetAvatar = async () => {
+        if (!window.confirm('حذف صورة المستخدم؟')) return;
+        try {
+            await resetUserAvatar(userId);
+            showToast('تم حذف الصورة', 'success');
+            fetchUserActivity();
+        } catch (error) { showToast('فشل', 'error'); }
+    };
+
+    const handleBanName = async () => {
+        if (!window.confirm(`حظر اسم "${user?.name}"؟`)) return;
+        try {
+            await banUserName(userId);
+            showToast('تم حظر الاسم', 'success');
+            fetchUserActivity();
+        } catch (error) { showToast('فشل', 'error'); }
+    };
+
+    const handleSuspend = async () => {
+        const days = window.prompt('عدد أيام التعليق:', '7');
+        if (!days) return;
+        try {
+            await suspendUser(userId, parseInt(days), 'تعليق من لوحة التحكم');
+            showToast(`تم التعليق ${days} يوم`, 'success');
+            fetchUserActivity();
+        } catch (error) { showToast('فشل', 'error'); }
+    };
+
+    const handleBan = async () => {
+        if (!window.confirm('حظر المستخدم نهائياً؟')) return;
+        try {
+            await toggleUserActive(userId);
+            showToast('تم الحظر', 'success');
+            fetchUserActivity();
+        } catch (error) { showToast('فشل', 'error'); }
     };
 
     const formatDate = (date) => formatDateTimeLong(date) === '-' ? 'غير محدد' : formatDateTimeLong(date);
@@ -194,6 +252,19 @@ function UserDetail({ userId, onBack }) {
                     onClick={() => setActiveTab('messages')}
                 >
                     📨 الرسائل
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'violations' ? 'active' : ''}`}
+                    onClick={() => { setActiveTab('violations'); fetchViolations(); }}
+                >
+                    ⚠️ المخالفات
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'admin' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('admin')}
+                    style={{ background: activeTab === 'admin' ? '#ef4444' : '', color: activeTab === 'admin' ? '#fff' : '' }}
+                >
+                    🛡️ أدوات الإشراف
                 </button>
             </div>
 
@@ -475,6 +546,103 @@ function UserDetail({ userId, onBack }) {
                                 ))}
                             </div>
                         )}
+                    </div>
+                )}
+
+                {/* Violations Tab */}
+                {activeTab === 'violations' && (
+                    <div className="violations-section">
+                        <h3>⚠️ سجل المخالفات</h3>
+                        {violations ? (
+                            <>
+                                <div className="violation-summary" style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
+                                    <div style={{ padding: '15px 25px', borderRadius: '12px', background: violations.violationCount >= 5 ? '#fecaca' : violations.violationCount >= 3 ? '#fef3c7' : '#d1fae5', textAlign: 'center' }}>
+                                        <div style={{ fontSize: '28px', fontWeight: '700', color: violations.violationCount >= 5 ? '#991b1b' : violations.violationCount >= 3 ? '#92400e' : '#065f46' }}>
+                                            {violations.violationCount}/5
+                                        </div>
+                                        <div style={{ fontSize: '12px', color: '#666' }}>عدد المخالفات</div>
+                                    </div>
+                                    <div style={{ padding: '15px 25px', borderRadius: '12px', background: '#f3f4f6', textAlign: 'center' }}>
+                                        <div style={{ fontSize: '28px', fontWeight: '700' }}>{violations.flaggedMessagesCount}</div>
+                                        <div style={{ fontSize: '12px', color: '#666' }}>رسائل مخالفة</div>
+                                    </div>
+                                    {violations.nameBanned && (
+                                        <div style={{ padding: '15px 25px', borderRadius: '12px', background: '#fecaca', textAlign: 'center' }}>
+                                            <div style={{ fontSize: '20px' }}>🚫</div>
+                                            <div style={{ fontSize: '12px', color: '#991b1b' }}>الاسم محظور</div>
+                                        </div>
+                                    )}
+                                </div>
+                                {violations.warnings && violations.warnings.length > 0 ? (
+                                    <table className="data-table" style={{ width: '100%' }}>
+                                        <thead>
+                                            <tr>
+                                                <th>التاريخ</th>
+                                                <th>الإجراء</th>
+                                                <th>السبب</th>
+                                                <th>بواسطة</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {violations.warnings.slice().reverse().map((w, i) => (
+                                                <tr key={i}>
+                                                    <td style={{ fontSize: '12px' }}>{w.date ? new Date(w.date).toLocaleDateString('ar-SA') : '-'}</td>
+                                                    <td>
+                                                        <span style={{ padding: '2px 8px', borderRadius: '8px', fontSize: '11px', background:
+                                                            w.action === 'auto_suspend' ? '#fecaca' :
+                                                            w.action === 'suspend' ? '#fed7aa' :
+                                                            w.action === 'name_ban' ? '#fce7f3' :
+                                                            w.action === 'avatar_reset' ? '#e0e7ff' : '#fef3c7'
+                                                        }}>
+                                                            {w.action === 'warn' ? '⚠️ تحذير' :
+                                                             w.action === 'name_ban' ? '✏️ حظر اسم' :
+                                                             w.action === 'avatar_reset' ? '🖼️ حذف صورة' :
+                                                             w.action === 'suspend' ? '⏸️ تعليق' :
+                                                             w.action === 'auto_suspend' ? '🔴 إيقاف تلقائي' : w.action}
+                                                        </span>
+                                                    </td>
+                                                    <td style={{ fontSize: '13px' }}>{w.reason}</td>
+                                                    <td style={{ fontSize: '12px' }}>{w.adminId?.name || '-'}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                ) : (
+                                    <p style={{ textAlign: 'center', color: '#999', padding: '30px' }}>لا توجد مخالفات مسجلة</p>
+                                )}
+                            </>
+                        ) : (
+                            <p style={{ textAlign: 'center', color: '#999', padding: '30px' }}>جاري التحميل...</p>
+                        )}
+                    </div>
+                )}
+
+                {/* Admin Tools Tab */}
+                {activeTab === 'admin' && (
+                    <div className="admin-tools-section">
+                        <h3>🛡️ أدوات الإشراف</h3>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginTop: '15px' }}>
+                            <button onClick={handleWarn} style={{ padding: '16px', borderRadius: '12px', border: '2px solid #f59e0b', background: '#fffbeb', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>
+                                ⚠️ إرسال تحذير
+                                <div style={{ fontSize: '11px', color: '#92400e', marginTop: '4px' }}>يزيد عداد المخالفات +1</div>
+                            </button>
+                            <button onClick={handleResetAvatar} style={{ padding: '16px', borderRadius: '12px', border: '2px solid #6366f1', background: '#eef2ff', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>
+                                🖼️ حذف الصورة
+                                <div style={{ fontSize: '11px', color: '#4338ca', marginTop: '4px' }}>إزالة صورة الملف الشخصي</div>
+                            </button>
+                            <button onClick={handleBanName} style={{ padding: '16px', borderRadius: '12px', border: '2px solid #ec4899', background: '#fdf2f8', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>
+                                ✏️ حظر الاسم
+                                <div style={{ fontSize: '11px', color: '#be185d', marginTop: '4px' }}>يظهر ***مستخدم محظور***</div>
+                            </button>
+                            <button onClick={handleSuspend} style={{ padding: '16px', borderRadius: '12px', border: '2px solid #f97316', background: '#fff7ed', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>
+                                ⏸️ تعليق مؤقت
+                                <div style={{ fontSize: '11px', color: '#c2410c', marginTop: '4px' }}>تعليق لفترة محددة</div>
+                            </button>
+                            <button onClick={handleBan} style={{ padding: '16px', borderRadius: '12px', border: '2px solid #ef4444', background: '#fef2f2', cursor: 'pointer', fontSize: '14px', fontWeight: '600', color: '#dc2626' }}>
+                                🚫 حظر نهائي
+                                <div style={{ fontSize: '11px', color: '#991b1b', marginTop: '4px' }}>إيقاف الحساب بالكامل</div>
+                            </button>
+                        </div>
                     </div>
                 )}
             </div>

@@ -197,6 +197,15 @@
     gap: 12px;
 }
 
+.user-cell:hover .user-name-link {
+    color: #6366f1;
+    text-decoration: underline;
+}
+
+.user-name-link {
+    transition: color 0.2s;
+}
+
 .user-avatar-small {
     width: 40px;
     height: 40px;

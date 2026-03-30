@@ -407,7 +407,7 @@ function Users({ onViewDetail }) {
                                     paginatedUsers.map((user) => (
                                 <tr key={user._id}>
                                     <td>
-                                        <div className="user-cell">
+                                        <div className="user-cell" onClick={() => onViewDetail && onViewDetail(user._id)} style={{ cursor: 'pointer' }}>
                                             <img
                                                 src={user.profileImage ? getImageUrl(user.profileImage) : getDefaultAvatar(user.name)}
                                                 alt={user.name}
@@ -417,7 +417,7 @@ function Users({ onViewDetail }) {
                                                     e.target.src = getDefaultAvatar(user.name);
                                                 }}
                                             />
-                                            <span>{user.name}</span>
+                                            <span className="user-name-link">{user.name}</span>
                                         </div>
                                     </td>
                                     <td dir="ltr" className="email-cell">{user.email}</td>
