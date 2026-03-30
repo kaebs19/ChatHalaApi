@@ -24,7 +24,7 @@ function ReportsManagement({ initialTab = 'reports', onViewUserDetail, onViewCon
             />
             <div className="page-tab-content">
                 {activeTab === 'reports' && <Reports onViewUserDetail={onViewUserDetail} onViewConversation={onViewConversation} />}
-                {activeTab === 'flagged' && <FlaggedMessages />}
+                {activeTab === 'flagged' && <FlaggedMessages onViewUserDetail={onViewUserDetail} />}
             </div>
         </div>
     );

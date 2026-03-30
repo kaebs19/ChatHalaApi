@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { getFlaggedMessages, getFlaggedMessagesStats, reviewMessage, suspendUser, toggleUserActive } from '../services/api';
-import { useNavigate } from 'react-router-dom';
 import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import StatCard from '../components/StatCard';
@@ -10,7 +9,7 @@ import { getSeverityBadge, getChatTypeBadge } from '../utils/badgeHelpers';
 import { getImageUrl, getDefaultAvatar } from '../config';
 import './FlaggedMessages.css';
 
-function FlaggedMessages() {
+function FlaggedMessages({ onViewUserDetail }) {
     const [messages, setMessages] = useState([]);
     const [stats, setStats] = useState({ pending: 0, reviewed: 0, dismissed: 0, total: 0 });
     const [bySeverity, setBySeverity] = useState({});
@@ -26,7 +25,6 @@ function FlaggedMessages() {
     const [suspendDays, setSuspendDays] = useState(7);
     const [suspendReason, setSuspendReason] = useState('');
     const { showToast } = useToast();
-    const navigate = useNavigate();
 
     const fetchStats = useCallback(async () => {
         try {
@@ -107,7 +105,7 @@ function FlaggedMessages() {
 
     // إجراءات على المستخدم المخالف
     const handleViewUser = (userId) => {
-        navigate(`/users/${userId}`);
+        if (onViewUserDetail) onViewUserDetail(userId);
     };
 
     const handleBanUser = async (userId, userName) => {
