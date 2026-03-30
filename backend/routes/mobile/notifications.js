@@ -48,17 +48,25 @@ router.get('/notifications', protect, async (req, res) => {
         const formattedNotifications = notifications.map(n => {
             const nObj = n.toObject();
 
-            // إذا فيه sender مع صورة، حوّلها لـ URL كامل
-            if (nObj.sender && nObj.sender.profileImage) {
-                nObj.sender.profileImage = getFullUrl(nObj.sender.profileImage);
-            }
+            // إصلاح sender: إذا sender هو نفس المستلم، استخدم data.senderId
+            const senderId = nObj.sender?._id?.toString();
+            const myId = userId.toString();
 
-            // إذا ما فيه sender لكن فيه data.senderId، أنشئ sender object
-            if (!nObj.sender && nObj.data && nObj.data.senderId) {
+            if (nObj.data && nObj.data.senderId && senderId === myId) {
+                // sender خطأ (هو المستلم نفسه) → نستبدله بالمرسل الفعلي
                 nObj.sender = {
                     _id: nObj.data.senderId,
                     name: nObj.data.senderName || ''
                 };
+            } else if (!nObj.sender && nObj.data && nObj.data.senderId) {
+                // ما فيه sender أصلاً → ننشئ من data
+                nObj.sender = {
+                    _id: nObj.data.senderId,
+                    name: nObj.data.senderName || ''
+                };
+            } else if (nObj.sender && nObj.sender.profileImage) {
+                // sender صحيح → حوّل الصورة لـ URL كامل
+                nObj.sender.profileImage = getFullUrl(nObj.sender.profileImage);
             }
 
             return nObj;
