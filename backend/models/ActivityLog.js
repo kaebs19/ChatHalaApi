@@ -18,8 +18,12 @@ const activityLogSchema = new mongoose.Schema({
         enum: [
             // نشاطات المستخدمين
             'user_login',
+            'user_login_google',
+            'user_login_apple',
             'user_logout',
             'user_register',
+            'user_register_google',
+            'user_register_apple',
             'user_update_profile',
             'user_change_password',
             'user_delete_account',
