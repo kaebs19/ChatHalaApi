@@ -105,6 +105,12 @@ export const getUserActivity = async (userId) => {
     return response.data;
 };
 
+// تعليق مستخدم لفترة محددة (Admin فقط)
+export const suspendUser = async (userId, days = 7, reason = '') => {
+    const response = await api.put(`/users/${userId}/suspend`, { days, reason });
+    return response.data;
+};
+
 // ============ Conversations APIs ============
 
 // الحصول على جميع المحادثات
@@ -566,6 +572,15 @@ export const getFlaggedMessagesStats = async () => {
 
 export const reviewMessage = async (messageId, data) => {
     const response = await api.put(`/messages/${messageId}/review`, data);
+    return response.data;
+};
+
+// ==========================================
+// Location | الموقع
+// ==========================================
+
+export const getUsersLocations = async () => {
+    const response = await api.get('/users/locations');
     return response.data;
 };
 

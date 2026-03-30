@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getAllUsers, deleteUser, toggleUserActive, updateUser } from '../services/api';
+import { getAllUsers, deleteUser, toggleUserActive, updateUser, suspendUser } from '../services/api';
 import { useToast } from '../components/Toast';
 import EditUserModal from '../components/EditUserModal';
 import Pagination from '../components/Pagination';
@@ -190,6 +190,23 @@ function Users({ onViewDetail }) {
         }
     };
 
+    const handleSuspend = async (user) => {
+        const days = window.prompt(`تعليق "${user.name}" - كم يوم؟ (1-365)`, '7');
+        if (!days) return;
+        const numDays = parseInt(days);
+        if (isNaN(numDays) || numDays < 1 || numDays > 365) {
+            toast.error('أدخل عدد أيام صحيح (1-365)');
+            return;
+        }
+        try {
+            await suspendUser(user._id, numDays, 'تعليق من لوحة التحكم');
+            toast.success(`تم تعليق ${user.name} لمدة ${numDays} يوم`);
+            fetchUsers();
+        } catch (error) {
+            toast.error('فشل في تعليق المستخدم');
+        }
+    };
+
     const confirmDelete = (user) => {
         setUserToDelete(user);
         setShowDeleteModal(true);
@@ -375,15 +392,16 @@ function Users({ onViewDetail }) {
                                     <th onClick={() => handleSort('lastLogin')} className="sortable">
                                         آخر دخول {getSortIcon('lastLogin')}
                                     </th>
+                                    <th>الموقع</th>
                                     <th>الإجراءات</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {loading ? (
                                     <>
-                                        <TableRowSkeleton columns={8} />
-                                        <TableRowSkeleton columns={8} />
-                                        <TableRowSkeleton columns={8} />
+                                        <TableRowSkeleton columns={9} />
+                                        <TableRowSkeleton columns={9} />
+                                        <TableRowSkeleton columns={9} />
                                     </>
                                 ) : (
                                     paginatedUsers.map((user) => (
@@ -408,9 +426,16 @@ function Users({ onViewDetail }) {
                                     <td>{getStatusBadge(user.isActive)}</td>
                                     <td>{formatDate(user.createdAt)}</td>
                                     <td>
-                                        {user.lastLogin 
+                                        {user.lastLogin
                                             ? formatDate(user.lastLogin)
                                             : <span className="no-login">لم يسجل دخول</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        {user.location && user.location.coordinates &&
+                                         user.location.coordinates[0] !== 0 && user.location.coordinates[1] !== 0
+                                            ? <span className="location-badge" title={`${user.location.coordinates[1].toFixed(2)}, ${user.location.coordinates[0].toFixed(2)}`}>📍 متوفر</span>
+                                            : <span className="no-login">غير متوفر</span>
                                         }
                                     </td>
                                     <td>
@@ -435,6 +460,13 @@ function Users({ onViewDetail }) {
                                                 title={user.isActive ? 'إلغاء التفعيل' : 'تفعيل'}
                                             >
                                                 {user.isActive ? '🔒' : '✅'}
+                                            </button>
+                                            <button
+                                                className="action-btn btn-warning"
+                                                onClick={() => handleSuspend(user)}
+                                                title="تعليق مؤقت"
+                                            >
+                                                ⏸️
                                             </button>
                                             <button
                                                 className="action-btn btn-danger"

@@ -73,6 +73,82 @@
     background: #fef2f2 !important;
 }
 
+/* Clickable name */
+.fm-name-link {
+    cursor: pointer;
+    transition: color 0.2s;
+}
+.fm-name-link:hover {
+    color: #6366f1;
+    text-decoration: underline;
+}
+
+/* User action buttons */
+.fm-user-actions {
+    display: flex;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.fm-action-btn {
+    border: none;
+    background: #f3f4f6;
+    border-radius: 6px;
+    padding: 2px 6px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.fm-action-btn:hover { transform: scale(1.15); }
+.fm-btn-view:hover { background: #dbeafe; }
+.fm-btn-suspend:hover { background: #fef3c7; }
+.fm-btn-ban:hover { background: #fecaca; }
+
+/* Suspend Modal */
+.suspend-modal {
+    max-width: 420px;
+}
+
+.suspend-user-name {
+    margin: 10px 0 15px;
+    font-size: 15px;
+    color: #374151;
+}
+
+.suspend-modal .form-group {
+    margin-bottom: 12px;
+}
+
+.suspend-modal .form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 600;
+    font-size: 13px;
+    color: #4b5563;
+}
+
+.suspend-modal select,
+.suspend-modal textarea {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+}
+
+.suspend-modal textarea {
+    resize: vertical;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+    justify-content: flex-end;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .fm-filters {

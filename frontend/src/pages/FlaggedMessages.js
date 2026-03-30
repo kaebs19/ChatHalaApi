@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { getFlaggedMessages, getFlaggedMessagesStats, reviewMessage } from '../services/api';
+import { getFlaggedMessages, getFlaggedMessagesStats, reviewMessage, suspendUser, toggleUserActive } from '../services/api';
+import { useNavigate } from 'react-router-dom';
 import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import StatCard from '../components/StatCard';
@@ -21,7 +22,11 @@ function FlaggedMessages() {
     const [severityFilter, setSeverityFilter] = useState('');
     const [chatTypeFilter, setChatTypeFilter] = useState('');
     const [reviewingId, setReviewingId] = useState(null);
+    const [showSuspendModal, setShowSuspendModal] = useState(null);
+    const [suspendDays, setSuspendDays] = useState(7);
+    const [suspendReason, setSuspendReason] = useState('');
     const { showToast } = useToast();
+    const navigate = useNavigate();
 
     const fetchStats = useCallback(async () => {
         try {
@@ -100,6 +105,36 @@ function FlaggedMessages() {
         }
     };
 
+    // إجراءات على المستخدم المخالف
+    const handleViewUser = (userId) => {
+        navigate(`/users/${userId}`);
+    };
+
+    const handleBanUser = async (userId, userName) => {
+        if (!window.confirm(`هل تريد حظر "${userName}" نهائياً؟`)) return;
+        try {
+            await toggleUserActive(userId);
+            showToast(`تم حظر ${userName}`, 'success');
+            fetchMessages();
+        } catch (error) {
+            showToast('فشل في حظر المستخدم', 'error');
+        }
+    };
+
+    const handleSuspendUser = async () => {
+        if (!showSuspendModal) return;
+        try {
+            await suspendUser(showSuspendModal._id, suspendDays, suspendReason);
+            showToast(`تم تعليق المستخدم ${suspendDays} يوم`, 'success');
+            setShowSuspendModal(null);
+            setSuspendDays(7);
+            setSuspendReason('');
+            fetchMessages();
+        } catch (error) {
+            showToast('فشل في تعليق المستخدم', 'error');
+        }
+    };
+
     if (loading && page === 1) {
         return <LoadingSpinner text="جاري تحميل الرسائل للمراجعة..." />;
     }
@@ -117,8 +152,33 @@ function FlaggedMessages() {
                         onError={(e) => { e.target.onerror = null; e.target.src = getDefaultAvatar(msg.sender?.name); }}
                     />
                     <div>
-                        <span className="fm-name">{msg.sender?.name || 'محذوف'}</span>
+                        <span
+                            className="fm-name fm-name-link"
+                            onClick={() => msg.sender?._id && handleViewUser(msg.sender._id)}
+                            title="عرض بروفايل المستخدم"
+                        >
+                            {msg.sender?.name || 'محذوف'}
+                        </span>
                         <small className="fm-email">{msg.sender?.email || ''}</small>
+                        {msg.sender?._id && (
+                            <div className="fm-user-actions">
+                                <button
+                                    className="fm-action-btn fm-btn-view"
+                                    onClick={() => handleViewUser(msg.sender._id)}
+                                    title="عرض البروفايل"
+                                >👤</button>
+                                <button
+                                    className="fm-action-btn fm-btn-suspend"
+                                    onClick={() => setShowSuspendModal(msg.sender)}
+                                    title="تعليق مؤقت"
+                                >⏸️</button>
+                                <button
+                                    className="fm-action-btn fm-btn-ban"
+                                    onClick={() => handleBanUser(msg.sender._id, msg.sender.name)}
+                                    title="حظر نهائي"
+                                >🚫</button>
+                            </div>
+                        )}
                     </div>
                 </div>
             )
@@ -267,6 +327,46 @@ function FlaggedMessages() {
                     </div>
                 )}
             </DataTable>
+            {/* نافذة تعليق المستخدم */}
+            {showSuspendModal && (
+                <div className="modal-overlay" onClick={() => setShowSuspendModal(null)}>
+                    <div className="modal-content suspend-modal" onClick={(e) => e.stopPropagation()}>
+                        <h3>⏸️ تعليق مستخدم</h3>
+                        <p className="suspend-user-name">
+                            تعليق: <strong>{showSuspendModal.name}</strong>
+                        </p>
+                        <div className="form-group">
+                            <label>المدة (أيام):</label>
+                            <select value={suspendDays} onChange={(e) => setSuspendDays(Number(e.target.value))}>
+                                <option value={1}>يوم واحد</option>
+                                <option value={3}>3 أيام</option>
+                                <option value={7}>أسبوع</option>
+                                <option value={14}>أسبوعين</option>
+                                <option value={30}>شهر</option>
+                                <option value={90}>3 أشهر</option>
+                                <option value={365}>سنة</option>
+                            </select>
+                        </div>
+                        <div className="form-group">
+                            <label>السبب:</label>
+                            <textarea
+                                value={suspendReason}
+                                onChange={(e) => setSuspendReason(e.target.value)}
+                                placeholder="سبب التعليق (اختياري)..."
+                                rows={3}
+                            />
+                        </div>
+                        <div className="modal-actions">
+                            <button className="btn btn-primary" onClick={handleSuspendUser}>
+                                تعليق {suspendDays} يوم
+                            </button>
+                            <button className="btn btn-secondary" onClick={() => setShowSuspendModal(null)}>
+                                إلغاء
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
