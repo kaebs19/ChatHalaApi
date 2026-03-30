@@ -83,7 +83,7 @@ bannedWordSchema.statics.checkText = async function(text, type = 'both') {
     const matchedIds = [];
 
     for (const banned of bannedWords) {
-        const regex = new RegExp(`\\b${escapeRegex(banned.word)}\\b`, 'gi');
+        const regex = buildWordRegex(banned.word);
         if (regex.test(normalizedText)) {
             foundWords.push({
                 word: banned.word,
@@ -130,8 +130,13 @@ bannedWordSchema.statics.cleanText = async function(text, replacement = '***') {
     let cleanedText = text;
 
     for (const banned of bannedWords) {
-        const regex = new RegExp(`\\b${escapeRegex(banned.word)}\\b`, 'gi');
-        cleanedText = cleanedText.replace(regex, replacement);
+        const regex = buildWordRegex(banned.word);
+        cleanedText = cleanedText.replace(regex, (match) => {
+            // حفظ المسافات حول الكلمة المستبدلة
+            const leading = match.match(/^[\s.,!?؟،؛:]/)?.[0] || '';
+            const trailing = match.match(/[\s.,!?؟،؛:]$/)?.[0] || '';
+            return leading + replacement + trailing;
+        });
     }
 
     return cleanedText;
@@ -140,6 +145,18 @@ bannedWordSchema.statics.cleanText = async function(text, replacement = '***') {
 // دالة مساعدة لتجنب مشاكل regex
 function escapeRegex(string) {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// بناء regex يدعم العربية (\\b لا يعمل مع الأحرف العربية)
+function buildWordRegex(word) {
+    const escaped = escapeRegex(word);
+    // للعربية: استخدام حدود مخصصة بدل \b
+    const isArabic = /[\u0600-\u06FF]/.test(word);
+    if (isArabic) {
+        // حدود عربية: بداية/نهاية النص أو مسافة أو علامة ترقيم
+        return new RegExp(`(?:^|[\\s.,!?؟،؛:])${escaped}(?:[\\s.,!?؟،؛:]|$)`, 'gi');
+    }
+    return new RegExp(`\\b${escaped}\\b`, 'gi');
 }
 
 module.exports = mongoose.model('BannedWord', bannedWordSchema);
