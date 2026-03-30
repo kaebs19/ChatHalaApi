@@ -111,6 +111,36 @@ export const suspendUser = async (userId, days = 7, reason = '') => {
     return response.data;
 };
 
+// حذف صورة المستخدم (Admin فقط)
+export const resetUserAvatar = async (userId) => {
+    const response = await api.put(`/users/${userId}/reset-avatar`);
+    return response.data;
+};
+
+// حظر اسم المستخدم (Admin فقط)
+export const banUserName = async (userId) => {
+    const response = await api.put(`/users/${userId}/ban-name`);
+    return response.data;
+};
+
+// إرسال تحذير للمستخدم (Admin فقط)
+export const warnUser = async (userId, reason = '') => {
+    const response = await api.put(`/users/${userId}/warn`, { reason });
+    return response.data;
+};
+
+// عرض سجل مخالفات المستخدم (Admin فقط)
+export const getUserViolations = async (userId) => {
+    const response = await api.get(`/users/${userId}/violations`);
+    return response.data;
+};
+
+// عرض سياق الرسالة المخالفة (Admin فقط)
+export const getMessageContext = async (messageId) => {
+    const response = await api.get(`/messages/flagged/${messageId}/context`);
+    return response.data;
+};
+
 // ============ Conversations APIs ============
 
 // الحصول على جميع المحادثات

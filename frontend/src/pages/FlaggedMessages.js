@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { getFlaggedMessages, getFlaggedMessagesStats, reviewMessage, suspendUser, toggleUserActive } from '../services/api';
+import { getFlaggedMessages, getFlaggedMessagesStats, reviewMessage, suspendUser, toggleUserActive, resetUserAvatar, banUserName, warnUser } from '../services/api';
 import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import StatCard from '../components/StatCard';
@@ -108,6 +108,42 @@ function FlaggedMessages({ onViewUserDetail }) {
         if (onViewUserDetail) onViewUserDetail(userId);
     };
 
+    const handleWarnUser = async (userId, userName) => {
+        const reason = window.prompt(`سبب تحذير "${userName}":`, 'مخالفة سياسة الاستخدام');
+        if (reason === null) return;
+        try {
+            const result = await warnUser(userId, reason);
+            showToast(result.message || `تم تحذير ${userName}`, 'success');
+            if (result.data?.autoSuspended) {
+                showToast(`⚠️ تم تعليق ${userName} تلقائياً (5 مخالفات)`, 'warning');
+            }
+            fetchMessages();
+        } catch (error) {
+            showToast('فشل في إرسال التحذير', 'error');
+        }
+    };
+
+    const handleResetAvatar = async (userId, userName) => {
+        if (!window.confirm(`حذف صورة "${userName}"؟ سيتم إشعار المستخدم.`)) return;
+        try {
+            await resetUserAvatar(userId);
+            showToast(`تم حذف صورة ${userName}`, 'success');
+        } catch (error) {
+            showToast('فشل في حذف الصورة', 'error');
+        }
+    };
+
+    const handleBanName = async (userId, userName) => {
+        if (!window.confirm(`حظر اسم "${userName}"؟ سيظهر كـ "***مستخدم محظور***"`)) return;
+        try {
+            await banUserName(userId);
+            showToast(`تم حظر اسم ${userName}`, 'success');
+            fetchMessages();
+        } catch (error) {
+            showToast('فشل في حظر الاسم', 'error');
+        }
+    };
+
     const handleBanUser = async (userId, userName) => {
         if (!window.confirm(`هل تريد حظر "${userName}" نهائياً؟`)) return;
         try {
@@ -160,26 +196,30 @@ function FlaggedMessages({ onViewUserDetail }) {
                         <small className="fm-email">{msg.sender?.email || ''}</small>
                         {msg.sender?._id && (
                             <div className="fm-user-actions">
-                                <button
-                                    className="fm-action-btn fm-btn-view"
-                                    onClick={() => handleViewUser(msg.sender._id)}
-                                    title="عرض البروفايل"
-                                >👤</button>
-                                <button
-                                    className="fm-action-btn fm-btn-suspend"
-                                    onClick={() => setShowSuspendModal(msg.sender)}
-                                    title="تعليق مؤقت"
-                                >⏸️</button>
-                                <button
-                                    className="fm-action-btn fm-btn-ban"
-                                    onClick={() => handleBanUser(msg.sender._id, msg.sender.name)}
-                                    title="حظر نهائي"
-                                >🚫</button>
+                                <button className="fm-action-btn fm-btn-view" onClick={() => handleViewUser(msg.sender._id)} title="عرض البروفايل">👤</button>
+                                <button className="fm-action-btn fm-btn-warn" onClick={() => handleWarnUser(msg.sender._id, msg.sender.name)} title="تحذير">⚠️</button>
+                                <button className="fm-action-btn fm-btn-avatar" onClick={() => handleResetAvatar(msg.sender._id, msg.sender.name)} title="حذف الصورة">🖼️</button>
+                                <button className="fm-action-btn fm-btn-name" onClick={() => handleBanName(msg.sender._id, msg.sender.name)} title="حظر الاسم">✏️</button>
+                                <button className="fm-action-btn fm-btn-suspend" onClick={() => setShowSuspendModal(msg.sender)} title="تعليق">⏸️</button>
+                                <button className="fm-action-btn fm-btn-ban" onClick={() => handleBanUser(msg.sender._id, msg.sender.name)} title="حظر نهائي">🚫</button>
                             </div>
                         )}
                     </div>
                 </div>
             )
+        },
+        {
+            key: 'violations',
+            label: 'المخالفات',
+            render: (msg) => {
+                const count = msg.sender?.violationCount || 0;
+                const badgeClass = count >= 5 ? 'violation-critical' : count >= 3 ? 'violation-warning' : 'violation-ok';
+                return (
+                    <span className={`violation-badge ${badgeClass}`}>
+                        {count}/5
+                    </span>
+                );
+            }
         },
         {
             key: 'content',

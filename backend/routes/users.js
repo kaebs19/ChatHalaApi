@@ -413,4 +413,177 @@ router.put('/:id/suspend', protect, adminOnly, async (req, res) => {
     }
 });
 
+// @route   PUT /api/users/:id/reset-avatar
+// @desc    حذف صورة المستخدم + إشعار
+// @access  Private/Admin
+router.put('/:id/reset-avatar', protect, adminOnly, async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+
+        user.profileImage = null;
+        user.violationCount = (user.violationCount || 0) + 1;
+        user.warnings.push({ reason: 'حذف الصورة الشخصية من قبل الإدارة', action: 'avatar_reset', adminId: req.user._id });
+        await user.save();
+
+        // إشعار المستخدم
+        const Notification = require('../models/Notification');
+        await Notification.create({
+            title: 'تنبيه من الإدارة',
+            body: 'تم حذف صورتك الشخصية لمخالفتها سياسة الاستخدام',
+            type: 'system',
+            targetUsers: [user._id],
+            recipients: 'specific'
+        });
+
+        // إشعار push
+        if (global.io) {
+            global.io.to(`user:${user._id}`).emit('notification', {
+                title: 'تنبيه من الإدارة',
+                body: 'تم حذف صورتك الشخصية'
+            });
+        }
+
+        invalidateUsers();
+        res.json({ success: true, message: 'تم حذف الصورة وإشعار المستخدم' });
+    } catch (error) {
+        console.error('خطأ:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   PUT /api/users/:id/ban-name
+// @desc    حظر اسم المستخدم (يظهر نجوم)
+// @access  Private/Admin
+router.put('/:id/ban-name', protect, adminOnly, async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+
+        const oldName = user.name;
+        user.name = '***مستخدم محظور***';
+        user.nameBanned = true;
+        user.violationCount = (user.violationCount || 0) + 1;
+        user.warnings.push({ reason: `حظر الاسم: ${oldName}`, action: 'name_ban', adminId: req.user._id });
+        await user.save();
+
+        const Notification = require('../models/Notification');
+        await Notification.create({
+            title: 'تنبيه من الإدارة',
+            body: 'تم حظر اسمك لمخالفته سياسة الاستخدام. يرجى تغيير الاسم.',
+            type: 'system',
+            targetUsers: [user._id],
+            recipients: 'specific'
+        });
+
+        if (global.io) {
+            global.io.to(`user:${user._id}`).emit('notification', {
+                title: 'تنبيه', body: 'تم حظر اسمك - يرجى تغييره'
+            });
+        }
+
+        invalidateUsers();
+        res.json({ success: true, message: `تم حظر الاسم "${oldName}"` });
+    } catch (error) {
+        console.error('خطأ:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   PUT /api/users/:id/warn
+// @desc    إرسال تحذير للمستخدم
+// @access  Private/Admin
+router.put('/:id/warn', protect, adminOnly, async (req, res) => {
+    try {
+        const { reason = 'مخالفة سياسة الاستخدام' } = req.body;
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+
+        user.violationCount = (user.violationCount || 0) + 1;
+        user.warnings.push({ reason, action: 'warn', adminId: req.user._id });
+
+        // إيقاف تلقائي عند 5 مخالفات
+        let autoSuspended = false;
+        if (user.violationCount >= 5) {
+            user.isActive = false;
+            user.suspendedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
+            user.suspendReason = 'إيقاف تلقائي - تجاوز 5 مخالفات';
+            user.warnings.push({ reason: 'إيقاف تلقائي - 5 مخالفات', action: 'auto_suspend', adminId: req.user._id });
+            autoSuspended = true;
+
+            // قطع اتصال Socket
+            if (global.connectedUsers && global.connectedUsers.has(user._id.toString())) {
+                const info = global.connectedUsers.get(user._id.toString());
+                const sock = global.io?.sockets?.sockets?.get(info.socketId);
+                if (sock) sock.disconnect(true);
+            }
+        }
+
+        await user.save();
+
+        const Notification = require('../models/Notification');
+        await Notification.create({
+            title: autoSuspended ? 'تم تعليق حسابك' : 'تحذير من الإدارة',
+            body: autoSuspended
+                ? 'تم تعليق حسابك لمدة 24 ساعة بسبب تكرار المخالفات'
+                : `تحذير: ${reason}. عدد المخالفات: ${user.violationCount}/5`,
+            type: 'system',
+            targetUsers: [user._id],
+            recipients: 'specific'
+        });
+
+        if (global.io) {
+            global.io.to(`user:${user._id}`).emit('notification', {
+                title: autoSuspended ? 'تم تعليق حسابك' : 'تحذير',
+                body: autoSuspended ? 'حسابك معلق 24 ساعة' : `تحذير: ${reason}`
+            });
+        }
+
+        invalidateUsers();
+        res.json({
+            success: true,
+            message: autoSuspended
+                ? `تم تحذير وتعليق ${user.name} تلقائياً (${user.violationCount} مخالفات)`
+                : `تم تحذير ${user.name} (${user.violationCount}/5 مخالفات)`,
+            data: { violationCount: user.violationCount, autoSuspended }
+        });
+    } catch (error) {
+        console.error('خطأ:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   GET /api/users/:id/violations
+// @desc    عرض سجل مخالفات المستخدم
+// @access  Private/Admin
+router.get('/:id/violations', protect, adminOnly, async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id)
+            .select('name email violationCount warnings nameBanned suspendedUntil suspendReason isActive')
+            .populate('warnings.adminId', 'name');
+
+        if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+
+        // عدد الرسائل المخالفة
+        const Message = require('../models/Message');
+        const flaggedCount = await Message.countDocuments({ sender: req.params.id, hasBannedWords: true });
+
+        res.json({
+            success: true,
+            data: {
+                user: { name: user.name, email: user.email, isActive: user.isActive },
+                violationCount: user.violationCount || 0,
+                nameBanned: user.nameBanned || false,
+                suspendedUntil: user.suspendedUntil,
+                suspendReason: user.suspendReason,
+                warnings: user.warnings || [],
+                flaggedMessagesCount: flaggedCount
+            }
+        });
+    } catch (error) {
+        console.error('خطأ:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 module.exports = router;

@@ -174,6 +174,27 @@ router.put('/:id/review', protect, adminOnly, async (req, res) => {
 
         await message.save();
 
+        // زيادة عداد المخالفات عند المراجعة
+        if (status === 'reviewed' && message.sender) {
+            const User = require('../models/User');
+            const sender = await User.findById(message.sender);
+            if (sender) {
+                sender.violationCount = (sender.violationCount || 0) + 1;
+                sender.warnings.push({
+                    reason: `رسالة مخالفة: ${message.content?.substring(0, 50)}`,
+                    action: 'warn',
+                    adminId: req.user._id
+                });
+                // إيقاف تلقائي عند 5 مخالفات
+                if (sender.violationCount >= 5) {
+                    sender.isActive = false;
+                    sender.suspendedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
+                    sender.suspendReason = 'إيقاف تلقائي - تجاوز 5 مخالفات';
+                }
+                await sender.save();
+            }
+        }
+
         res.json({
             success: true,
             message: 'تم تحديث حالة المراجعة',
@@ -359,6 +380,42 @@ router.get('/stats/:conversationId', protect, adminOnly, async (req, res) => {
             message: 'خطأ في جلب الإحصائيات',
             ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
+    }
+});
+
+// @route   GET /api/messages/flagged/:messageId/context
+// @desc    عرض سياق الرسالة المخالفة (5 رسائل قبل وبعد)
+// @access  Private/Admin
+router.get('/flagged/:messageId/context', protect, adminOnly, async (req, res) => {
+    try {
+        const message = await Message.findById(req.params.messageId);
+        if (!message) return res.status(404).json({ success: false, message: 'الرسالة غير موجودة' });
+
+        const conversationId = message.conversation;
+        if (!conversationId) return res.json({ success: true, data: { messages: [message], conversationId: null } });
+
+        const contextMessages = await Message.find({
+            conversation: conversationId,
+            createdAt: {
+                $gte: new Date(message.createdAt.getTime() - 5 * 60 * 1000),
+                $lte: new Date(message.createdAt.getTime() + 5 * 60 * 1000)
+            }
+        })
+        .populate('sender', 'name email profileImage')
+        .sort({ createdAt: 1 })
+        .limit(20);
+
+        res.json({
+            success: true,
+            data: {
+                messages: contextMessages,
+                conversationId: conversationId,
+                flaggedMessageId: message._id
+            }
+        });
+    } catch (error) {
+        console.error('خطأ:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
 

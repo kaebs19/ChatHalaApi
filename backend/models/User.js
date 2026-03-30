@@ -218,6 +218,16 @@ const userSchema = new mongoose.Schema({
     suspendedUntil: { type: Date, default: null },
     suspendReason: { type: String, default: null },
 
+    // عداد المخالفات
+    violationCount: { type: Number, default: 0 },
+    warnings: [{
+        reason: String,
+        action: String,     // 'warn' | 'name_ban' | 'avatar_reset' | 'suspend' | 'auto_suspend'
+        adminId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        date: { type: Date, default: Date.now }
+    }],
+    nameBanned: { type: Boolean, default: false },
+
     // حماية من هجمات القوة الغاشمة
     loginAttempts: { type: Number, default: 0 },
     lockUntil: { type: Date, default: null },

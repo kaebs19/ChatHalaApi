@@ -149,6 +149,23 @@
     justify-content: flex-end;
 }
 
+/* Violation badge */
+.violation-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 700;
+}
+.violation-ok { background: #d1fae5; color: #065f46; }
+.violation-warning { background: #fef3c7; color: #92400e; }
+.violation-critical { background: #fecaca; color: #991b1b; }
+
+/* More action buttons */
+.fm-btn-warn:hover { background: #fef3c7; }
+.fm-btn-avatar:hover { background: #e0e7ff; }
+.fm-btn-name:hover { background: #fce7f3; }
+
 /* Responsive */
 @media (max-width: 768px) {
     .fm-filters {
