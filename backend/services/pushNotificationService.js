@@ -34,7 +34,7 @@ const sendNotificationToUser = async (userId, notification, data = {}, saveToDb 
                 type: data.type || 'general',
                 recipients: 'specific',
                 targetUsers: [userId],
-                sender: userId, // المستخدم نفسه كمرسل للإشعارات التلقائية
+                sender: data.senderId || userId,
                 status: 'sent',
                 sentAt: new Date(),
                 sentCount: 1,
