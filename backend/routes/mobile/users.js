@@ -38,10 +38,20 @@ router.put('/users/location', protect, async (req, res) => {
             });
         }
 
+        // تمويه الموقع (1-3 كم إزاحة عشوائية) للعرض للآخرين
+        const fuzzKm = 1 + Math.random() * 2; // 1-3 كم
+        const fuzzAngle = Math.random() * 2 * Math.PI;
+        const fuzzLat = latitude + (fuzzKm / 111) * Math.cos(fuzzAngle);
+        const fuzzLng = longitude + (fuzzKm / (111 * Math.cos(latitude * Math.PI / 180))) * Math.sin(fuzzAngle);
+
         await User.findByIdAndUpdate(req.user._id, {
             location: {
                 type: 'Point',
-                coordinates: [longitude, latitude] // GeoJSON: [lng, lat]
+                coordinates: [longitude, latitude] // الموقع الحقيقي (للحسابات فقط)
+            },
+            fuzzyLocation: {
+                type: 'Point',
+                coordinates: [fuzzLng, fuzzLat] // الموقع المموّه (للعرض)
             }
         });
 
@@ -89,9 +99,19 @@ router.get('/users/search', protect, async (req, res) => {
             };
         }
 
-        // فلتر الاسم (اختياري)
+        // فلتر البحث (اسم / معرف / إيميل)
         if (q && q.length >= 2) {
-            filter.name = { $regex: escapeRegex(q), $options: 'i' };
+            const trimmedQ = q.trim();
+            if (trimmedQ.toUpperCase().startsWith('HALA-')) {
+                // بحث بالمعرف الفريد
+                filter.uniqueTag = trimmedQ.toUpperCase();
+            } else if (trimmedQ.includes('@')) {
+                // بحث بالإيميل
+                filter.email = { $regex: escapeRegex(trimmedQ), $options: 'i' };
+            } else {
+                // بحث بالاسم
+                filter.name = { $regex: escapeRegex(trimmedQ), $options: 'i' };
+            }
         }
 
         // فلتر الجنس
@@ -155,7 +175,8 @@ router.get('/users/search', protect, async (req, res) => {
                     $project: {
                         name: 1, email: 1, profileImage: 1, birthDate: 1,
                         gender: 1, country: 1, bio: 1, isOnline: 1, lastLogin: 1,
-                        isVerified: '$verification.isVerified', isPremium: 1, stealthMode: 1, distance: 1
+                        isVerified: '$verification.isVerified', isPremium: 1, stealthMode: 1,
+                        distance: 1, uniqueTag: 1, fuzzyLocation: 1
                     }
                 },
                 { $sort: { isOnline: -1, distance: 1 } },
@@ -165,7 +186,7 @@ router.get('/users/search', protect, async (req, res) => {
 
             users = await User.aggregate(pipeline);
 
-            // حساب distanceLabel + إخفاء lastLogin للمتخفين
+            // حساب distanceLabel + إخفاء lastLogin للمتخفين + إضافة fuzzyLocation
             users = users.map(u => {
                 const result = {
                     ...u,
@@ -174,6 +195,14 @@ router.get('/users/search', protect, async (req, res) => {
                     lastActive: u.stealthMode ? null : u.lastLogin
                 };
                 result.profileImage = getFullUrl(u.profileImage);
+                // إضافة الموقع المموّه (إلا إذا متخفي)
+                if (u.fuzzyLocation && u.fuzzyLocation.coordinates && !u.stealthMode) {
+                    result.fuzzyLatitude = u.fuzzyLocation.coordinates[1];
+                    result.fuzzyLongitude = u.fuzzyLocation.coordinates[0];
+                }
+                // لا نكشف الموقع الحقيقي أبداً
+                delete result.location;
+                delete result.fuzzyLocation;
                 delete result.lastLogin;
                 delete result.stealthMode;
                 return result;
@@ -198,7 +227,7 @@ router.get('/users/search', protect, async (req, res) => {
         } else {
             // بدون موقع — البحث العادي
             users = await User.find(filter)
-                .select('name email profileImage birthDate gender country bio isOnline lastLogin verification.isVerified isPremium stealthMode')
+                .select('name email profileImage birthDate gender country bio isOnline lastLogin verification.isVerified isPremium stealthMode uniqueTag fuzzyLocation')
                 .sort({ isOnline: -1, lastLogin: -1 })
                 .limit(limitNum)
                 .skip(skipNum);
@@ -216,6 +245,13 @@ router.get('/users/search', protect, async (req, res) => {
                 delete userObj.verification;
                 userObj.distance = null;
                 userObj.distanceLabel = null;
+                // إضافة الموقع المموّه
+                if (userObj.fuzzyLocation && userObj.fuzzyLocation.coordinates && !userObj.stealthMode) {
+                    userObj.fuzzyLatitude = userObj.fuzzyLocation.coordinates[1];
+                    userObj.fuzzyLongitude = userObj.fuzzyLocation.coordinates[0];
+                }
+                delete userObj.fuzzyLocation;
+                delete userObj.location;
                 return userObj;
             });
         }

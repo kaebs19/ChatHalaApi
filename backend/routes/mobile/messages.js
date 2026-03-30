@@ -160,26 +160,37 @@ router.post('/messages/send', protect, async (req, res) => {
 
         logger.debug('عدد المستقبلين:', recipients.length);
 
+        // إرسال Push Notifications بشكل متوازي (بدل تسلسلي) + بدون انتظار
         const pushContent = filteredContent || content;
-        for (const recipient of recipients) {
-            const recipientId = recipient._id.toString();
+        const pushMessage = type === 'text'
+            ? (pushContent.length > 100 ? pushContent.substring(0, 100) + '...' : pushContent)
+            : `أرسل ${type === 'image' ? 'صورة' : type === 'audio' ? 'رسالة صوتية' : type === 'video' ? 'فيديو' : 'ملف'}`;
 
-            // تحقق هل المستقبل متصل بالسوكت
+        const offlineRecipients = recipients.filter(r => {
+            const recipientId = r._id.toString();
             const isOnline = global.connectedUsers && global.connectedUsers.has(recipientId);
+            if (isOnline) logger.debug(`${r.name} متصل بالسوكت - لا حاجة لـ Push`);
+            return !isOnline;
+        });
 
-            if (isOnline) {
-                logger.debug(`${recipient.name} متصل بالسوكت - لا حاجة لـ Push`);
-            } else {
-                logger.debug(`${recipient.name} غير متصل - إرسال Push Notification`);
-                // إرسال Push Notification عبر Firebase للـ offline users فقط
-                const pushResult = await pushNotificationService.sendNewMessageNotification(
-                    recipient._id,
-                    req.user.name,
-                    type === 'text' ? (pushContent.length > 100 ? pushContent.substring(0, 100) + '...' : pushContent) : `أرسل ${type === 'image' ? 'صورة' : type === 'audio' ? 'رسالة صوتية' : type === 'video' ? 'فيديو' : 'ملف'}`,
-                    conversationId
-                );
-                logger.debug('نتيجة الإشعار:', JSON.stringify(pushResult));
-            }
+        // Fire-and-forget: لا نوقف الرد حتى ترسل الإشعارات
+        if (offlineRecipients.length > 0) {
+            Promise.allSettled(
+                offlineRecipients.map(recipient =>
+                    pushNotificationService.sendNewMessageNotification(
+                        recipient._id,
+                        req.user.name,
+                        pushMessage,
+                        conversationId
+                    )
+                )
+            ).then(results => {
+                results.forEach((r, i) => {
+                    if (r.status === 'rejected') {
+                        logger.error(`فشل إشعار ${offlineRecipients[i].name}:`, r.reason);
+                    }
+                });
+            }).catch(err => logger.error('خطأ في إرسال الإشعارات:', err));
         }
 
         res.status(201).json({
@@ -219,7 +230,7 @@ router.post('/conversations/:conversationId/messages/image', protect, uploadMess
 
         if (!conversation) {
             // حذف الصورة المرفوعة
-            fs.unlinkSync(req.file.path);
+            fs.unlink(req.file.path, (err) => { if (err) console.error('File cleanup error:', err); });
             return res.status(404).json({
                 success: false,
                 message: 'المحادثة غير موجودة'
@@ -232,7 +243,7 @@ router.post('/conversations/:conversationId/messages/image', protect, uploadMess
         );
 
         if (!isParticipant) {
-            fs.unlinkSync(req.file.path);
+            fs.unlink(req.file.path, (err) => { if (err) console.error('File cleanup error:', err); });
             return res.status(403).json({
                 success: false,
                 message: 'ليس لديك صلاحية لهذه المحادثة'
@@ -303,7 +314,7 @@ router.post('/conversations/:conversationId/messages/image', protect, uploadMess
         logger.error('خطأ في إرسال الصورة:', error);
         // حذف الصورة إذا حدث خطأ
         if (req.file && fs.existsSync(req.file.path)) {
-            fs.unlinkSync(req.file.path);
+            fs.unlink(req.file.path, (err) => { if (err) console.error('File cleanup error:', err); });
         }
         res.status(500).json({
             success: false,

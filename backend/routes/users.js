@@ -353,4 +353,64 @@ router.get('/:id/activity', protect, adminOnly, async (req, res) => {
     }
 });
 
+// @route   GET /api/users/locations
+// @desc    جلب مواقع جميع المستخدمين (للخريطة)
+// @access  Private/Admin
+router.get('/locations', protect, adminOnly, async (req, res) => {
+    try {
+        const users = await User.find({
+            'location.coordinates': { $ne: [0, 0] }
+        }).select('name email profileImage gender isActive isOnline lastLogin location createdAt');
+
+        res.status(200).json({
+            success: true,
+            count: users.length,
+            data: { users }
+        });
+    } catch (error) {
+        console.error('خطأ في جلب مواقع المستخدمين:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر'
+        });
+    }
+});
+
+// @route   PUT /api/users/:id/suspend
+// @desc    تعليق مستخدم لفترة محددة
+// @access  Private/Admin
+router.put('/:id/suspend', protect, adminOnly, async (req, res) => {
+    try {
+        const { days = 7, reason = '' } = req.body;
+
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        }
+
+        user.isActive = false;
+        user.suspendedUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+        user.suspendReason = reason;
+        await user.save();
+
+        // قطع اتصال Socket
+        if (global.connectedUsers && global.connectedUsers.has(user._id.toString())) {
+            const socketInfo = global.connectedUsers.get(user._id.toString());
+            const socket = global.io?.sockets?.sockets?.get(socketInfo.socketId);
+            if (socket) socket.disconnect(true);
+        }
+
+        invalidateUsers();
+
+        res.json({
+            success: true,
+            message: `تم تعليق ${user.name} لمدة ${days} يوم`,
+            data: { suspendedUntil: user.suspendedUntil, reason }
+        });
+    } catch (error) {
+        console.error('خطأ في تعليق المستخدم:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 module.exports = router;

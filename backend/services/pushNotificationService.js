@@ -216,16 +216,16 @@ const sendNewMessageNotification = async (recipientId, senderName, messagePrevie
 
         if (mutedConv) {
             // تحقق إذا انتهت مدة الكتم
-            if (mutedConv.mutedUntil && new Date() > new Date(mutedConv.mutedUntil)) {
+            if (mutedConv.mutedUntil && new Date() < new Date(mutedConv.mutedUntil)) {
+                // لا تزال مكتومة - لا ترسل إشعار
+                console.log(`🔇 المحادثة ${conversationId} مكتومة للمستخدم ${user.name}`);
+                return { success: true, skipped: true, reason: 'muted' };
+            } else {
                 // انتهت مدة الكتم - أزل من القائمة
                 await User.findByIdAndUpdate(recipientId, {
                     $pull: { mutedConversations: { conversationId: conversationId } }
                 });
                 console.log(`🔔 انتهت مدة كتم المحادثة ${conversationId} للمستخدم ${user.name}`);
-            } else {
-                // لا تزال مكتومة - لا ترسل إشعار
-                console.log(`🔇 المحادثة ${conversationId} مكتومة للمستخدم ${user.name}`);
-                return { success: true, skipped: true, reason: 'muted' };
             }
         }
 

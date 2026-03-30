@@ -45,8 +45,23 @@ const server = http.createServer(app);
 // إعداد Socket.IO
 const io = new Server(server, {
     cors: {
-        origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+        origin: function (origin, callback) {
+            // السماح بالاتصالات بدون origin (تطبيقات الموبايل)
+            if (!origin || allowedOrigins.includes(origin)) {
+                callback(null, true);
+            } else {
+                // رفض المصادر غير المسموحة
+                callback(new Error('غير مسموح بواسطة CORS'));
+            }
+        },
         credentials: true
+    },
+    pingTimeout: 60000,      // 60 ثانية قبل اعتبار الاتصال مقطوع
+    pingInterval: 25000,     // فحص كل 25 ثانية
+    maxHttpBufferSize: 1e6,  // 1MB حد أقصى للرسالة
+    // السماح بدون origin فقط لتطبيقات الموبايل (يمررون التوكن في auth)
+    allowRequest: (req, callback) => {
+        callback(null, true);
     }
 });
 
@@ -60,7 +75,17 @@ io.use(async (socket, next) => {
         }
 
         // التحقق من Token
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        let decoded;
+        try {
+            decoded = jwt.verify(token, process.env.JWT_SECRET);
+        } catch (tokenError) {
+            if (tokenError.name === 'TokenExpiredError') {
+                // إرسال حدث للعميل لتجديد التوكن بدل قطع الاتصال
+                logger.warn('Socket: Token expired, requesting refresh');
+                return next(new Error('TOKEN_EXPIRED'));
+            }
+            return next(new Error('Authentication error: Invalid token'));
+        }
 
         // جلب بيانات المستخدم
         const user = await User.findById(decoded.id).select('-password');
@@ -89,20 +114,32 @@ io.use(async (socket, next) => {
 global.io = io;
 global.connectedUsers = new Map();
 
-// Socket.IO Rate Limiter
+// Socket.IO Rate Limiter (محسّن - حد أقصى للذاكرة)
 const socketRateLimits = new Map();
+const MAX_RATE_LIMIT_ENTRIES = 10000; // حد أقصى لعدد المدخلات
+
 function checkSocketRate(socketId, event, maxPerMinute = 30) {
     const key = `${socketId}:${event}`;
     const now = Date.now();
     const windowMs = 60 * 1000;
 
+    // حماية من تجاوز الذاكرة
+    if (socketRateLimits.size > MAX_RATE_LIMIT_ENTRIES) {
+        // مسح أقدم نصف المدخلات
+        const entries = Array.from(socketRateLimits.entries());
+        const toDelete = entries.slice(0, Math.floor(entries.length / 2));
+        toDelete.forEach(([k]) => socketRateLimits.delete(k));
+    }
+
     if (!socketRateLimits.has(key)) {
-        socketRateLimits.set(key, []);
+        socketRateLimits.set(key, [now]);
+        return true;
     }
 
     const timestamps = socketRateLimits.get(key).filter(t => now - t < windowMs);
 
     if (timestamps.length >= maxPerMinute) {
+        socketRateLimits.set(key, timestamps);
         return false;
     }
 
@@ -111,7 +148,7 @@ function checkSocketRate(socketId, event, maxPerMinute = 30) {
     return true;
 }
 
-// تنظيف rate limits كل 5 دقائق
+// تنظيف rate limits كل دقيقتين (بدل 5)
 setInterval(() => {
     const now = Date.now();
     for (const [key, timestamps] of socketRateLimits.entries()) {
@@ -122,7 +159,7 @@ setInterval(() => {
             socketRateLimits.set(key, valid);
         }
     }
-}, 5 * 60 * 1000);
+}, 2 * 60 * 1000);
 
 // الإعدادات الأساسية
 const PORT = process.env.PORT || 5000;
@@ -178,13 +215,15 @@ app.use(cors({
 // 4. Rate Limiting - منع الهجمات بالطلبات المتكررة
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 دقيقة
-    max: 100, // 100 طلب كحد أقصى
+    max: 300, // 300 طلب كحد أقصى (الموبايل يرسل طلبات كثيرة)
     message: {
         success: false,
         message: 'عدد كبير من المحاولات. يرجى المحاولة بعد 15 دقيقة'
     },
     standardHeaders: true,
     legacyHeaders: false,
+    // لا تحسب الطلبات الناجحة من الموبايل
+    skip: (req) => req.path.includes('/mobile/') && req.method === 'GET',
 });
 app.use('/api/', limiter);
 
@@ -574,6 +613,40 @@ io.on('connection', async (socket) => {
         });
     });
 
+    // إرسال رسالة في المحادثة الخاصة (من تطبيق الموبايل)
+    socket.on('send-message', (data) => {
+        try {
+            if (!checkSocketRate(socket.id, 'send-message', 30)) {
+                return socket.emit('error', { message: 'أنت ترسل رسائل بسرعة كبيرة. انتظر قليلاً' });
+            }
+
+            const { conversationId, content, type, _id } = data || {};
+
+            if (!conversationId || !content) {
+                return socket.emit('error', { message: 'بيانات الرسالة غير مكتملة' });
+            }
+
+            // بث الرسالة للمشاركين في المحادثة (ما عدا المرسل)
+            socket.to(`conversation-${conversationId}`).emit('new-message', {
+                _id,
+                conversationId,
+                content,
+                type: type || 'text',
+                sender: {
+                    _id: socket.userId,
+                    name: socket.user.name,
+                    profileImage: getFullUrl(socket.user.profileImage)
+                },
+                createdAt: new Date()
+            });
+
+            logger.info(`رسالة جديدة في المحادثة ${conversationId} من ${socket.user.name}`);
+        } catch (error) {
+            logger.error('خطأ في send-message:', error);
+            socket.emit('error', { message: 'فشل في إرسال الرسالة' });
+        }
+    });
+
     // عند قطع الاتصال
     socket.on('disconnect', async () => {
         logger.info(`${socket.user.name} قطع الاتصال (${socket.id})`);
@@ -612,6 +685,10 @@ process.on('uncaughtException', (err) => {
 
 process.on('unhandledRejection', (reason, promise) => {
     logger.error('Unhandled Rejection:', reason);
+    // لا نوقف السيرفر لكن نسجل التفاصيل الكاملة
+    if (reason instanceof Error) {
+        logger.error('Stack:', reason.stack);
+    }
 });
 
 // تشغيل السيرفر

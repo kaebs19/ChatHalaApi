@@ -11,6 +11,7 @@ const Report = require('../../models/Report');
 const BannedWord = require('../../models/BannedWord');
 const { protect } = require('../../middleware/auth');
 const { getFullUrl, uploadMessageImage } = require('./helpers');
+const { get: cacheGet, set: cacheSet, CACHE_TTL } = require('../../utils/cache');
 
 // Helper: تنظيف المدخلات من أحرف Regex الخاصة لمنع NoSQL Injection
 function escapeRegex(str) {
@@ -43,13 +44,21 @@ router.get('/rooms', protect, async (req, res) => {
         }
 
         const rooms = await ChatRoom.find(filter)
-            .select('name image description category memberCount messageCount isLocked lastMessage updatedAt members pinnedMessage')
+            .select('name image description category memberCount messageCount isLocked lastMessage updatedAt pinnedMessage')
             .populate('lastMessage.sender', 'name profileImage isPremium verification.isVerified')
             .sort({ updatedAt: -1 })
             .skip((page - 1) * limit)
             .limit(parseInt(limit));
 
         const total = await ChatRoom.countDocuments(filter);
+
+        // جلب عضوية المستخدم لكل الغرف بعملية واحدة
+        const roomIds = rooms.map(r => r._id);
+        const joinedRooms = await ChatRoom.find(
+            { _id: { $in: roomIds }, members: req.user._id },
+            { _id: 1 }
+        ).lean();
+        const joinedSet = new Set(joinedRooms.map(r => r._id.toString()));
 
         // تنسيق البيانات كجدول مبسط
         const tableData = rooms.map(room => {
@@ -58,7 +67,7 @@ router.get('/rooms', protect, async (req, res) => {
             const onlineCount = socketRoom ? socketRoom.size : 0;
 
             // التحقق هل المستخدم عضو بالغرفة
-            const isJoined = room.members?.some(m => m.toString() === req.user._id.toString()) || false;
+            const isJoined = joinedSet.has(room._id.toString());
 
             return {
                 id: room._id,

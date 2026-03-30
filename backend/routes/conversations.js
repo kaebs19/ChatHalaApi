@@ -26,19 +26,30 @@ router.get('/', protect, adminOnly, async (req, res) => {
             .limit(limit * 1)
             .skip((page - 1) * limit);
 
-        // إضافة عدد الرسائل المُخالفة لكل محادثة
-        const conversationsWithFlags = await Promise.all(
-            conversations.map(async (conv) => {
-                const flaggedCount = await Message.countDocuments({
+        // إضافة عدد الرسائل المُخالفة لكل محادثة (استعلام واحد بدل N استعلام)
+        const convIds = conversations.map(c => c._id);
+        const flaggedCounts = await Message.aggregate([
+            {
+                $match: {
                     chatType: 'conversation',
-                    conversation: conv._id,
+                    conversation: { $in: convIds },
                     hasBannedWords: true
-                });
-                const convObj = conv.toObject();
-                convObj.flaggedMessagesCount = flaggedCount;
-                return convObj;
-            })
-        );
+                }
+            },
+            {
+                $group: {
+                    _id: '$conversation',
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+        const flaggedMap = new Map(flaggedCounts.map(f => [f._id.toString(), f.count]));
+
+        const conversationsWithFlags = conversations.map(conv => {
+            const convObj = conv.toObject();
+            convObj.flaggedMessagesCount = flaggedMap.get(conv._id.toString()) || 0;
+            return convObj;
+        });
 
         // فلترة المحادثات المُبلّغة فقط (إذا طُلب)
         let finalConversations = conversationsWithFlags;

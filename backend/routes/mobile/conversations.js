@@ -23,6 +23,16 @@ const { getFullUrl } = require('./helpers');
 // @access  Private
 router.post('/conversations/request', protect, conversationRequestValidation, validate, async (req, res) => {
     try {
+        // Rate limit: 50 requests per 24 hours
+        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const recentRequests = await Conversation.countDocuments({
+            creator: req.user._id,
+            createdAt: { $gte: oneDayAgo }
+        });
+        if (recentRequests >= 50) {
+            return res.status(429).json({ success: false, message: 'عدد كبير من الطلبات. حاول لاحقاً' });
+        }
+
         const { targetUserId, initialMessage, isSuperLike } = req.body;
 
         if (!targetUserId) {
@@ -198,6 +208,14 @@ router.put('/conversations/:id/accept', protect, mongoIdParam, validate, async (
             });
         }
 
+        // التحقق من أن المحادثة في حالة انتظار
+        if (conversation.status !== 'pending') {
+            return res.status(400).json({
+                success: false,
+                message: 'هذا الطلب تم التعامل معه مسبقاً'
+            });
+        }
+
         // التحقق من أن المستخدم هو المستهدف وليس المنشئ
         if (conversation.creator.toString() === req.user._id.toString()) {
             return res.status(400).json({
@@ -279,6 +297,14 @@ router.put('/conversations/:id/reject', protect, mongoIdParam, validate, async (
             return res.status(404).json({
                 success: false,
                 message: 'المحادثة غير موجودة'
+            });
+        }
+
+        // التحقق من أن المحادثة في حالة انتظار
+        if (conversation.status !== 'pending') {
+            return res.status(400).json({
+                success: false,
+                message: 'هذا الطلب تم التعامل معه مسبقاً'
             });
         }
 
@@ -427,14 +453,24 @@ router.put('/conversations/:id/read', protect, mongoIdParam, validate, async (re
 // @access  Private
 router.get('/conversations/pending', protect, async (req, res) => {
     try {
-        const conversations = await Conversation.find({
+        const page = parseInt(req.query.page) || 1;
+        const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+        const skip = (page - 1) * limit;
+
+        const query = {
             participants: req.user._id,
             creator: { $ne: req.user._id },
             status: 'pending'
-        })
+        };
+
+        const total = await Conversation.countDocuments(query);
+
+        const conversations = await Conversation.find(query)
             .populate('creator', 'name email profileImage verification.isVerified isPremium')
             .populate('participants', 'name email profileImage lastLogin isOnline isPremium verification.isVerified')
-            .sort({ createdAt: -1 });
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit);
 
         // إضافة حقل isSuperLike لكل طلب
         const creatorIds = conversations.map(c => c.creator._id);
@@ -467,7 +503,12 @@ router.get('/conversations/pending', protect, async (req, res) => {
 
         res.status(200).json({
             success: true,
-            data: { conversations: enrichedConversations }
+            data: {
+                conversations: enrichedConversations,
+                total,
+                currentPage: page,
+                totalPages: Math.ceil(total / limit)
+            }
         });
 
     } catch (error) {
@@ -491,7 +532,8 @@ router.get('/conversations', protect, async (req, res) => {
         const conversations = await Conversation.find({
             participants: userId,
             status: { $in: ['accepted', 'pending'] },
-            isActive: true
+            isActive: true,
+            hiddenBy: { $ne: userId }
         })
             .populate('participants', 'name email profileImage lastLogin isOnline isPremium verification.isVerified')
             .populate('lastMessage')
@@ -531,7 +573,8 @@ router.get('/conversations', protect, async (req, res) => {
         const total = await Conversation.countDocuments({
             participants: userId,
             status: { $in: ['accepted', 'pending'] },
-            isActive: true
+            isActive: true,
+            hiddenBy: { $ne: userId }
         });
 
         // حساب إجمالي الرسائل غير المقروءة
@@ -617,6 +660,93 @@ router.put('/conversations/:id/mute', protect, mongoIdParam, validate, async (re
             message: 'فشل في تحديث حالة الكتم',
             ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
+    }
+});
+
+// ==========================================
+// إخفاء المحادثة (حذف ناعم - للمستخدم فقط)
+// ==========================================
+router.put('/conversations/:id/leave', protect, async (req, res) => {
+    try {
+        const userId = req.user._id;
+        const conversation = await Conversation.findOne({
+            _id: req.params.id,
+            participants: userId
+        });
+
+        if (!conversation) {
+            return res.status(404).json({ success: false, message: 'المحادثة غير موجودة' });
+        }
+
+        // إضافة المستخدم لقائمة الإخفاء
+        if (!conversation.hiddenBy.includes(userId)) {
+            conversation.hiddenBy.push(userId);
+            await conversation.save();
+        }
+
+        res.json({ success: true, message: 'تم إخفاء المحادثة' });
+    } catch (error) {
+        logger.error('خطأ في إخفاء المحادثة:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// ==========================================
+// تحديث إعدادات حذف الرسائل (مثل Snapchat)
+// ==========================================
+router.put('/conversations/:id/delete-settings', protect, async (req, res) => {
+    try {
+        const userId = req.user._id;
+        const { deleteMode } = req.body; // none | on_exit | 24h
+
+        if (!['none', 'on_exit', '24h'].includes(deleteMode)) {
+            return res.status(400).json({ success: false, message: 'وضع حذف غير صالح' });
+        }
+
+        const conversation = await Conversation.findOne({
+            _id: req.params.id,
+            participants: userId
+        }).populate('participants', 'name');
+
+        if (!conversation) {
+            return res.status(404).json({ success: false, message: 'المحادثة غير موجودة' });
+        }
+
+        const oldMode = conversation.deleteMode || 'none';
+        conversation.deleteMode = deleteMode;
+        conversation.settings.autoDeleteMessages = deleteMode !== 'none';
+        conversation.settings.autoDeleteDays = deleteMode === '24h' ? 1 : 0;
+        await conversation.save();
+
+        // رسالة نظام توضيحية (مثل Snapchat)
+        const modeLabels = { none: 'بدون حذف', on_exit: 'حذف بعد الخروج', '24h': 'حذف بعد 24 ساعة' };
+        const systemMessage = await Message.create({
+            chatType: 'conversation',
+            conversation: conversation._id,
+            sender: userId,
+            content: `غيّر إعدادات حذف الرسائل إلى "${modeLabels[deleteMode]}"`,
+            type: 'text',
+            status: 'sent'
+        });
+
+        // إرسال عبر Socket للطرف الآخر
+        if (global.io) {
+            global.io.to(`conversation-${conversation._id}`).emit('delete-settings-changed', {
+                conversationId: conversation._id.toString(),
+                deleteMode,
+                changedBy: userId.toString(),
+                message: systemMessage
+            });
+        }
+
+        res.json({
+            success: true,
+            message: `تم تغيير وضع الحذف إلى "${modeLabels[deleteMode]}"`,
+            data: { deleteMode, systemMessage }
+        });
+    } catch (error) {
+        logger.error('خطأ في تحديث إعدادات الحذف:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
 

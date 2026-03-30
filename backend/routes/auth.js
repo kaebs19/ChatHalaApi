@@ -13,8 +13,10 @@ const { generateRefreshToken, verifyRefreshToken } = require('../utils/generateT
 const sendEmail = require('../utils/sendEmail');
 const { protect } = require('../middleware/auth');
 const { validate } = require('../middleware/validation');
+const { generateUniqueTag } = require('../utils/generateTag');
 const upload = require('../config/multer');
 const { optimizeImage } = require('../middleware/imageOptimizer');
+const BannedWord = require('../models/BannedWord');
 const {
     registerValidation,
     loginValidation,
@@ -44,6 +46,15 @@ router.post('/register', registerValidation, validate, async (req, res) => {
             });
         }
 
+        // فحص الاسم ضد الكلمات المحظورة
+        const nameCheck = await BannedWord.checkText(name, 'name');
+        if (!nameCheck.isClean) {
+            return res.status(400).json({
+                success: false,
+                message: 'الاسم يحتوي على كلمات غير مسموحة'
+            });
+        }
+
         // التحقق من أن البريد غير مستخدم
         const userExists = await User.findOne({ email });
         if (userExists) {
@@ -53,11 +64,13 @@ router.post('/register', registerValidation, validate, async (req, res) => {
             });
         }
 
-        // إنشاء المستخدم
+        // إنشاء المستخدم مع معرف فريد
+        const uniqueTag = await generateUniqueTag(User);
         const user = await User.create({
             name,
             email,
-            password
+            password,
+            uniqueTag
         });
 
         // تسجيل النشاط
@@ -88,7 +101,8 @@ router.post('/register', registerValidation, validate, async (req, res) => {
                     name: user.name,
                     email: user.email,
                     role: user.role,
-                    profileImage: user.profileImage || null
+                    profileImage: user.profileImage || null,
+                    uniqueTag: user.uniqueTag
                 },
                 token: generateToken(user._id),
                 refreshToken: generateRefreshToken(user._id)
@@ -163,8 +177,11 @@ router.post('/login', loginValidation, validate, async (req, res) => {
             await user.resetLoginAttempts();
         }
 
-        // تحديث آخر تسجيل دخول
+        // تحديث آخر تسجيل دخول + backfill uniqueTag
         user.lastLogin = new Date();
+        if (!user.uniqueTag) {
+            user.uniqueTag = await generateUniqueTag(User);
+        }
         await user.save();
 
         // تسجيل النشاط
@@ -196,7 +213,8 @@ router.post('/login', loginValidation, validate, async (req, res) => {
                     email: user.email,
                     role: user.role,
                     profileImage: user.profileImage,
-                    lastLogin: user.lastLogin
+                    lastLogin: user.lastLogin,
+                    uniqueTag: user.uniqueTag
                 },
                 token: generateToken(user._id),
                 refreshToken: generateRefreshToken(user._id)
@@ -218,6 +236,12 @@ router.post('/login', loginValidation, validate, async (req, res) => {
 // @access  Private
 router.get('/me', protect, async (req, res) => {
     try {
+        // Backfill uniqueTag إذا لم يكن موجود
+        if (!req.user.uniqueTag) {
+            req.user.uniqueTag = await generateUniqueTag(User);
+            await req.user.save();
+        }
+
         res.status(200).json({
             success: true,
             data: {
@@ -260,6 +284,17 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
             }
         }
 
+        // فحص الاسم ضد الكلمات المحظورة
+        if (name) {
+            const nameCheck = await BannedWord.checkText(name, 'name');
+            if (!nameCheck.isClean) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'الاسم يحتوي على كلمات غير مسموحة'
+                });
+            }
+        }
+
         // تحديث الحقول الأساسية
         if (name) user.name = name;
         if (email) user.email = email;
@@ -271,10 +306,10 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
         if (country !== undefined) user.country = country;
         if (bio !== undefined) user.bio = bio;
 
-        // دعم الصور الافتراضية (avatar_1 إلى avatar_13)
+        // دعم الصور الافتراضية (avatar_1 إلى avatar_14)
         if (defaultAvatar) {
             // التحقق من صحة اسم الصورة الافتراضية
-            const validAvatars = Array.from({ length: 13 }, (_, i) => `avatar_${i + 1}`);
+            const validAvatars = Array.from({ length: 14 }, (_, i) => `avatar_${i + 1}`);
             if (validAvatars.includes(defaultAvatar)) {
                 user.profileImage = `/uploads/defaults/${defaultAvatar}.jpg`;
             }
@@ -749,10 +784,13 @@ router.post('/google', async (req, res) => {
             });
         }
 
-        // تحديث Device Token و معلومات الجهاز
+        // تحديث Device Token و معلومات الجهاز + backfill uniqueTag
         if (deviceToken) user.deviceToken = deviceToken;
         if (deviceInfo) user.deviceInfo = deviceInfo;
         user.lastLogin = new Date();
+        if (!user.uniqueTag) {
+            user.uniqueTag = await generateUniqueTag(User);
+        }
 
         await user.save();
 
@@ -785,7 +823,8 @@ router.post('/google', async (req, res) => {
                     role: user.role,
                     profileImage: user.profileImage,
                     authProvider: user.authProvider,
-                    lastLogin: user.lastLogin
+                    lastLogin: user.lastLogin,
+                    uniqueTag: user.uniqueTag
                 },
                 token: generateToken(user._id),
                 refreshToken: generateRefreshToken(user._id),
@@ -845,26 +884,31 @@ router.post('/apple', async (req, res) => {
 
         let isNewUser = false;
 
+        // استخراج الاسم من Apple (إذا متوفر)
+        let appleName = null;
+        if (fullName) {
+            const firstName = fullName.givenName || '';
+            const lastName = fullName.familyName || '';
+            const combined = `${firstName} ${lastName}`.trim();
+            if (combined) appleName = combined;
+        }
+
         if (user) {
             // تحديث معلومات Apple إذا لم تكن موجودة
             if (!user.appleId) {
                 user.appleId = appleId;
                 user.authProvider = 'apple';
             }
+            // تحديث الاسم إذا كان "مستخدم Apple" وتوفر اسم حقيقي
+            if (appleName && (user.name === 'مستخدم Apple' || user.name === 'Apple User')) {
+                user.name = appleName;
+            }
         } else {
             // إنشاء مستخدم جديد
             isNewUser = true;
 
-            // تحديد الاسم
-            let name = 'مستخدم Apple';
-            if (fullName) {
-                const firstName = fullName.givenName || '';
-                const lastName = fullName.familyName || '';
-                name = `${firstName} ${lastName}`.trim() || 'مستخدم Apple';
-            }
-
             user = new User({
-                name,
+                name: appleName || 'مستخدم Apple',
                 email: email || `apple_${appleId}@private.appleid.com`,
                 appleId,
                 authProvider: 'apple',
@@ -872,10 +916,13 @@ router.post('/apple', async (req, res) => {
             });
         }
 
-        // تحديث Device Token و معلومات الجهاز
+        // تحديث Device Token و معلومات الجهاز + backfill uniqueTag
         if (deviceToken) user.deviceToken = deviceToken;
         if (deviceInfo) user.deviceInfo = deviceInfo;
         user.lastLogin = new Date();
+        if (!user.uniqueTag) {
+            user.uniqueTag = await generateUniqueTag(User);
+        }
 
         await user.save();
 
@@ -908,7 +955,8 @@ router.post('/apple', async (req, res) => {
                     role: user.role,
                     profileImage: user.profileImage,
                     authProvider: user.authProvider,
-                    lastLogin: user.lastLogin
+                    lastLogin: user.lastLogin,
+                    uniqueTag: user.uniqueTag
                 },
                 token: generateToken(user._id),
                 refreshToken: generateRefreshToken(user._id),

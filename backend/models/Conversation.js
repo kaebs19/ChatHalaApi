@@ -52,6 +52,17 @@ const conversationSchema = new mongoose.Schema({
         enum: ['pending', 'accepted', 'rejected'],
         default: 'accepted' // المحادثات القديمة تكون مقبولة بشكل افتراضي
     },
+    // المستخدمون الذين أخفوا المحادثة (حذف ناعم)
+    hiddenBy: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    }],
+    // وضع حذف الرسائل: none | on_exit | 24h
+    deleteMode: {
+        type: String,
+        enum: ['none', 'on_exit', '24h'],
+        default: 'none'
+    },
     settings: {
         allowMembersToSend: {
             type: Boolean,
@@ -99,6 +110,8 @@ conversationSchema.index({ participants: 1, type: 1 }); // للبحث عن مح�
 conversationSchema.index({ status: 1, updatedAt: -1 }); // للترتيب حسب النشاط
 conversationSchema.index({ createdAt: -1 });
 conversationSchema.index({ isActive: 1 });
+conversationSchema.index({ creator: 1 });
+conversationSchema.index({ type: 1, status: 1, updatedAt: -1 });
 
 // دالة لحساب عدد المشاركين تلقائياً
 conversationSchema.pre('save', function() {

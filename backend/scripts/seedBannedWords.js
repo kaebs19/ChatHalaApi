@@ -82,6 +82,43 @@ const WORDS = [
     { word: 'crap', type: 'word', severity: 'medium', action: 'warn' },
     { word: 'damn', type: 'word', severity: 'medium', action: 'warn' },
     { word: 'hell', type: 'word', severity: 'low', action: 'warn' },
+
+    // ========== أسماء محظورة — جنسية (name) ==========
+    { word: 'يهودي', type: 'name', severity: 'high', action: 'block' },
+    { word: 'صهيوني', type: 'name', severity: 'high', action: 'block' },
+    { word: 'اسرائيلي', type: 'name', severity: 'high', action: 'block' },
+    { word: 'ايراني', type: 'name', severity: 'medium', action: 'block' },
+
+    // ========== أسماء محظورة — دينية (name) ==========
+    { word: 'كافر', type: 'name', severity: 'high', action: 'block' },
+    { word: 'ملحد', type: 'name', severity: 'high', action: 'block' },
+    { word: 'مرتد', type: 'name', severity: 'high', action: 'block' },
+    { word: 'مشرك', type: 'name', severity: 'high', action: 'block' },
+    { word: 'زنديق', type: 'name', severity: 'high', action: 'block' },
+    { word: 'الشيطان', type: 'name', severity: 'critical', action: 'ban' },
+    { word: 'ابليس', type: 'name', severity: 'critical', action: 'ban' },
+    { word: 'satan', type: 'name', severity: 'critical', action: 'ban' },
+    { word: 'devil', type: 'name', severity: 'critical', action: 'ban' },
+    { word: 'lucifer', type: 'name', severity: 'critical', action: 'ban' },
+
+    // ========== أسماء محظورة — سياسية (name) ==========
+    { word: 'داعش', type: 'name', severity: 'critical', action: 'ban' },
+    { word: 'isis', type: 'name', severity: 'critical', action: 'ban' },
+    { word: 'القاعدة', type: 'name', severity: 'critical', action: 'ban' },
+    { word: 'طالبان', type: 'name', severity: 'critical', action: 'ban' },
+    { word: 'ارهابي', type: 'name', severity: 'critical', action: 'ban' },
+    { word: 'terrorist', type: 'name', severity: 'critical', action: 'ban' },
+    { word: 'حزب الله', type: 'name', severity: 'high', action: 'block' },
+    { word: 'حماس', type: 'name', severity: 'high', action: 'block' },
+
+    // ========== أسماء محظورة — ألقاب مسيئة (name) ==========
+    { word: 'admin', type: 'name', severity: 'high', action: 'block' },
+    { word: 'مدير', type: 'name', severity: 'high', action: 'block' },
+    { word: 'support', type: 'name', severity: 'high', action: 'block' },
+    { word: 'دعم فني', type: 'name', severity: 'high', action: 'block' },
+    { word: 'halachat', type: 'name', severity: 'high', action: 'block' },
+    { word: 'moderator', type: 'name', severity: 'high', action: 'block' },
+    { word: 'مشرف', type: 'name', severity: 'high', action: 'block' },
 ];
 
 async function seed() {

@@ -75,6 +75,14 @@ const userSchema = new mongoose.Schema({
         default: null,
         maxlength: [500, 'النبذة يجب أن لا تتجاوز 500 حرف']
     },
+    // معرف فريد للعرض (HALA-XXXXXX)
+    uniqueTag: {
+        type: String,
+        unique: true,
+        sparse: true,
+        uppercase: true,
+        trim: true
+    },
     // نوع التسجيل (app, google, apple)
     authProvider: {
         type: String,
@@ -170,10 +178,16 @@ const userSchema = new mongoose.Schema({
     subscriptionTransactionId: { type: String, default: null },
     subscriptionOriginalTransactionId: { type: String, default: null },
 
-    // الموقع الجغرافي (GeoJSON)
+    // الموقع الجغرافي (GeoJSON) - الموقع الحقيقي (للحسابات فقط)
     location: {
         type: { type: String, enum: ['Point'], default: 'Point' },
         coordinates: { type: [Number], default: [0, 0] } // [longitude, latitude]
+    },
+
+    // الموقع المموّه (للعرض للمستخدمين الآخرين) - إزاحة 1-3 كم
+    fuzzyLocation: {
+        type: { type: String, enum: ['Point'], default: 'Point' },
+        coordinates: { type: [Number], default: [0, 0] }
     },
 
     // وضع التخفي (للمشتركين فقط)
@@ -199,6 +213,10 @@ const userSchema = new mongoose.Schema({
         daily: { type: Number, default: 0 },
         lastReset: { type: Date, default: Date.now }
     },
+
+    // تعليق الحساب
+    suspendedUntil: { type: Date, default: null },
+    suspendReason: { type: String, default: null },
 
     // حماية من هجمات القوة الغاشمة
     loginAttempts: { type: Number, default: 0 },
@@ -300,6 +318,16 @@ userSchema.index({ isOnline: -1, lastLogin: -1 });
 userSchema.index({ location: '2dsphere' });
 userSchema.index({ isPremium: 1 });
 userSchema.index({ 'verification.status': 1 });
+
+// Indexes إضافية لتحسين الأداء
+userSchema.index({ uniqueTag: 1 }, { unique: true, sparse: true });
+userSchema.index({ fuzzyLocation: '2dsphere' });
+userSchema.index({ isActive: 1, isOnline: -1 });
+userSchema.index({ blockedUsers: 1 });
+userSchema.index({ isPremium: 1, premiumExpiresAt: 1 });
+userSchema.index({ fcmToken: 1 }, { sparse: true });
+userSchema.index({ deviceToken: 1 }, { sparse: true });
+userSchema.index({ createdAt: -1 });
 
 const User = mongoose.model('User', userSchema);
 
