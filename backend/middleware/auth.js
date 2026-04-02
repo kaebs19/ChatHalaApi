@@ -3,6 +3,7 @@
 
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const Notification = require('../models/Notification');
 
 const protect = async (req, res, next) => {
     let token;
@@ -34,6 +35,16 @@ const protect = async (req, res, next) => {
                     req.user.suspendReason = null;
                     req.user.dailyViolationCount = 0;
                     await req.user.save();
+                    // إشعار فك التعليق
+                    try {
+                        await Notification.create({
+                            title: 'تم رفع التعليق عن حسابك',
+                            body: 'مرحباً بعودتك! يرجى المحافظة على شروط الاستخدام لتجنب التعليق مرة أخرى.',
+                            type: 'system',
+                            targetUsers: [req.user._id],
+                            recipients: 'specific'
+                        });
+                    } catch (e) {}
                     // يكمل الطلب بشكل طبيعي
                 } else {
                     // 403 بدل 401 حتى لا يعمل logout

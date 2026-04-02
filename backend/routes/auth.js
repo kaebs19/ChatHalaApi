@@ -173,6 +173,17 @@ router.post('/login', loginValidation, validate, async (req, res) => {
                 user.suspendReason = null;
                 user.dailyViolationCount = 0;
                 await user.save();
+                // إشعار فك التعليق
+                try {
+                    const Notification = require('../models/Notification');
+                    await Notification.create({
+                        title: 'تم رفع التعليق عن حسابك',
+                        body: 'مرحباً بعودتك! يرجى المحافظة على شروط الاستخدام لتجنب التعليق مرة أخرى.',
+                        type: 'system',
+                        targetUsers: [user._id],
+                        recipients: 'specific'
+                    });
+                } catch (e) {}
                 // يكمل تسجيل الدخول بشكل طبيعي
             } else {
                 // حساب لا يزال معلّق
