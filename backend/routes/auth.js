@@ -166,10 +166,41 @@ router.post('/login', loginValidation, validate, async (req, res) => {
 
         // التحقق من أن الحساب مفعل
         if (user.isActive === false) {
-            return res.status(401).json({
-                success: false,
-                message: 'الحساب غير مفعل، تواصل مع الإدارة'
-            });
+            // التحقق إذا انتهت مدة التعليق → إعادة التفعيل تلقائياً
+            if (user.suspendedUntil && new Date(user.suspendedUntil) <= new Date()) {
+                user.isActive = true;
+                user.suspendedUntil = null;
+                user.suspendReason = null;
+                user.dailyViolationCount = 0;
+                await user.save();
+                // يكمل تسجيل الدخول بشكل طبيعي
+            } else {
+                // حساب لا يزال معلّق
+                let remaining = '';
+                if (user.suspendedUntil) {
+                    const diff = new Date(user.suspendedUntil) - new Date();
+                    const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+                    const hours = Math.ceil(diff / (1000 * 60 * 60));
+                    if (days > 365) {
+                        remaining = 'حظر دائم';
+                    } else if (days > 1) {
+                        remaining = `متبقي ${days} يوم`;
+                    } else {
+                        remaining = `متبقي ${hours} ساعة`;
+                    }
+                }
+                return res.status(403).json({
+                    success: false,
+                    message: 'الحساب معلّق',
+                    data: {
+                        suspended: true,
+                        reason: user.suspendReason || 'مخالفة سياسة الاستخدام',
+                        suspendedUntil: user.suspendedUntil,
+                        remaining: remaining,
+                        permanent: user.suspendedUntil && (new Date(user.suspendedUntil) - new Date()) > 365 * 24 * 60 * 60 * 1000
+                    }
+                });
+            }
         }
 
         // إعادة تعيين محاولات تسجيل الدخول
