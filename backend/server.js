@@ -557,36 +557,66 @@ io.on('connection', async (socket) => {
             });
             await message.save();
 
-            // تنبيه الأدمن + تحذير المرسل بالكلمات المحظورة
+            // تنبيه الأدمن + تحذير المرسل + نظام مخالفات يومي تصاعدي
             if (!bannedWordResult.isClean) {
-                const updatedUser = await User.findByIdAndUpdate(
-                    socket.userId,
-                    { $inc: { violationCount: 1 } },
-                    { new: true, select: 'violationCount' }
-                );
-                const vCount = updatedUser?.violationCount || 1;
-                const vRemaining = Math.max(0, 5 - vCount);
+                const today = new Date().toISOString().split('T')[0];
+                const roomUser = await User.findById(socket.userId);
+                if (roomUser.dailyViolationDate !== today) {
+                    roomUser.dailyViolationCount = 0;
+                    roomUser.dailyViolationDate = today;
+                }
+                roomUser.dailyViolationCount += 1;
+                roomUser.violationCount += 1;
+
+                const dailyRemaining = Math.max(0, 5 - roomUser.dailyViolationCount);
+                let roomAutoSuspended = false;
+                let roomSuspendDays = 0;
+
+                if (roomUser.dailyViolationCount >= 5) {
+                    roomAutoSuspended = true;
+                    roomUser.suspensionCount = (roomUser.suspensionCount || 0) + 1;
+                    if (roomUser.suspensionCount === 1) roomSuspendDays = 1;
+                    else if (roomUser.suspensionCount === 2) roomSuspendDays = 3;
+                    else if (roomUser.suspensionCount === 3) roomSuspendDays = 7;
+                    else roomSuspendDays = 36500;
+
+                    roomUser.isActive = false;
+                    roomUser.suspendedUntil = new Date(Date.now() + roomSuspendDays * 24 * 60 * 60 * 1000);
+                    roomUser.suspendReason = roomSuspendDays >= 36500
+                        ? 'حظر دائم - تكرار المخالفات'
+                        : `تعليق تلقائي ${roomSuspendDays} يوم`;
+                    roomUser.warnings.push({ reason: roomUser.suspendReason, action: 'auto_suspend', date: new Date() });
+                    roomUser.dailyViolationCount = 0;
+                }
+                await roomUser.save();
 
                 io.emit('banned-word-alert', {
-                    messageId: message._id,
-                    roomId: roomId,
-                    roomName: chatRoom.name,
-                    senderId: socket.userId,
-                    senderName: socket.user.name,
+                    messageId: message._id, roomId, roomName: chatRoom.name,
+                    senderId: socket.userId, senderName: socket.user.name,
                     content: content.substring(0, 100),
                     wordsFound: bannedWordResult.foundWords.map(w => w.word),
                     severity: bannedWordResult.highestSeverity,
-                    chatType: 'room',
-                    timestamp: new Date()
+                    chatType: 'room', timestamp: new Date()
                 });
                 io.to(`user:${socket.userId}`).emit('banned-word-warning', {
-                    title: '⚠️ تنبيه',
-                    body: vRemaining > 0
-                        ? `رسالتك تحتوي على كلمات محظورة! متبقي ${vRemaining} مخالفات قبل تعليق حسابك.`
-                        : 'تم تعليق حسابك بسبب تكرار المخالفات.',
-                    violationCount: vCount,
-                    remaining: vRemaining
+                    title: roomAutoSuspended ? '🚫 تم تعليق حسابك' : '⚠️ تنبيه',
+                    body: roomAutoSuspended
+                        ? (roomSuspendDays >= 36500 ? 'تم حظر حسابك نهائياً.' : `تم تعليق حسابك لمدة ${roomSuspendDays} يوم.`)
+                        : `رسالتك تحتوي على كلمات محظورة! متبقي ${dailyRemaining} مخالفات اليوم.`,
+                    violationCount: roomUser.dailyViolationCount, remaining: dailyRemaining, suspended: roomAutoSuspended
                 });
+
+                if (roomAutoSuspended) {
+                    socket.disconnect(true);
+                }
+
+                // إشعار push
+                const Notification = require('./models/Notification');
+                const notifTitle = roomAutoSuspended ? '🚫 تم تعليق حسابك' : '⚠️ مخالفة';
+                const notifBody = roomAutoSuspended
+                    ? `تم تعليق حسابك لمدة ${roomSuspendDays >= 36500 ? 'دائم' : roomSuspendDays + ' يوم'}.`
+                    : `مخالفة ${roomUser.dailyViolationCount}/5 اليوم.`;
+                await Notification.create({ title: notifTitle, body: notifBody, type: 'system', targetUsers: [socket.userId], recipients: 'specific' });
             }
 
             // تحديث آخر رسالة في الغرفة

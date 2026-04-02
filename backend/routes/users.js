@@ -502,19 +502,35 @@ router.put('/:id/warn', protect, adminOnly, async (req, res) => {
         const user = await User.findById(req.params.id);
         if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
 
+        const today = new Date().toISOString().split('T')[0];
+        if (user.dailyViolationDate !== today) {
+            user.dailyViolationCount = 0;
+            user.dailyViolationDate = today;
+        }
+        user.dailyViolationCount += 1;
         user.violationCount = (user.violationCount || 0) + 1;
         user.warnings.push({ reason, action: 'warn', adminId: req.user._id });
 
-        // إيقاف تلقائي عند 5 مخالفات
+        // تعليق تصاعدي عند 5 مخالفات يومية
         let autoSuspended = false;
-        if (user.violationCount >= 5) {
-            user.isActive = false;
-            user.suspendedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
-            user.suspendReason = 'إيقاف تلقائي - تجاوز 5 مخالفات';
-            user.warnings.push({ reason: 'إيقاف تلقائي - 5 مخالفات', action: 'auto_suspend', adminId: req.user._id });
+        let suspendDays = 0;
+        if (user.dailyViolationCount >= 5) {
             autoSuspended = true;
+            user.suspensionCount = (user.suspensionCount || 0) + 1;
 
-            // قطع اتصال Socket
+            if (user.suspensionCount === 1) suspendDays = 1;
+            else if (user.suspensionCount === 2) suspendDays = 3;
+            else if (user.suspensionCount === 3) suspendDays = 7;
+            else suspendDays = 36500;
+
+            user.isActive = false;
+            user.suspendedUntil = new Date(Date.now() + suspendDays * 24 * 60 * 60 * 1000);
+            user.suspendReason = suspendDays >= 36500
+                ? 'حظر دائم - تكرار المخالفات'
+                : `تعليق تلقائي ${suspendDays} يوم - تجاوز 5 مخالفات يومية`;
+            user.warnings.push({ reason: user.suspendReason, action: 'auto_suspend', adminId: req.user._id });
+            user.dailyViolationCount = 0;
+
             if (global.connectedUsers && global.connectedUsers.has(user._id.toString())) {
                 const info = global.connectedUsers.get(user._id.toString());
                 const sock = global.io?.sockets?.sockets?.get(info.socketId);
@@ -524,10 +540,13 @@ router.put('/:id/warn', protect, adminOnly, async (req, res) => {
 
         await user.save();
 
-        const notifTitle = autoSuspended ? 'تم تعليق حسابك' : 'تحذير من الإدارة';
+        const dailyRemaining = Math.max(0, 5 - user.dailyViolationCount);
+        const notifTitle = autoSuspended ? '🚫 تم تعليق حسابك' : '⚠️ تحذير من الإدارة';
         const notifBody = autoSuspended
-            ? 'تم تعليق حسابك لمدة 24 ساعة بسبب تكرار المخالفات'
-            : `تحذير: ${reason}. عدد المخالفات: ${user.violationCount}/5`;
+            ? (suspendDays >= 36500
+                ? 'تم حظر حسابك نهائياً بسبب تكرار المخالفات.'
+                : `تم تعليق حسابك لمدة ${suspendDays} يوم بسبب تكرار المخالفات.`)
+            : `تحذير: ${reason}. مخالفة ${user.dailyViolationCount}/5 اليوم. متبقي ${dailyRemaining}.`;
         await Notification.create({
             title: notifTitle, body: notifBody, type: 'system',
             sender: req.user._id, targetUsers: [user._id], recipients: 'specific'
@@ -541,9 +560,9 @@ router.put('/:id/warn', protect, adminOnly, async (req, res) => {
         res.json({
             success: true,
             message: autoSuspended
-                ? `تم تحذير وتعليق ${user.name} تلقائياً (${user.violationCount} مخالفات)`
-                : `تم تحذير ${user.name} (${user.violationCount}/5 مخالفات)`,
-            data: { violationCount: user.violationCount, autoSuspended }
+                ? `تم تحذير وتعليق ${user.name} تلقائياً (${suspendDays >= 36500 ? 'دائم' : suspendDays + ' يوم'})`
+                : `تم تحذير ${user.name} (${user.dailyViolationCount}/5 مخالفات اليوم)`,
+            data: { violationCount: user.violationCount, dailyViolationCount: user.dailyViolationCount, autoSuspended, suspendDays }
         });
     } catch (error) {
         console.error('خطأ:', error);

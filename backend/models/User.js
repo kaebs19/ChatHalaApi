@@ -220,6 +220,9 @@ const userSchema = new mongoose.Schema({
 
     // عداد المخالفات
     violationCount: { type: Number, default: 0 },
+    dailyViolationCount: { type: Number, default: 0 },
+    dailyViolationDate: { type: String, default: null },
+    suspensionCount: { type: Number, default: 0 },
     warnings: [{
         reason: String,
         action: String,     // 'warn' | 'name_ban' | 'avatar_reset' | 'suspend' | 'auto_suspend'

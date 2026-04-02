@@ -102,38 +102,103 @@ router.post('/messages/send', protect, async (req, res) => {
             bannedWordSeverity: bannedWordResult.highestSeverity || null
         });
 
-        // تنبيه الأدمن + تحذير المرسل إذا وُجدت كلمات محظورة
+        // تنبيه الأدمن + تحذير المرسل + نظام مخالفات يومي تصاعدي
         if (!bannedWordResult.isClean) {
             const User = require('../../models/User');
-            const updatedUser = await User.findByIdAndUpdate(
-                req.user._id,
-                { $inc: { violationCount: 1 } },
-                { new: true, select: 'violationCount' }
-            );
-            const vCount = updatedUser?.violationCount || 1;
-            const vRemaining = Math.max(0, 5 - vCount);
+            const Notification = require('../../models/Notification');
+            const pushNotificationService = require('../../services/pushNotificationService');
+            const today = new Date().toISOString().split('T')[0];
+
+            const user = await User.findById(req.user._id);
+            // إعادة تعيين العداد اليومي إذا يوم جديد
+            if (user.dailyViolationDate !== today) {
+                user.dailyViolationCount = 0;
+                user.dailyViolationDate = today;
+            }
+            user.dailyViolationCount += 1;
+            user.violationCount += 1;
+
+            const dailyRemaining = Math.max(0, 5 - user.dailyViolationCount);
+            let autoSuspended = false;
+            let suspendDays = 0;
+
+            // تعليق تصاعدي عند 5 مخالفات يومية
+            if (user.dailyViolationCount >= 5) {
+                autoSuspended = true;
+                user.suspensionCount = (user.suspensionCount || 0) + 1;
+
+                if (user.suspensionCount === 1) suspendDays = 1;
+                else if (user.suspensionCount === 2) suspendDays = 3;
+                else if (user.suspensionCount === 3) suspendDays = 7;
+                else suspendDays = 36500; // دائم
+
+                user.isActive = false;
+                user.suspendedUntil = new Date(Date.now() + suspendDays * 24 * 60 * 60 * 1000);
+                user.suspendReason = suspendDays >= 36500
+                    ? 'حظر دائم - تكرار المخالفات'
+                    : `تعليق تلقائي ${suspendDays} يوم - تجاوز 5 مخالفات يومية`;
+                user.warnings.push({
+                    reason: user.suspendReason,
+                    action: 'auto_suspend',
+                    date: new Date()
+                });
+                user.dailyViolationCount = 0;
+            }
+            await user.save();
 
             if (global.io) {
+                // تنبيه الأدمن
                 global.io.emit('banned-word-alert', {
                     messageId: message._id,
                     conversationId,
                     senderId: req.user._id,
-                    senderName: req.user.name,
+                    senderName: user.name,
                     content: content.substring(0, 100),
                     wordsFound: bannedWordResult.foundWords,
                     severity: bannedWordResult.highestSeverity,
                     chatType: 'conversation',
                     timestamp: new Date()
                 });
+                // تحذير المرسل
                 global.io.to(`user:${req.user._id}`).emit('banned-word-warning', {
-                    title: '⚠️ تنبيه',
-                    body: vRemaining > 0
-                        ? `رسالتك تحتوي على كلمات محظورة! متبقي ${vRemaining} مخالفات قبل تعليق حسابك.`
-                        : 'تم تعليق حسابك بسبب تكرار المخالفات.',
-                    violationCount: vCount,
-                    remaining: vRemaining
+                    title: autoSuspended ? '🚫 تم تعليق حسابك' : '⚠️ تنبيه',
+                    body: autoSuspended
+                        ? (suspendDays >= 36500
+                            ? 'تم حظر حسابك نهائياً بسبب تكرار المخالفات.'
+                            : `تم تعليق حسابك لمدة ${suspendDays} يوم بسبب تكرار المخالفات.`)
+                        : `رسالتك تحتوي على كلمات محظورة! متبقي ${dailyRemaining} مخالفات اليوم قبل تعليق حسابك.`,
+                    violationCount: user.dailyViolationCount,
+                    remaining: dailyRemaining,
+                    suspended: autoSuspended
                 });
+
+                // قطع اتصال Socket عند التعليق
+                if (autoSuspended && global.connectedUsers?.has(req.user._id.toString())) {
+                    const info = global.connectedUsers.get(req.user._id.toString());
+                    const sock = global.io?.sockets?.sockets?.get(info.socketId);
+                    if (sock) sock.disconnect(true);
+                }
             }
+
+            // إشعار push + في قاعدة البيانات
+            const notifTitle = autoSuspended ? '🚫 تم تعليق حسابك' : '⚠️ مخالفة - كلمات محظورة';
+            const notifBody = autoSuspended
+                ? (suspendDays >= 36500
+                    ? 'تم حظر حسابك نهائياً بسبب تكرار المخالفات.'
+                    : `تم تعليق حسابك لمدة ${suspendDays} يوم بسبب تكرار المخالفات.`)
+                : `رسالتك تحتوي على كلمات محظورة. مخالفة ${user.dailyViolationCount}/5 اليوم.`;
+            await Notification.create({
+                title: notifTitle, body: notifBody, type: 'system',
+                targetUsers: [req.user._id], recipients: 'specific'
+            });
+            try {
+                await pushNotificationService.sendNotificationToUser(
+                    req.user._id,
+                    { title: notifTitle, body: notifBody },
+                    { type: 'system' },
+                    false
+                );
+            } catch (e) { console.error('Push notification error:', e.message); }
         }
 
         // تحديث آخر رسالة + عداد الرسائل
@@ -412,38 +477,103 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
             bannedWordSeverity: bannedWordResult.highestSeverity || null
         });
 
-        // تنبيه الأدمن + تحذير المرسل إذا وُجدت كلمات محظورة
+        // تنبيه الأدمن + تحذير المرسل + نظام مخالفات يومي تصاعدي
         if (!bannedWordResult.isClean) {
             const User = require('../../models/User');
-            const updatedUser = await User.findByIdAndUpdate(
-                req.user._id,
-                { $inc: { violationCount: 1 } },
-                { new: true, select: 'violationCount' }
-            );
-            const vCount = updatedUser?.violationCount || 1;
-            const vRemaining = Math.max(0, 5 - vCount);
+            const Notification = require('../../models/Notification');
+            const pushNotificationService = require('../../services/pushNotificationService');
+            const today = new Date().toISOString().split('T')[0];
+
+            const user = await User.findById(req.user._id);
+            // إعادة تعيين العداد اليومي إذا يوم جديد
+            if (user.dailyViolationDate !== today) {
+                user.dailyViolationCount = 0;
+                user.dailyViolationDate = today;
+            }
+            user.dailyViolationCount += 1;
+            user.violationCount += 1;
+
+            const dailyRemaining = Math.max(0, 5 - user.dailyViolationCount);
+            let autoSuspended = false;
+            let suspendDays = 0;
+
+            // تعليق تصاعدي عند 5 مخالفات يومية
+            if (user.dailyViolationCount >= 5) {
+                autoSuspended = true;
+                user.suspensionCount = (user.suspensionCount || 0) + 1;
+
+                if (user.suspensionCount === 1) suspendDays = 1;
+                else if (user.suspensionCount === 2) suspendDays = 3;
+                else if (user.suspensionCount === 3) suspendDays = 7;
+                else suspendDays = 36500; // دائم
+
+                user.isActive = false;
+                user.suspendedUntil = new Date(Date.now() + suspendDays * 24 * 60 * 60 * 1000);
+                user.suspendReason = suspendDays >= 36500
+                    ? 'حظر دائم - تكرار المخالفات'
+                    : `تعليق تلقائي ${suspendDays} يوم - تجاوز 5 مخالفات يومية`;
+                user.warnings.push({
+                    reason: user.suspendReason,
+                    action: 'auto_suspend',
+                    date: new Date()
+                });
+                user.dailyViolationCount = 0;
+            }
+            await user.save();
 
             if (global.io) {
+                // تنبيه الأدمن
                 global.io.emit('banned-word-alert', {
                     messageId: message._id,
                     conversationId,
                     senderId: req.user._id,
-                    senderName: req.user.name,
+                    senderName: user.name,
                     content: content.substring(0, 100),
                     wordsFound: bannedWordResult.foundWords,
                     severity: bannedWordResult.highestSeverity,
                     chatType: 'conversation',
                     timestamp: new Date()
                 });
+                // تحذير المرسل
                 global.io.to(`user:${req.user._id}`).emit('banned-word-warning', {
-                    title: '⚠️ تنبيه',
-                    body: vRemaining > 0
-                        ? `رسالتك تحتوي على كلمات محظورة! متبقي ${vRemaining} مخالفات قبل تعليق حسابك.`
-                        : 'تم تعليق حسابك بسبب تكرار المخالفات.',
-                    violationCount: vCount,
-                    remaining: vRemaining
+                    title: autoSuspended ? '🚫 تم تعليق حسابك' : '⚠️ تنبيه',
+                    body: autoSuspended
+                        ? (suspendDays >= 36500
+                            ? 'تم حظر حسابك نهائياً بسبب تكرار المخالفات.'
+                            : `تم تعليق حسابك لمدة ${suspendDays} يوم بسبب تكرار المخالفات.`)
+                        : `رسالتك تحتوي على كلمات محظورة! متبقي ${dailyRemaining} مخالفات اليوم قبل تعليق حسابك.`,
+                    violationCount: user.dailyViolationCount,
+                    remaining: dailyRemaining,
+                    suspended: autoSuspended
                 });
+
+                // قطع اتصال Socket عند التعليق
+                if (autoSuspended && global.connectedUsers?.has(req.user._id.toString())) {
+                    const info = global.connectedUsers.get(req.user._id.toString());
+                    const sock = global.io?.sockets?.sockets?.get(info.socketId);
+                    if (sock) sock.disconnect(true);
+                }
             }
+
+            // إشعار push + في قاعدة البيانات
+            const notifTitle = autoSuspended ? '🚫 تم تعليق حسابك' : '⚠️ مخالفة - كلمات محظورة';
+            const notifBody = autoSuspended
+                ? (suspendDays >= 36500
+                    ? 'تم حظر حسابك نهائياً بسبب تكرار المخالفات.'
+                    : `تم تعليق حسابك لمدة ${suspendDays} يوم بسبب تكرار المخالفات.`)
+                : `رسالتك تحتوي على كلمات محظورة. مخالفة ${user.dailyViolationCount}/5 اليوم.`;
+            await Notification.create({
+                title: notifTitle, body: notifBody, type: 'system',
+                targetUsers: [req.user._id], recipients: 'specific'
+            });
+            try {
+                await pushNotificationService.sendNotificationToUser(
+                    req.user._id,
+                    { title: notifTitle, body: notifBody },
+                    { type: 'system' },
+                    false
+                );
+            } catch (e) { console.error('Push notification error:', e.message); }
         }
 
         // تحديث آخر رسالة + عداد الرسائل
