@@ -249,6 +249,12 @@ export const deleteReport = async (reportId) => {
     return response.data;
 };
 
+// حذف بلاغات متعددة أو جميع البلاغات
+export const bulkDeleteReports = async ({ ids, deleteAll, status }) => {
+    const response = await api.delete('/reports/bulk', { data: { ids, deleteAll, status } });
+    return response.data;
+};
+
 // الحصول على تفاصيل محادثة واحدة
 export const getConversationById = async (conversationId) => {
     const response = await api.get(`/conversations/${conversationId}`);

@@ -94,20 +94,123 @@
     border-color: #667eea;
 }
 
+/* Toolbar */
+.reports-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 15px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.reports-bulk-actions {
+    display: flex;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.bulk-delete-btn {
+    padding: 8px 16px;
+    background: #e74c3c;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.bulk-delete-btn:hover {
+    background: #c0392b;
+}
+
+.delete-all-btn {
+    padding: 8px 16px;
+    background: #fff;
+    color: #e74c3c;
+    border: 2px solid #e74c3c;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.delete-all-btn:hover {
+    background: #ffebee;
+}
+
+.sort-select {
+    background: #f8f9fa !important;
+    font-weight: 500 !important;
+}
+
+/* Select All */
+.reports-select-all {
+    padding: 10px 16px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    margin-bottom: 12px;
+}
+
+.select-all-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    color: #555;
+}
+
+.select-all-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: #667eea;
+}
+
 /* Reports List */
 .reports-list {
     display: grid;
-    gap: 20px;
+    gap: 16px;
     margin-bottom: 20px;
 }
 
 .report-card {
+    display: flex;
+    gap: 12px;
     background: white;
     border-radius: 12px;
     padding: 20px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     border-right: 4px solid #ddd;
     transition: all 0.3s;
+}
+
+.report-card.selected {
+    background: #f0f4ff;
+    border-right-color: #667eea !important;
+}
+
+.report-checkbox {
+    display: flex;
+    align-items: flex-start;
+    padding-top: 4px;
+}
+
+.report-checkbox input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: #667eea;
+}
+
+.report-content-wrapper {
+    flex: 1;
+    min-width: 0;
 }
 
 .report-card:hover {

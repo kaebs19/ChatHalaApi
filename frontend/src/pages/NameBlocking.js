@@ -1,8 +1,74 @@
 import React, { useState, useEffect } from 'react';
-import { getAllUsers, banUserName, warnUser, checkBannedWords, getBannedWords, addBannedWord, deleteBannedWord, toggleBannedWordActive } from '../services/api';
+import { getAllUsers, banUserName, warnUser, checkBannedWords, getBannedWords, addBannedWord, addBannedWordsBulk, deleteBannedWord, toggleBannedWordActive } from '../services/api';
 import { useToast } from '../components/Toast';
 import { getImageUrl, getDefaultAvatar } from '../config';
 import './NameBlocking.css';
+
+// كلمات محظورة افتراضية مصنفة
+const PRESET_CATEGORIES = [
+    {
+        id: 'sexual',
+        name: '🔞 ألفاظ جنسية',
+        color: '#dc3545',
+        words: [
+            'ديوث', 'فحل', 'قحبة', 'شرموطة', 'عاهرة', 'زانية', 'منيوك', 'معرص',
+            'سكس', 'نيك', 'زب', 'كس', 'طيز', 'بزاز', 'لوطي', 'خول',
+            'sex', 'porn', 'sexy', 'hot girl', 'nude', 'xxx', 'pussy', 'dick', 'fuck',
+            'horny', 'slut', 'whore', 'bitch'
+        ]
+    },
+    {
+        id: 'political',
+        name: '🏛️ أسماء سياسية',
+        color: '#fd7e14',
+        words: [
+            'ترامب', 'بايدن', 'أوباما', 'بوتين', 'زيلينسكي', 'نتنياهو',
+            'محمد بن سلمان', 'بن سلمان', 'تميم', 'أردوغان', 'السيسي', 'بشار',
+            'خامنئي', 'ماكرون', 'داعش', 'القاعدة', 'حماس', 'حزب الله',
+            'trump', 'biden', 'putin', 'obama', 'isis', 'alqaeda'
+        ]
+    },
+    {
+        id: 'religious',
+        name: '🕌 ألفاظ دينية/طائفية',
+        color: '#6f42c1',
+        words: [
+            'يهودي', 'مسيحي', 'مسلم', 'كافر', 'ملحد', 'مرتد', 'صليبي',
+            'شيعي', 'سني', 'وهابي', 'رافضي', 'نصيري', 'صهيوني',
+            'مجوسي', 'بوذي', 'هندوسي', 'زنديق'
+        ]
+    },
+    {
+        id: 'racist',
+        name: '🚫 عنصرية وكراهية',
+        color: '#e83e8c',
+        words: [
+            'عبد', 'زنجي', 'حبشي', 'أعجمي', 'خادم', 'نجس',
+            'nigger', 'nigga', 'negro', 'chink', 'gook', 'spic',
+            'cracker', 'kike', 'towelhead', 'terrorist'
+        ]
+    },
+    {
+        id: 'insults',
+        name: '🤬 إهانات وشتائم',
+        color: '#343a40',
+        words: [
+            'حمار', 'كلب', 'حيوان', 'غبي', 'أحمق', 'تافه', 'حقير', 'وسخ',
+            'قذر', 'منحط', 'وضيع', 'سافل', 'نذل', 'جبان', 'خائن',
+            'stupid', 'idiot', 'moron', 'dumb', 'loser', 'trash', 'garbage'
+        ]
+    },
+    {
+        id: 'impersonation',
+        name: '👤 انتحال شخصية',
+        color: '#17a2b8',
+        words: [
+            'ادمن', 'مدير', 'مشرف', 'دعم فني', 'خدمة العملاء', 'رسمي', 'موظف',
+            'admin', 'moderator', 'support', 'official', 'staff', 'manager',
+            'halachat', 'halachat', 'هلا شات', 'شات هلا'
+        ]
+    }
+];
 
 function NameBlocking({ onViewUserDetail }) {
     const [activeSection, setActiveSection] = useState('check'); // check, users, words
@@ -29,6 +95,9 @@ function NameBlocking({ onViewUserDetail }) {
     const [newWord, setNewWord] = useState('');
     const [newSeverity, setNewSeverity] = useState('medium');
     const [saving, setSaving] = useState(false);
+
+    // Presets
+    const [addingPreset, setAddingPreset] = useState(null);
 
     const toast = useToast();
 
@@ -150,6 +219,30 @@ function NameBlocking({ onViewUserDetail }) {
         }
     };
 
+    const handleAddPreset = async (category) => {
+        if (!window.confirm(`إضافة ${category.words.length} كلمة من "${category.name}"؟`)) return;
+        setAddingPreset(category.id);
+        const severity = (category.id === 'sexual' || category.id === 'racist') ? 'critical' : 'high';
+
+        // Try individual add (handles duplicates gracefully)
+        let added = 0;
+        for (const word of category.words) {
+            try {
+                await addBannedWord({ word, type: 'name', severity, action: 'block' });
+                added++;
+            } catch (e) {
+                // word already exists, skip
+            }
+        }
+        if (added > 0) {
+            toast.success(`تمت إضافة ${added} كلمة جديدة من "${category.name}"`);
+            if (activeSection === 'words') fetchNameWords();
+        } else {
+            toast.info('جميع الكلمات موجودة بالفعل');
+        }
+        setAddingPreset(null);
+    };
+
     const severityColor = (severity) => {
         switch (severity) {
             case 'low': return '#28a745';
@@ -236,6 +329,38 @@ function NameBlocking({ onViewUserDetail }) {
                                 )}
                             </div>
                         )}
+                    </div>
+
+                    {/* إضافة كلمات جاهزة */}
+                    <div className="nb-presets-section">
+                        <h3>📦 إضافة مجموعات كلمات جاهزة</h3>
+                        <p className="nb-hint">اضغط على أي مجموعة لإضافة كلماتها تلقائياً كأسماء محظورة</p>
+                        <div className="nb-presets-grid">
+                            {PRESET_CATEGORIES.map(cat => (
+                                <div key={cat.id} className="nb-preset-card" style={{ borderColor: cat.color }}>
+                                    <div className="nb-preset-header">
+                                        <span className="nb-preset-name">{cat.name}</span>
+                                        <span className="nb-preset-count">{cat.words.length} كلمة</span>
+                                    </div>
+                                    <div className="nb-preset-words">
+                                        {cat.words.slice(0, 8).map((w, i) => (
+                                            <span key={i} className="nb-preset-word">{w}</span>
+                                        ))}
+                                        {cat.words.length > 8 && (
+                                            <span className="nb-preset-more">+{cat.words.length - 8} أخرى</span>
+                                        )}
+                                    </div>
+                                    <button
+                                        className="nb-preset-add-btn"
+                                        style={{ background: cat.color }}
+                                        onClick={() => handleAddPreset(cat)}
+                                        disabled={addingPreset === cat.id}
+                                    >
+                                        {addingPreset === cat.id ? 'جاري الإضافة...' : '➕ إضافة الكل'}
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
                     </div>
 
                     {/* معلومات */}

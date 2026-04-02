@@ -313,6 +313,34 @@ router.put('/:id/priority', protect, adminOnly, async (req, res) => {
     }
 });
 
+// @route   DELETE /api/reports/bulk
+// @desc    حذف بلاغات متعددة أو جميع البلاغات
+// @access  Private/Admin
+router.delete('/bulk', protect, adminOnly, async (req, res) => {
+    try {
+        const { ids, deleteAll, status } = req.body;
+
+        let result;
+        if (deleteAll) {
+            const filter = status && status !== 'all' ? { status } : {};
+            result = await Report.deleteMany(filter);
+        } else if (ids && ids.length > 0) {
+            result = await Report.deleteMany({ _id: { $in: ids } });
+        } else {
+            return res.status(400).json({ success: false, message: 'يجب تحديد البلاغات المراد حذفها' });
+        }
+
+        res.json({
+            success: true,
+            message: `تم حذف ${result.deletedCount} بلاغ`,
+            data: { deletedCount: result.deletedCount }
+        });
+    } catch (error) {
+        console.error('خطأ في حذف البلاغات:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 // @route   DELETE /api/reports/:id
 // @desc    حذف بلاغ
 // @access  Private/Admin

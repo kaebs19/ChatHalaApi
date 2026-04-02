@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getAllReports, getReportsStats, updateReportStatus, takeReportAction, updateReportPriority, deleteReport } from '../services/api';
+import { getAllReports, getReportsStats, updateReportStatus, takeReportAction, updateReportPriority, deleteReport, bulkDeleteReports } from '../services/api';
 import { useToast } from '../components/Toast';
 import Pagination from '../components/Pagination';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -24,29 +24,35 @@ function Reports({ onViewUserDetail, onViewConversation }) {
             return part;
         });
     };
+
     const [reports, setReports] = useState([]);
     const [stats, setStats] = useState({
-        totalReports: 0,
-        pendingReports: 0,
-        reviewingReports: 0,
-        resolvedReports: 0,
-        urgentReports: 0
+        totalReports: 0, pendingReports: 0, reviewingReports: 0,
+        resolvedReports: 0, urgentReports: 0
     });
     const [loading, setLoading] = useState(true);
     const [filterStatus, setFilterStatus] = useState('all');
     const [filterPriority, setFilterPriority] = useState('all');
     const [filterType, setFilterType] = useState('all');
+    const [sortBy, setSortBy] = useState('newest');
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [selectedReport, setSelectedReport] = useState(null);
     const [showActionModal, setShowActionModal] = useState(false);
     const [deleteConfirm, setDeleteConfirm] = useState({ show: false, reportId: null });
+
+    // Bulk selection
+    const [selectedIds, setSelectedIds] = useState([]);
+    const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+    const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
+    const [bulkDeleting, setBulkDeleting] = useState(false);
+
     const { showToast } = useToast();
 
     useEffect(() => {
         fetchReports();
         fetchStats();
-    }, [currentPage, filterStatus, filterPriority, filterType]);
+    }, [currentPage, filterStatus, filterPriority, filterType, sortBy]);
 
     const fetchReports = async () => {
         try {
@@ -55,29 +61,36 @@ function Reports({ onViewUserDetail, onViewConversation }) {
             if (filterStatus !== 'all') filters.status = filterStatus;
             if (filterPriority !== 'all') filters.priority = filterPriority;
             if (filterType !== 'all') filters.type = filterType;
+            if (sortBy) filters.sort = sortBy;
 
             const response = await getAllReports(currentPage, 20, filters);
             if (response.success) {
-                setReports(response.data.reports);
+                let sortedReports = response.data.reports || [];
+                // Client-side sort fallback
+                if (sortBy === 'newest') {
+                    sortedReports.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+                } else if (sortBy === 'oldest') {
+                    sortedReports.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+                } else if (sortBy === 'priority') {
+                    const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
+                    sortedReports.sort((a, b) => (priorityOrder[a.priority] || 3) - (priorityOrder[b.priority] || 3));
+                }
+                setReports(sortedReports);
                 setTotalPages(response.data.totalPages);
             }
         } catch (error) {
             showToast('فشل في تحميل البلاغات', 'error');
-            console.error('Error fetching reports:', error);
         } finally {
             setLoading(false);
+            setSelectedIds([]);
         }
     };
 
     const fetchStats = async () => {
         try {
             const response = await getReportsStats();
-            if (response.success) {
-                setStats(response.data);
-            }
-        } catch (error) {
-            console.error('Error fetching stats:', error);
-        }
+            if (response.success) setStats(response.data);
+        } catch (error) {}
     };
 
     const handleStatusChange = async (reportId, newStatus) => {
@@ -107,7 +120,6 @@ function Reports({ onViewUserDetail, onViewConversation }) {
 
     const handleTakeAction = async (action) => {
         if (!selectedReport) return;
-
         try {
             const response = await takeReportAction(selectedReport._id, action);
             if (response.success) {
@@ -138,26 +150,71 @@ function Reports({ onViewUserDetail, onViewConversation }) {
         }
     };
 
+    // Bulk actions
+    const toggleSelect = (id) => {
+        setSelectedIds(prev =>
+            prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+        );
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedIds.length === reports.length) {
+            setSelectedIds([]);
+        } else {
+            setSelectedIds(reports.map(r => r._id));
+        }
+    };
+
+    const handleBulkDelete = async () => {
+        if (selectedIds.length === 0) return;
+        setBulkDeleting(true);
+        try {
+            const response = await bulkDeleteReports({ ids: selectedIds });
+            if (response.success) {
+                showToast(`تم حذف ${response.data.deletedCount} بلاغ`, 'success');
+                fetchReports();
+                fetchStats();
+            }
+        } catch (error) {
+            showToast('فشل في حذف البلاغات', 'error');
+        } finally {
+            setBulkDeleting(false);
+            setShowBulkDeleteConfirm(false);
+            setSelectedIds([]);
+        }
+    };
+
+    const handleDeleteAll = async () => {
+        setBulkDeleting(true);
+        try {
+            const response = await bulkDeleteReports({
+                deleteAll: true,
+                status: filterStatus !== 'all' ? filterStatus : undefined
+            });
+            if (response.success) {
+                showToast(`تم حذف ${response.data.deletedCount} بلاغ`, 'success');
+                fetchReports();
+                fetchStats();
+            }
+        } catch (error) {
+            showToast('فشل في حذف البلاغات', 'error');
+        } finally {
+            setBulkDeleting(false);
+            setShowDeleteAllConfirm(false);
+        }
+    };
+
     const getCategoryLabel = (category) => {
         const categories = {
-            spam: 'رسائل مزعجة',
-            harassment: 'تحرش',
-            inappropriate_content: 'محتوى غير لائق',
-            hate_speech: 'خطاب كراهية',
-            violence: 'عنف',
-            fraud: 'احتيال',
-            impersonation: 'انتحال شخصية',
-            other: 'أخرى'
+            spam: 'رسائل مزعجة', harassment: 'تحرش', inappropriate_content: 'محتوى غير لائق',
+            hate_speech: 'خطاب كراهية', violence: 'عنف', fraud: 'احتيال',
+            impersonation: 'انتحال شخصية', fake_profile: 'حساب وهمي', other: 'أخرى'
         };
         return categories[category] || category;
     };
 
     const getTypeLabel = (type) => {
-        const types = {
-            user: 'مستخدم',
-            message: 'رسالة',
-            conversation: 'محادثة'
-        };
+        const types = { user: 'مستخدم', message: 'رسالة', conversation: 'محادثة' };
         return types[type] || type;
     };
 
@@ -202,52 +259,58 @@ function Reports({ onViewUserDetail, onViewConversation }) {
                 </div>
             </div>
 
-            {/* Filters */}
-            <div className="reports-filters">
-                <select
-                    value={filterStatus}
-                    onChange={(e) => {
-                        setFilterStatus(e.target.value);
-                        setCurrentPage(1);
-                    }}
-                >
-                    <option value="all">جميع الحالات</option>
-                    <option value="pending">قيد الانتظار</option>
-                    <option value="reviewing">قيد المراجعة</option>
-                    <option value="resolved">تم الحل</option>
-                    <option value="rejected">مرفوض</option>
-                </select>
+            {/* Filters & Actions Bar */}
+            <div className="reports-toolbar">
+                <div className="reports-filters">
+                    <select value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); setCurrentPage(1); }}>
+                        <option value="all">جميع الحالات</option>
+                        <option value="pending">⏳ قيد الانتظار</option>
+                        <option value="reviewing">👀 قيد المراجعة</option>
+                        <option value="resolved">✅ تم الحل</option>
+                        <option value="rejected">❌ مرفوض</option>
+                    </select>
 
-                <select
-                    value={filterPriority}
-                    onChange={(e) => {
-                        setFilterPriority(e.target.value);
-                        setCurrentPage(1);
-                    }}
-                >
-                    <option value="all">جميع الأولويات</option>
-                    <option value="urgent">عاجل</option>
-                    <option value="high">عالي</option>
-                    <option value="medium">متوسط</option>
-                    <option value="low">منخفض</option>
-                </select>
+                    <select value={filterPriority} onChange={(e) => { setFilterPriority(e.target.value); setCurrentPage(1); }}>
+                        <option value="all">جميع الأولويات</option>
+                        <option value="urgent">🚨 عاجل</option>
+                        <option value="high">🔴 عالي</option>
+                        <option value="medium">🟡 متوسط</option>
+                        <option value="low">🟢 منخفض</option>
+                    </select>
 
-                <select
-                    value={filterType}
-                    onChange={(e) => {
-                        setFilterType(e.target.value);
-                        setCurrentPage(1);
-                    }}
-                >
-                    <option value="all">جميع الأنواع</option>
-                    <option value="user">مستخدم</option>
-                    <option value="message">رسالة</option>
-                    <option value="conversation">محادثة</option>
-                </select>
+                    <select value={filterType} onChange={(e) => { setFilterType(e.target.value); setCurrentPage(1); }}>
+                        <option value="all">جميع الأنواع</option>
+                        <option value="user">👤 مستخدم</option>
+                        <option value="message">💬 رسالة</option>
+                        <option value="conversation">🗨️ محادثة</option>
+                    </select>
 
-                <button onClick={fetchReports} className="refresh-btn">
-                    تحديث 🔄
-                </button>
+                    <select value={sortBy} onChange={(e) => { setSortBy(e.target.value); setCurrentPage(1); }} className="sort-select">
+                        <option value="newest">🕐 الأحدث أولاً</option>
+                        <option value="oldest">🕐 الأقدم أولاً</option>
+                        <option value="priority">🔴 حسب الأولوية</option>
+                    </select>
+
+                    <button onClick={fetchReports} className="refresh-btn">تحديث 🔄</button>
+                </div>
+
+                <div className="reports-bulk-actions">
+                    {selectedIds.length > 0 && (
+                        <button
+                            onClick={() => setShowBulkDeleteConfirm(true)}
+                            className="bulk-delete-btn"
+                            disabled={bulkDeleting}
+                        >
+                            🗑️ حذف المحدد ({selectedIds.length})
+                        </button>
+                    )}
+                    <button
+                        onClick={() => setShowDeleteAllConfirm(true)}
+                        className="delete-all-btn"
+                    >
+                        🗑️ حذف {filterStatus !== 'all' ? `كل "${filterStatus === 'pending' ? 'المعلقة' : filterStatus === 'resolved' ? 'المحلولة' : filterStatus === 'rejected' ? 'المرفوضة' : 'المراجعة'}"` : 'جميع البلاغات'}
+                    </button>
+                </div>
             </div>
 
             {/* Reports List */}
@@ -259,165 +322,181 @@ function Reports({ onViewUserDetail, onViewConversation }) {
                 </div>
             ) : (
                 <>
+                    {/* Select All */}
+                    <div className="reports-select-all">
+                        <label className="select-all-label">
+                            <input
+                                type="checkbox"
+                                checked={selectedIds.length === reports.length && reports.length > 0}
+                                onChange={toggleSelectAll}
+                            />
+                            <span>تحديد الكل ({reports.length})</span>
+                        </label>
+                    </div>
+
                     <div className="reports-list">
                         {reports.map((report) => (
-                            <div key={report._id} className={`report-card priority-${report.priority}`}>
-                                <div className="report-header">
-                                    <div className="report-meta">
-                                        <span className={`report-type ${report.type}`}>
-                                            {getTypeLabel(report.type)}
-                                        </span>
-                                        <span className={`report-category`}>
-                                            {getCategoryLabel(report.category)}
-                                        </span>
-                                        <span className={`report-priority ${report.priority}`}>
-                                            {report.priority === 'urgent' && '🚨'}
-                                            {report.priority === 'high' && '🔴'}
-                                            {report.priority === 'medium' && '🟡'}
-                                            {report.priority === 'low' && '🟢'}
-                                            {report.priority}
-                                        </span>
-                                    </div>
-                                    <span className="report-date">{formatDateTime(report.createdAt)}</span>
+                            <div key={report._id} className={`report-card priority-${report.priority} ${selectedIds.includes(report._id) ? 'selected' : ''}`}>
+                                <div className="report-checkbox">
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedIds.includes(report._id)}
+                                        onChange={() => toggleSelect(report._id)}
+                                    />
                                 </div>
 
-                                <div className="report-body">
-                                    <p className="report-description">{report.description}</p>
-
-                                    <div className="report-users">
-                                        <div className="report-user">
-                                            <span className="label">المبلّغ:</span>
-                                            {report.reportedBy?._id && onViewUserDetail ? (
-                                                <span className="value user-link" onClick={() => onViewUserDetail(report.reportedBy._id)}>
-                                                    {report.reportedBy?.name || 'غير معروف'}
-                                                </span>
-                                            ) : (
-                                                <span className="value">{report.reportedBy?.name || 'غير معروف'}</span>
-                                            )}
+                                <div className="report-content-wrapper">
+                                    <div className="report-header">
+                                        <div className="report-meta">
+                                            <span className={`report-type ${report.type}`}>
+                                                {getTypeLabel(report.type)}
+                                            </span>
+                                            <span className="report-category">
+                                                {getCategoryLabel(report.category)}
+                                            </span>
+                                            <span className={`report-priority ${report.priority}`}>
+                                                {report.priority === 'urgent' && '🚨'}
+                                                {report.priority === 'high' && '🔴'}
+                                                {report.priority === 'medium' && '🟡'}
+                                                {report.priority === 'low' && '🟢'}
+                                                {report.priority}
+                                            </span>
                                         </div>
-                                        {report.reportedUser && (
+                                        <span className="report-date">{formatDateTime(report.createdAt)}</span>
+                                    </div>
+
+                                    <div className="report-body">
+                                        <p className="report-description">{report.description}</p>
+
+                                        <div className="report-users">
                                             <div className="report-user">
-                                                <span className="label">المبلّغ عليه:</span>
-                                                {report.reportedUser?._id && onViewUserDetail ? (
-                                                    <span className="value user-link" onClick={() => onViewUserDetail(report.reportedUser._id)}>
-                                                        {report.reportedUser?.name}
+                                                <span className="label">المبلّغ:</span>
+                                                {report.reportedBy?._id && onViewUserDetail ? (
+                                                    <span className="value user-link" onClick={() => onViewUserDetail(report.reportedBy._id)}>
+                                                        {report.reportedBy?.name || 'غير معروف'}
                                                     </span>
                                                 ) : (
-                                                    <span className="value">{report.reportedUser?.name}</span>
+                                                    <span className="value">{report.reportedBy?.name || 'غير معروف'}</span>
+                                                )}
+                                            </div>
+                                            {report.reportedUser && (
+                                                <div className="report-user">
+                                                    <span className="label">المبلّغ عليه:</span>
+                                                    {report.reportedUser?._id && onViewUserDetail ? (
+                                                        <span className="value user-link" onClick={() => onViewUserDetail(report.reportedUser._id)}>
+                                                            {report.reportedUser?.name}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="value">{report.reportedUser?.name}</span>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* المحتوى المُبلغ عنه */}
+                                        {(report.reportedMessage || report.reportedConversation) && (
+                                            <div className="reported-content-section">
+                                                <h4 className="reported-content-title">📋 المحتوى المُبلغ عنه</h4>
+
+                                                {report.reportedMessage && (
+                                                    <div className="reported-message-box">
+                                                        <div className="reported-message-header">
+                                                            <span className="reported-sender">
+                                                                ✉️ {report.reportedMessage.sender?.name || 'مجهول'}
+                                                            </span>
+                                                            <span className={`reported-type ${report.reportedMessage.type}`}>
+                                                                {report.reportedMessage.type === 'text' && '📝 نص'}
+                                                                {report.reportedMessage.type === 'image' && '🖼️ صورة'}
+                                                                {report.reportedMessage.type === 'file' && '📎 ملف'}
+                                                                {report.reportedMessage.type === 'audio' && '🎵 صوت'}
+                                                                {report.reportedMessage.type === 'video' && '🎥 فيديو'}
+                                                            </span>
+                                                        </div>
+                                                        {report.reportedMessage.content && (
+                                                            <p className="reported-message-content">
+                                                                {report.reportedMessage.hasBannedWords
+                                                                    ? highlightBannedWords(report.reportedMessage.content, report.reportedMessage.bannedWordsFound)
+                                                                    : report.reportedMessage.content
+                                                                }
+                                                            </p>
+                                                        )}
+                                                        {report.reportedMessage.type === 'image' && report.reportedMessage.mediaUrl && (
+                                                            <img
+                                                                src={getImageUrl(report.reportedMessage.mediaUrl)}
+                                                                alt="صورة مبلغ عنها"
+                                                                className="reported-message-image"
+                                                                onError={(e) => { e.target.style.display = 'none'; }}
+                                                            />
+                                                        )}
+                                                        {report.reportedMessage.hasBannedWords && report.reportedMessage.bannedWordsFound?.length > 0 && (
+                                                            <div className="banned-words-badges">
+                                                                <span className="banned-label">🚫 كلمات محظورة:</span>
+                                                                {report.reportedMessage.bannedWordsFound.map((w, i) => (
+                                                                    <span key={i} className={`banned-word-badge severity-${w.severity}`}>{w.word}</span>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {report.reportedConversation && (
+                                                    <div className="reported-conversation-box">
+                                                        <div className="reported-conv-info">
+                                                            <span>💬 المحادثة: {report.reportedConversation.title}</span>
+                                                            <span className="conv-type-badge">
+                                                                {report.reportedConversation.type === 'private' ? 'خاصة' : 'جماعية'}
+                                                            </span>
+                                                        </div>
+                                                        {onViewConversation && report.reportedConversation._id && (
+                                                            <button className="view-conv-btn" onClick={() => onViewConversation(report.reportedConversation._id)}>
+                                                                عرض المحادثة
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 )}
                                             </div>
                                         )}
                                     </div>
 
-                                    {/* المحتوى المُبلغ عنه */}
-                                    {(report.reportedMessage || report.reportedConversation) && (
-                                        <div className="reported-content-section">
-                                            <h4 className="reported-content-title">📋 المحتوى المُبلغ عنه</h4>
+                                    <div className="report-footer">
+                                        <div className="report-status">
+                                            <select
+                                                value={report.status}
+                                                onChange={(e) => handleStatusChange(report._id, e.target.value)}
+                                                className={`status-select ${report.status}`}
+                                            >
+                                                <option value="pending">قيد الانتظار</option>
+                                                <option value="reviewing">قيد المراجعة</option>
+                                                <option value="resolved">تم الحل</option>
+                                                <option value="rejected">مرفوض</option>
+                                            </select>
 
-                                            {report.reportedMessage && (
-                                                <div className="reported-message-box">
-                                                    <div className="reported-message-header">
-                                                        <span className="reported-sender">
-                                                            ✉️ {report.reportedMessage.sender?.name || 'مجهول'}
-                                                        </span>
-                                                        <span className={`reported-type ${report.reportedMessage.type}`}>
-                                                            {report.reportedMessage.type === 'text' && '📝 نص'}
-                                                            {report.reportedMessage.type === 'image' && '🖼️ صورة'}
-                                                            {report.reportedMessage.type === 'file' && '📎 ملف'}
-                                                            {report.reportedMessage.type === 'audio' && '🎵 صوت'}
-                                                            {report.reportedMessage.type === 'video' && '🎥 فيديو'}
-                                                        </span>
-                                                    </div>
-                                                    {report.reportedMessage.content && (
-                                                        <p className="reported-message-content">
-                                                            {report.reportedMessage.hasBannedWords
-                                                                ? highlightBannedWords(report.reportedMessage.content, report.reportedMessage.bannedWordsFound)
-                                                                : report.reportedMessage.content
-                                                            }
-                                                        </p>
-                                                    )}
-                                                    {report.reportedMessage.type === 'image' && report.reportedMessage.mediaUrl && (
-                                                        <img
-                                                            src={getImageUrl(report.reportedMessage.mediaUrl)}
-                                                            alt="صورة مبلغ عنها"
-                                                            className="reported-message-image"
-                                                            onError={(e) => { e.target.style.display = 'none'; }}
-                                                        />
-                                                    )}
-                                                    {report.reportedMessage.hasBannedWords && report.reportedMessage.bannedWordsFound?.length > 0 && (
-                                                        <div className="banned-words-badges">
-                                                            <span className="banned-label">🚫 كلمات محظورة:</span>
-                                                            {report.reportedMessage.bannedWordsFound.map((w, i) => (
-                                                                <span key={i} className={`banned-word-badge severity-${w.severity}`}>{w.word}</span>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-
-                                            {report.reportedConversation && (
-                                                <div className="reported-conversation-box">
-                                                    <div className="reported-conv-info">
-                                                        <span>💬 المحادثة: {report.reportedConversation.title}</span>
-                                                        <span className="conv-type-badge">
-                                                            {report.reportedConversation.type === 'private' ? 'خاصة' : 'جماعية'}
-                                                        </span>
-                                                    </div>
-                                                    {onViewConversation && report.reportedConversation._id && (
-                                                        <button
-                                                            className="view-conv-btn"
-                                                            onClick={() => onViewConversation(report.reportedConversation._id)}
-                                                        >
-                                                            عرض المحادثة
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            )}
+                                            <select
+                                                value={report.priority}
+                                                onChange={(e) => handlePriorityChange(report._id, e.target.value)}
+                                                className={`priority-select ${report.priority}`}
+                                            >
+                                                <option value="urgent">عاجل</option>
+                                                <option value="high">عالي</option>
+                                                <option value="medium">متوسط</option>
+                                                <option value="low">منخفض</option>
+                                            </select>
                                         </div>
-                                    )}
-                                </div>
 
-                                <div className="report-footer">
-                                    <div className="report-status">
-                                        <select
-                                            value={report.status}
-                                            onChange={(e) => handleStatusChange(report._id, e.target.value)}
-                                            className={`status-select ${report.status}`}
-                                        >
-                                            <option value="pending">قيد الانتظار</option>
-                                            <option value="reviewing">قيد المراجعة</option>
-                                            <option value="resolved">تم الحل</option>
-                                            <option value="rejected">مرفوض</option>
-                                        </select>
-
-                                        <select
-                                            value={report.priority}
-                                            onChange={(e) => handlePriorityChange(report._id, e.target.value)}
-                                            className={`priority-select ${report.priority}`}
-                                        >
-                                            <option value="urgent">عاجل</option>
-                                            <option value="high">عالي</option>
-                                            <option value="medium">متوسط</option>
-                                            <option value="low">منخفض</option>
-                                        </select>
-                                    </div>
-
-                                    <div className="report-actions">
-                                        <button
-                                            onClick={() => {
-                                                setSelectedReport(report);
-                                                setShowActionModal(true);
-                                            }}
-                                            className="action-btn"
-                                        >
-                                            اتخاذ إجراء
-                                        </button>
-                                        <button
-                                            onClick={() => setDeleteConfirm({ show: true, reportId: report._id })}
-                                            className="delete-btn"
-                                        >
-                                            🗑️
-                                        </button>
+                                        <div className="report-actions">
+                                            <button
+                                                onClick={() => { setSelectedReport(report); setShowActionModal(true); }}
+                                                className="action-btn"
+                                            >
+                                                اتخاذ إجراء
+                                            </button>
+                                            <button
+                                                onClick={() => setDeleteConfirm({ show: true, reportId: report._id })}
+                                                className="delete-btn"
+                                            >
+                                                🗑️
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -442,6 +521,32 @@ function Reports({ onViewUserDetail, onViewConversation }) {
                 title="تأكيد الحذف"
                 message="هل أنت متأكد من حذف هذا البلاغ؟"
                 confirmText="حذف"
+                cancelText="إلغاء"
+                variant="danger"
+            />
+
+            {/* Bulk Delete Confirm */}
+            <ConfirmModal
+                isOpen={showBulkDeleteConfirm}
+                onClose={() => setShowBulkDeleteConfirm(false)}
+                onConfirm={handleBulkDelete}
+                title="حذف البلاغات المحددة"
+                message={`هل أنت متأكد من حذف ${selectedIds.length} بلاغ؟`}
+                confirmText={bulkDeleting ? 'جاري الحذف...' : 'حذف'}
+                cancelText="إلغاء"
+                variant="danger"
+            />
+
+            {/* Delete All Confirm */}
+            <ConfirmModal
+                isOpen={showDeleteAllConfirm}
+                onClose={() => setShowDeleteAllConfirm(false)}
+                onConfirm={handleDeleteAll}
+                title="⚠️ حذف جميع البلاغات"
+                message={filterStatus !== 'all'
+                    ? `هل أنت متأكد من حذف جميع البلاغات بحالة "${filterStatus}"؟ هذا الإجراء لا يمكن التراجع عنه!`
+                    : 'هل أنت متأكد من حذف جميع البلاغات؟ هذا الإجراء لا يمكن التراجع عنه!'}
+                confirmText={bulkDeleting ? 'جاري الحذف...' : 'حذف الكل'}
                 cancelText="إلغاء"
                 variant="danger"
             />
@@ -477,50 +582,15 @@ function Reports({ onViewUserDetail, onViewConversation }) {
                         </div>
 
                         <div className="action-buttons">
-                            <button
-                                onClick={() => handleTakeAction('warning')}
-                                className="action-option warning"
-                            >
-                                ⚠️ إرسال تحذير
-                            </button>
-                            <button
-                                onClick={() => handleTakeAction('message_deleted')}
-                                className="action-option delete"
-                            >
-                                🗑️ حذف الرسالة
-                            </button>
-                            <button
-                                onClick={() => handleTakeAction('user_suspended')}
-                                className="action-option suspend"
-                            >
-                                🔒 تعليق المستخدم
-                            </button>
-                            <button
-                                onClick={() => handleTakeAction('user_banned')}
-                                className="action-option ban"
-                            >
-                                🚫 حظر المستخدم
-                            </button>
-                            <button
-                                onClick={() => handleTakeAction('conversation_locked')}
-                                className="action-option lock"
-                            >
-                                🔐 قفل المحادثة
-                            </button>
-                            <button
-                                onClick={() => handleTakeAction('none')}
-                                className="action-option none"
-                            >
-                                ❌ لا إجراء
-                            </button>
+                            <button onClick={() => handleTakeAction('warning')} className="action-option warning">⚠️ إرسال تحذير</button>
+                            <button onClick={() => handleTakeAction('message_deleted')} className="action-option delete">🗑️ حذف الرسالة</button>
+                            <button onClick={() => handleTakeAction('user_suspended')} className="action-option suspend">🔒 تعليق المستخدم</button>
+                            <button onClick={() => handleTakeAction('user_banned')} className="action-option ban">🚫 حظر المستخدم</button>
+                            <button onClick={() => handleTakeAction('conversation_locked')} className="action-option lock">🔐 قفل المحادثة</button>
+                            <button onClick={() => handleTakeAction('none')} className="action-option none">❌ لا إجراء</button>
                         </div>
 
-                        <button
-                            onClick={() => setShowActionModal(false)}
-                            className="modal-close-btn"
-                        >
-                            إغلاق
-                        </button>
+                        <button onClick={() => setShowActionModal(false)} className="modal-close-btn">إغلاق</button>
                     </div>
                 </div>
             )}
