@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { getAllUsers, deleteUser, toggleUserActive, updateUser, suspendUser } from '../services/api';
 import { useToast } from '../components/Toast';
 import EditUserModal from '../components/EditUserModal';
@@ -11,182 +11,105 @@ import './Users.css';
 
 function Users({ onViewDetail }) {
     const [users, setUsers] = useState([]);
-    const [filteredUsers, setFilteredUsers] = useState([]);
-    const [paginatedUsers, setPaginatedUsers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
-    const [filterStatus, setFilterStatus] = useState('all'); // all, active, inactive
-    const [filterRole, setFilterRole] = useState('all'); // all, admin, user
-    const [filterAuthProvider, setFilterAuthProvider] = useState('all'); // all, app, google, apple
+    const [searchInput, setSearchInput] = useState('');
+    const [filterStatus, setFilterStatus] = useState('all');
+    const [filterRole, setFilterRole] = useState('all');
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [userToDelete, setUserToDelete] = useState(null);
     const [showEditModal, setShowEditModal] = useState(false);
     const [userToEdit, setUserToEdit] = useState(null);
     const [currentPage, setCurrentPage] = useState(1);
-    const [itemsPerPage, setItemsPerPage] = useState(10);
+    const [itemsPerPage, setItemsPerPage] = useState(20);
+    const [totalUsers, setTotalUsers] = useState(0);
+    const [totalPages, setTotalPages] = useState(1);
     const [sortField, setSortField] = useState('createdAt');
     const [sortOrder, setSortOrder] = useState('desc');
     const toast = useToast();
 
-    useEffect(() => {
-        fetchUsers();
-    }, []);
-
-    useEffect(() => {
-        filterUsers();
-    }, [users, searchTerm, filterStatus, filterRole, filterAuthProvider]);
-
-    useEffect(() => {
-        sortAndPaginateUsers();
-    }, [filteredUsers, currentPage, itemsPerPage, sortField, sortOrder]);
-
-    const fetchUsers = async () => {
+    const fetchUsers = useCallback(async () => {
         try {
             setLoading(true);
-            const response = await getAllUsers();
-            
+            const response = await getAllUsers({
+                page: currentPage,
+                limit: itemsPerPage,
+                search: searchTerm || undefined,
+                status: filterStatus,
+                role: filterRole,
+                sort: sortField,
+                order: sortOrder
+            });
+
             if (response.success) {
                 setUsers(response.data.users);
+                setTotalUsers(response.data.total || response.data.users.length);
+                setTotalPages(response.data.totalPages || 1);
             }
         } catch (err) {
-            console.error('خطأ في جلب المستخدمين:', err);
+            console.error('Error:', err);
             setError(err.response?.data?.message || 'فشل تحميل المستخدمين');
         } finally {
             setLoading(false);
         }
-    };
+    }, [currentPage, itemsPerPage, searchTerm, filterStatus, filterRole, sortField, sortOrder]);
 
-    const filterUsers = () => {
-        let filtered = [...users];
+    useEffect(() => {
+        fetchUsers();
+    }, [fetchUsers]);
 
-        // فلترة حسب البحث
-        if (searchTerm) {
-            filtered = filtered.filter(user =>
-                user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                user.email.toLowerCase().includes(searchTerm.toLowerCase())
-            );
-        }
-
-        // فلترة حسب الحالة
-        if (filterStatus !== 'all') {
-            filtered = filtered.filter(user =>
-                filterStatus === 'active' ? user.isActive : !user.isActive
-            );
-        }
-
-        // فلترة حسب الدور
-        if (filterRole !== 'all') {
-            filtered = filtered.filter(user => user.role === filterRole);
-        }
-
-        // فلترة حسب نوع التسجيل
-        if (filterAuthProvider !== 'all') {
-            filtered = filtered.filter(user => (user.authProvider || 'app') === filterAuthProvider);
-        }
-
-        setFilteredUsers(filtered);
-        setCurrentPage(1); // إعادة تعيين الصفحة عند التصفية
-    };
-
-    const sortAndPaginateUsers = () => {
-        // ترتيب المستخدمين
-        let sorted = [...filteredUsers];
-
-        sorted.sort((a, b) => {
-            let aValue = a[sortField];
-            let bValue = b[sortField];
-
-            // معالجة القيم النصية
-            if (typeof aValue === 'string') {
-                aValue = aValue.toLowerCase();
-                bValue = bValue.toLowerCase();
-            }
-
-            // معالجة التواريخ
-            if (sortField === 'createdAt' || sortField === 'lastLogin') {
-                aValue = new Date(aValue || 0).getTime();
-                bValue = new Date(bValue || 0).getTime();
-            }
-
-            if (sortOrder === 'asc') {
-                return aValue > bValue ? 1 : -1;
-            } else {
-                return aValue < bValue ? 1 : -1;
-            }
-        });
-
-        // تطبيق الترقيم
-        const startIndex = (currentPage - 1) * itemsPerPage;
-        const endIndex = startIndex + itemsPerPage;
-        const paginated = sorted.slice(startIndex, endIndex);
-
-        setPaginatedUsers(paginated);
-    };
+    // Debounce search
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setSearchTerm(searchInput);
+            setCurrentPage(1);
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [searchInput]);
 
     const handleSort = (field) => {
         if (sortField === field) {
-            // عكس الترتيب إذا كان نفس الحقل
             setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
         } else {
-            // حقل جديد، ابدأ بـ asc
             setSortField(field);
             setSortOrder('asc');
         }
+        setCurrentPage(1);
     };
 
     const getSortIcon = (field) => {
-        if (sortField !== field) return '⇅';
-        return sortOrder === 'asc' ? '↑' : '↓';
+        if (sortField !== field) return '\u21C5';
+        return sortOrder === 'asc' ? '\u2191' : '\u2193';
     };
 
     const handleToggleActive = async (userId) => {
         try {
             const user = users.find(u => u._id === userId);
             const response = await toggleUserActive(userId);
-
             if (response.success) {
-                // تحديث القائمة
-                setUsers(users.map(u =>
-                    u._id === userId ? { ...u, isActive: !u.isActive } : u
-                ));
-
-                // إظهار رسالة نجاح
-                const action = user.isActive ? 'إلغاء تفعيل' : 'تفعيل';
-                toast.success(`تم ${action} المستخدم بنجاح`);
+                setUsers(users.map(u => u._id === userId ? { ...u, isActive: !u.isActive } : u));
+                toast.success(user.isActive ? 'تم إلغاء تفعيل المستخدم' : 'تم تفعيل المستخدم');
             }
         } catch (err) {
-            console.error('خطأ في تحديث المستخدم:', err);
-            const errorMsg = err.response?.data?.message || 'فشل تحديث المستخدم';
-            toast.error(errorMsg);
+            toast.error(err.response?.data?.message || 'فشل تحديث المستخدم');
         }
     };
 
-    const openEditModal = (user) => {
-        setUserToEdit(user);
-        setShowEditModal(true);
-    };
+    const openEditModal = (user) => { setUserToEdit(user); setShowEditModal(true); };
 
     const handleEditUser = async (userData) => {
         try {
             const response = await updateUser(userToEdit._id, userData);
-
             if (response.success) {
-                // تحديث القائمة
-                setUsers(users.map(u =>
-                    u._id === userToEdit._id ? { ...u, ...userData } : u
-                ));
+                setUsers(users.map(u => u._id === userToEdit._id ? { ...u, ...userData } : u));
                 setShowEditModal(false);
                 setUserToEdit(null);
-
-                // إظهار رسالة نجاح
-                toast.success('تم تحديث بيانات المستخدم بنجاح');
+                toast.success('تم تحديث بيانات المستخدم');
             }
         } catch (err) {
-            console.error('خطأ في تحديث المستخدم:', err);
-            const errorMsg = err.response?.data?.message || 'فشل تحديث المستخدم';
-            toast.error(errorMsg);
-            throw err; // لإيقاف loading في Modal
+            toast.error(err.response?.data?.message || 'فشل تحديث المستخدم');
+            throw err;
         }
     };
 
@@ -207,144 +130,80 @@ function Users({ onViewDetail }) {
         }
     };
 
-    const confirmDelete = (user) => {
-        setUserToDelete(user);
-        setShowDeleteModal(true);
-    };
+    const confirmDelete = (user) => { setUserToDelete(user); setShowDeleteModal(true); };
 
     const handleDelete = async () => {
         if (!userToDelete) return;
-
         try {
             const response = await deleteUser(userToDelete._id);
-
             if (response.success) {
-                // إزالة المستخدم من القائمة
-                setUsers(users.filter(user => user._id !== userToDelete._id));
+                toast.success(`تم حذف ${userToDelete.name}`);
                 setShowDeleteModal(false);
                 setUserToDelete(null);
-
-                // إظهار رسالة نجاح
-                toast.success(`تم حذف المستخدم ${userToDelete.name} بنجاح`);
+                fetchUsers();
             }
         } catch (err) {
-            console.error('خطأ في حذف المستخدم:', err);
-            const errorMsg = err.response?.data?.message || 'فشل حذف المستخدم';
-            toast.error(errorMsg);
+            toast.error(err.response?.data?.message || 'فشل حذف المستخدم');
         }
     };
 
-    const getStatusBadge = (isActive) => {
-        return isActive ? (
-            <span className="badge badge-success">نشط ✓</span>
-        ) : (
-            <span className="badge badge-inactive">غير نشط</span>
-        );
-    };
+    const getStatusBadge = (isActive) => isActive
+        ? <span className="badge badge-success">نشط</span>
+        : <span className="badge badge-inactive">غير نشط</span>;
 
-    const getRoleBadge = (role) => {
-        return role === 'admin' ? (
-            <span className="badge badge-admin">مدير 👑</span>
-        ) : (
-            <span className="badge badge-user">مستخدم</span>
-        );
-    };
+    const getRoleBadge = (role) => role === 'admin'
+        ? <span className="badge badge-admin">مدير</span>
+        : <span className="badge badge-user">مستخدم</span>;
 
     const getAuthProviderBadge = (provider) => {
         switch (provider) {
-            case 'google':
-                return <span className="badge badge-google"><img src="/google.png" alt="Google" className="provider-icon" /> Google</span>;
-            case 'apple':
-                return <span className="badge badge-apple"><img src="/apple-logo.png" alt="Apple" className="provider-icon" /> Apple</span>;
-            default:
-                return <span className="badge badge-app">التطبيق</span>;
+            case 'google': return <span className="badge badge-google"><img src="/google.png" alt="" className="provider-icon" /> Google</span>;
+            case 'apple': return <span className="badge badge-apple"><img src="/apple-logo.png" alt="" className="provider-icon" /> Apple</span>;
+            default: return <span className="badge badge-app">التطبيق</span>;
         }
     };
 
-    if (loading) {
-        return (
-            <div className="users-page">
-                <div className="loading-container">
-                    <div className="spinner"></div>
-                    <p>جاري تحميل المستخدمين...</p>
-                </div>
-            </div>
-        );
-    }
-
     return (
         <div className="users-page">
-            {/* Header */}
             <div className="users-header">
                 <div>
-                    <h1>إدارة المستخدمين 👥</h1>
-                    <p>إجمالي المستخدمين: {users.length}</p>
+                    <h1>إدارة المستخدمين</h1>
+                    <p>إجمالي: {totalUsers} مستخدم</p>
                 </div>
-                <button className="refresh-btn" onClick={fetchUsers}>
-                    تحديث 🔄
-                </button>
+                <button className="refresh-btn" onClick={fetchUsers}>تحديث</button>
             </div>
 
             {error && <div className="error-banner">{error}</div>}
 
-            {/* Filters */}
             <div className="filters-section">
                 <div className="search-box">
                     <input
                         type="text"
-                        placeholder="ابحث بالاسم أو البريد الإلكتروني..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
+                        placeholder="ابحث بالاسم أو البريد..."
+                        value={searchInput}
+                        onChange={(e) => setSearchInput(e.target.value)}
                     />
                     <span className="search-icon">🔍</span>
                 </div>
-
                 <div className="filter-group">
-                    <select
-                        value={filterStatus}
-                        onChange={(e) => setFilterStatus(e.target.value)}
-                    >
+                    <select value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); setCurrentPage(1); }}>
                         <option value="all">جميع الحالات</option>
-                        <option value="active">نشط فقط</option>
-                        <option value="inactive">غير نشط فقط</option>
+                        <option value="active">نشط</option>
+                        <option value="inactive">غير نشط</option>
                     </select>
-
-                    <select
-                        value={filterRole}
-                        onChange={(e) => setFilterRole(e.target.value)}
-                    >
+                    <select value={filterRole} onChange={(e) => { setFilterRole(e.target.value); setCurrentPage(1); }}>
                         <option value="all">جميع الأدوار</option>
-                        <option value="admin">مدير فقط</option>
-                        <option value="user">مستخدم فقط</option>
-                    </select>
-
-                    <select
-                        value={filterAuthProvider}
-                        onChange={(e) => setFilterAuthProvider(e.target.value)}
-                    >
-                        <option value="all">جميع أنواع التسجيل</option>
-                        <option value="app">التطبيق</option>
-                        <option value="google">Google</option>
-                        <option value="apple">Apple</option>
+                        <option value="admin">مدير</option>
+                        <option value="user">مستخدم</option>
                     </select>
                 </div>
             </div>
 
-            {/* Items Per Page Selector */}
             <div className="table-controls">
-                <div className="results-info">
-                    عرض {filteredUsers.length} من {users.length} مستخدم
-                </div>
+                <div className="results-info">عرض {users.length} من {totalUsers}</div>
                 <div className="items-per-page">
                     <label>عدد العناصر:</label>
-                    <select
-                        value={itemsPerPage}
-                        onChange={(e) => {
-                            setItemsPerPage(Number(e.target.value));
-                            setCurrentPage(1);
-                        }}
-                    >
-                        <option value={5}>5</option>
+                    <select value={itemsPerPage} onChange={(e) => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }}>
                         <option value={10}>10</option>
                         <option value={20}>20</option>
                         <option value={50}>50</option>
@@ -352,59 +211,27 @@ function Users({ onViewDetail }) {
                 </div>
             </div>
 
-            {/* Users Table */}
-            {filteredUsers.length === 0 ? (
-                <div className="no-results">
-                    <p>لا توجد نتائج 🔍</p>
-                    <button onClick={() => {
-                        setSearchTerm('');
-                        setFilterStatus('all');
-                        setFilterRole('all');
-                        setFilterAuthProvider('all');
-                    }}>
-                        إعادة تعيين الفلاتر
-                    </button>
-                </div>
-            ) : (
-                <>
-                    <div className="table-container">
-                        <table className="users-table">
-                            <thead>
-                                <tr>
-                                    <th onClick={() => handleSort('name')} className="sortable">
-                                        الاسم {getSortIcon('name')}
-                                    </th>
-                                    <th onClick={() => handleSort('email')} className="sortable">
-                                        البريد الإلكتروني {getSortIcon('email')}
-                                    </th>
-                                    <th onClick={() => handleSort('role')} className="sortable">
-                                        الدور {getSortIcon('role')}
-                                    </th>
-                                    <th onClick={() => handleSort('authProvider')} className="sortable">
-                                        نوع التسجيل {getSortIcon('authProvider')}
-                                    </th>
-                                    <th onClick={() => handleSort('isActive')} className="sortable">
-                                        الحالة {getSortIcon('isActive')}
-                                    </th>
-                                    <th onClick={() => handleSort('createdAt')} className="sortable">
-                                        تاريخ التسجيل {getSortIcon('createdAt')}
-                                    </th>
-                                    <th onClick={() => handleSort('lastLogin')} className="sortable">
-                                        آخر دخول {getSortIcon('lastLogin')}
-                                    </th>
-                                    <th>الموقع</th>
-                                    <th>الإجراءات</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {loading ? (
-                                    <>
-                                        <TableRowSkeleton columns={9} />
-                                        <TableRowSkeleton columns={9} />
-                                        <TableRowSkeleton columns={9} />
-                                    </>
-                                ) : (
-                                    paginatedUsers.map((user) => (
+            <div className="table-container">
+                <table className="users-table">
+                    <thead>
+                        <tr>
+                            <th onClick={() => handleSort('name')} className="sortable">الاسم {getSortIcon('name')}</th>
+                            <th onClick={() => handleSort('email')} className="sortable">البريد {getSortIcon('email')}</th>
+                            <th>الدور</th>
+                            <th>نوع التسجيل</th>
+                            <th>الحالة</th>
+                            <th onClick={() => handleSort('createdAt')} className="sortable">التسجيل {getSortIcon('createdAt')}</th>
+                            <th onClick={() => handleSort('lastLogin')} className="sortable">آخر دخول {getSortIcon('lastLogin')}</th>
+                            <th>الإجراءات</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {loading ? (
+                            Array.from({ length: 5 }).map((_, i) => <TableRowSkeleton key={i} columns={8} />)
+                        ) : users.length === 0 ? (
+                            <tr><td colSpan="8" style={{ textAlign: 'center', padding: '40px' }}>لا توجد نتائج</td></tr>
+                        ) : (
+                            users.map((user) => (
                                 <tr key={user._id}>
                                     <td>
                                         <div className="user-cell" onClick={() => onViewDetail && onViewDetail(user._id)} style={{ cursor: 'pointer' }}>
@@ -412,10 +239,7 @@ function Users({ onViewDetail }) {
                                                 src={user.profileImage ? getImageUrl(user.profileImage) : getDefaultAvatar(user.name)}
                                                 alt={user.name}
                                                 className="user-avatar-small"
-                                                onError={(e) => {
-                                                    e.target.onerror = null;
-                                                    e.target.src = getDefaultAvatar(user.name);
-                                                }}
+                                                onError={(e) => { e.target.onerror = null; e.target.src = getDefaultAvatar(user.name); }}
                                             />
                                             <span className="user-name-link">{user.name}</span>
                                         </div>
@@ -425,96 +249,46 @@ function Users({ onViewDetail }) {
                                     <td>{getAuthProviderBadge(user.authProvider)}</td>
                                     <td>{getStatusBadge(user.isActive)}</td>
                                     <td>{formatDate(user.createdAt)}</td>
-                                    <td>
-                                        {user.lastLogin
-                                            ? formatDate(user.lastLogin)
-                                            : <span className="no-login">لم يسجل دخول</span>
-                                        }
-                                    </td>
-                                    <td>
-                                        {user.location && user.location.coordinates &&
-                                         user.location.coordinates[0] !== 0 && user.location.coordinates[1] !== 0
-                                            ? <span className="location-badge" title={`${user.location.coordinates[1].toFixed(2)}, ${user.location.coordinates[0].toFixed(2)}`}>📍 متوفر</span>
-                                            : <span className="no-login">غير متوفر</span>
-                                        }
-                                    </td>
+                                    <td>{user.lastLogin ? formatDate(user.lastLogin) : <span className="no-login">-</span>}</td>
                                     <td>
                                         <div className="actions-cell">
-                                            <button
-                                                className="action-btn btn-primary"
-                                                onClick={() => onViewDetail && onViewDetail(user._id)}
-                                                title="عرض التفاصيل"
-                                            >
-                                                👁️
-                                            </button>
-                                            <button
-                                                className="action-btn btn-info"
-                                                onClick={() => openEditModal(user)}
-                                                title="تعديل"
-                                            >
-                                                ✏️
-                                            </button>
-                                            <button
-                                                className={`action-btn ${user.isActive ? 'btn-warning' : 'btn-success'}`}
-                                                onClick={() => handleToggleActive(user._id)}
-                                                title={user.isActive ? 'إلغاء التفعيل' : 'تفعيل'}
-                                            >
-                                                {user.isActive ? '🔒' : '✅'}
-                                            </button>
-                                            <button
-                                                className="action-btn btn-warning"
-                                                onClick={() => handleSuspend(user)}
-                                                title="تعليق مؤقت"
-                                            >
-                                                ⏸️
-                                            </button>
-                                            <button
-                                                className="action-btn btn-danger"
-                                                onClick={() => confirmDelete(user)}
-                                                title="حذف"
-                                            >
-                                                🗑️
-                                            </button>
+                                            <button className="action-btn btn-primary" onClick={() => onViewDetail && onViewDetail(user._id)} title="تفاصيل">👁️</button>
+                                            <button className="action-btn btn-info" onClick={() => openEditModal(user)} title="تعديل">✏️</button>
+                                            <button className={`action-btn ${user.isActive ? 'btn-warning' : 'btn-success'}`} onClick={() => handleToggleActive(user._id)} title={user.isActive ? 'إلغاء' : 'تفعيل'}>{user.isActive ? '🔒' : '✅'}</button>
+                                            <button className="action-btn btn-warning" onClick={() => handleSuspend(user)} title="تعليق">⏸️</button>
+                                            <button className="action-btn btn-danger" onClick={() => confirmDelete(user)} title="حذف">🗑️</button>
                                         </div>
                                     </td>
                                 </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
+                            ))
+                        )}
+                    </tbody>
+                </table>
+            </div>
 
-                    {/* Pagination */}
-                    <Pagination
-                        currentPage={currentPage}
-                        totalPages={Math.ceil(filteredUsers.length / itemsPerPage)}
-                        onPageChange={setCurrentPage}
-                        itemsPerPage={itemsPerPage}
-                        totalItems={filteredUsers.length}
-                    />
-                </>
-            )}
+            <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
+                itemsPerPage={itemsPerPage}
+                totalItems={totalUsers}
+            />
 
-            {/* Edit User Modal */}
             {showEditModal && (
                 <EditUserModal
                     user={userToEdit}
-                    onClose={() => {
-                        setShowEditModal(false);
-                        setUserToEdit(null);
-                    }}
+                    onClose={() => { setShowEditModal(false); setUserToEdit(null); }}
                     onSave={handleEditUser}
                 />
             )}
 
-            {/* Delete Modal */}
             <ConfirmModal
                 isOpen={showDeleteModal}
                 onClose={() => { setShowDeleteModal(false); setUserToDelete(null); }}
                 onConfirm={handleDelete}
                 title="تأكيد الحذف"
                 message="هل أنت متأكد من حذف المستخدم؟"
-                confirmText="حذف نهائياً"
+                confirmText="حذف"
                 cancelText="إلغاء"
                 variant="danger"
             >

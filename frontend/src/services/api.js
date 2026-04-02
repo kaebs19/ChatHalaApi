@@ -75,9 +75,14 @@ export const getDashboardStats = async () => {
     return response.data;
 };
 
-// الحصول على جميع المستخدمين (Admin فقط)
-export const getAllUsers = async () => {
-    const response = await api.get('/users');
+// الحصول على المستخدمين مع pagination (Admin فقط)
+export const getAllUsers = async (params = {}) => {
+    const { page = 1, limit = 20, search, status, role, sort = 'createdAt', order = 'desc' } = params;
+    const query = new URLSearchParams({ page: String(page), limit: String(limit), sort, order });
+    if (search) query.append('search', search);
+    if (status && status !== 'all') query.append('status', status);
+    if (role && role !== 'all') query.append('role', role);
+    const response = await api.get(`/users?${query.toString()}`);
     return response.data;
 };
 

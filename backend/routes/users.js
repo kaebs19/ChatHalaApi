@@ -14,27 +14,39 @@ const pushNotificationService = require('../services/pushNotificationService');
 // @access  Private/Admin
 router.get('/', protect, adminOnly, async (req, res) => {
     try {
-        // التحقق من الـ Cache
-        const cachedUsers = get(CACHE_KEYS.ALL_USERS);
-        if (cachedUsers) {
-            console.log('📦 Users من الـ Cache');
-            return res.status(200).json(cachedUsers);
+        const { page = 1, limit = 20, search, status, role, sort = 'createdAt', order = 'desc' } = req.query;
+        const pageNum = parseInt(page);
+        const limitNum = parseInt(limit);
+
+        // بناء الفلتر
+        const filter = {};
+        if (search) {
+            filter.$or = [
+                { name: { $regex: search, $options: 'i' } },
+                { email: { $regex: search, $options: 'i' } }
+            ];
         }
+        if (status === 'active') filter.isActive = true;
+        else if (status === 'inactive') filter.isActive = false;
+        if (role && role !== 'all') filter.role = role;
 
-        const users = await User.find({}).select('-password').sort({ createdAt: -1 });
+        const total = await User.countDocuments(filter);
+        const users = await User.find(filter)
+            .select('-password')
+            .sort({ [sort]: order === 'asc' ? 1 : -1 })
+            .skip((pageNum - 1) * limitNum)
+            .limit(limitNum);
 
-        const responseData = {
+        res.status(200).json({
             success: true,
             count: users.length,
             data: {
-                users
+                users,
+                total,
+                currentPage: pageNum,
+                totalPages: Math.ceil(total / limitNum)
             }
-        };
-
-        // تخزين في الـ Cache
-        set(CACHE_KEYS.ALL_USERS, responseData, CACHE_TTL.ALL_USERS);
-
-        res.status(200).json(responseData);
+        });
 
     } catch (error) {
         console.error('خطأ في جلب المستخدمين:', error);
