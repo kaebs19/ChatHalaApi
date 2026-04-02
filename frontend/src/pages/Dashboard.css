@@ -274,6 +274,20 @@ img.user-avatar { background: #f0f0f0; }
     box-shadow: 0 6px 16px rgba(124, 58, 237, 0.4);
 }
 
+.chart-footer {
+    text-align: center;
+    padding: 10px 0 0;
+    font-size: 13px;
+    color: #666;
+    border-top: 1px solid #f0f0f0;
+    margin-top: 8px;
+}
+
+.chart-footer strong {
+    color: #22c55e;
+    font-size: 15px;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .dashboard-content { padding: 15px; }

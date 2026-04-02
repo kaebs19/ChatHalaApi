@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { getDashboardStats, getConversationsStats, getReportsStats, getAllChatRooms } from '../services/api';
 import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -58,7 +59,9 @@ function Dashboard({ user, onPageChange }) {
         title: '',
         body: '',
         type: 'general',
-        recipients: 'all'
+        recipients: 'all',
+        targetGender: 'all',
+        targetPremium: 'all'
     });
     const [sending, setSending] = useState(false);
     const { showToast } = useToast();
@@ -190,7 +193,9 @@ function Dashboard({ user, onPageChange }) {
                     title: '',
                     body: '',
                     type: 'general',
-                    recipients: 'all'
+                    recipients: 'all',
+                    targetGender: 'all',
+                    targetPremium: 'all'
                 });
             } else {
                 showToast(data.message || 'فشل إرسال الإشعار', 'error');
@@ -291,69 +296,115 @@ function Dashboard({ user, onPageChange }) {
                         </div>
                     )}
 
-                    {/* ===== القسم 4: التوزيع البياني ===== */}
-                    {isAdmin && conversationStats.totalConversations > 0 && (
+                    {/* ===== القسم 4: الرسوم البيانية ===== */}
+                    {isAdmin && (
                         <div className="charts-section">
-                            <h3 className="section-title">📊 التوزيع البياني</h3>
+                            <h3 className="section-title">📊 الرسوم البيانية</h3>
                             <div className="charts-grid">
-                                {/* Progress Bars */}
+                                {/* Bar Chart - توزيع المستخدمين */}
                                 <div className="chart-card">
                                     <h4>توزيع المستخدمين</h4>
-                                    <div className="progress-bars">
-                                        <div className="progress-item">
-                                            <div className="progress-label">
-                                                <span>مستخدمين نشطين</span>
-                                                <span>{stats.activeUsers}</span>
-                                            </div>
-                                            <div className="progress-bar">
-                                                <div
-                                                    className="progress-fill blue"
-                                                    style={{width: `${(stats.activeUsers / stats.totalUsers * 100) || 0}%`}}
-                                                ></div>
-                                            </div>
-                                        </div>
-                                        <div className="progress-item">
-                                            <div className="progress-label">
-                                                <span>مستخدمين جدد</span>
-                                                <span>{stats.newUsers}</span>
-                                            </div>
-                                            <div className="progress-bar">
-                                                <div
-                                                    className="progress-fill green"
-                                                    style={{width: `${(stats.newUsers / stats.totalUsers * 100) || 0}%`}}
-                                                ></div>
-                                            </div>
-                                        </div>
-                                    </div>
+                                    <ResponsiveContainer width="100%" height={250}>
+                                        <BarChart data={[
+                                            { name: 'الإجمالي', value: stats.totalUsers, fill: '#6366f1' },
+                                            { name: 'نشطين', value: stats.activeUsers, fill: '#22c55e' },
+                                            { name: 'جدد (7 أيام)', value: stats.newUsers, fill: '#f59e0b' },
+                                            { name: 'Premium', value: premiumStats.active, fill: '#ec4899' },
+                                        ]}>
+                                            <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                                            <YAxis tick={{ fontSize: 12 }} />
+                                            <Tooltip />
+                                            <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                                                {[
+                                                    { fill: '#6366f1' },
+                                                    { fill: '#22c55e' },
+                                                    { fill: '#f59e0b' },
+                                                    { fill: '#ec4899' },
+                                                ].map((entry, index) => (
+                                                    <Cell key={index} fill={entry.fill} />
+                                                ))}
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
                                 </div>
 
-                                {/* Pie Chart (CSS) */}
-                                <div className="chart-card">
-                                    <h4>نوع المحادثات</h4>
-                                    <div className="pie-chart-container">
-                                        <div className="pie-chart" style={{
-                                            background: `conic-gradient(
-                                                #6366f1 0deg ${(conversationStats.privateConversations / conversationStats.totalConversations * 360) || 0}deg,
-                                                #f59e0b ${(conversationStats.privateConversations / conversationStats.totalConversations * 360) || 0}deg 360deg
-                                            )`
-                                        }}>
-                                            <div className="pie-center">
-                                                <span>{conversationStats.totalConversations}</span>
-                                                <small>محادثة</small>
-                                            </div>
-                                        </div>
-                                        <div className="pie-legend">
-                                            <div className="legend-item">
-                                                <span className="legend-color indigo"></span>
-                                                <span>خاصة ({conversationStats.privateConversations})</span>
-                                            </div>
-                                            <div className="legend-item">
-                                                <span className="legend-color amber"></span>
-                                                <span>جماعية ({conversationStats.groupConversations})</span>
-                                            </div>
+                                {/* Pie Chart - نوع المحادثات */}
+                                {conversationStats.totalConversations > 0 && (
+                                    <div className="chart-card">
+                                        <h4>نوع المحادثات</h4>
+                                        <ResponsiveContainer width="100%" height={250}>
+                                            <PieChart>
+                                                <Pie
+                                                    data={[
+                                                        { name: 'خاصة', value: conversationStats.privateConversations || 0 },
+                                                        { name: 'جماعية', value: conversationStats.groupConversations || 0 },
+                                                    ]}
+                                                    cx="50%" cy="50%"
+                                                    innerRadius={55} outerRadius={85}
+                                                    paddingAngle={4}
+                                                    dataKey="value"
+                                                    label={({ name, value }) => `${name} (${value})`}
+                                                >
+                                                    <Cell fill="#6366f1" />
+                                                    <Cell fill="#f59e0b" />
+                                                </Pie>
+                                                <Tooltip />
+                                                <Legend />
+                                            </PieChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                )}
+
+                                {/* Bar Chart - الاشتراكات Premium */}
+                                {premiumStats.total > 0 && (
+                                    <div className="chart-card">
+                                        <h4>توزيع الاشتراكات</h4>
+                                        <ResponsiveContainer width="100%" height={250}>
+                                            <BarChart data={[
+                                                { name: 'أسبوعي', value: premiumStats.byPlan?.weekly || 0 },
+                                                { name: 'شهري', value: premiumStats.byPlan?.monthly || 0 },
+                                                { name: 'ربع سنوي', value: premiumStats.byPlan?.quarterly || 0 },
+                                            ]}>
+                                                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                                                <YAxis tick={{ fontSize: 12 }} />
+                                                <Tooltip />
+                                                <Bar dataKey="value" fill="#ec4899" radius={[6, 6, 0, 0]} />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                        <div className="chart-footer">
+                                            <span>الإيراد الشهري المقدر: <strong>${premiumStats.estimatedMonthlyRevenue || 0}</strong></span>
                                         </div>
                                     </div>
-                                </div>
+                                )}
+
+                                {/* Pie Chart - البلاغات */}
+                                {(reportsStats.total > 0 || flaggedStats.total > 0) && (
+                                    <div className="chart-card">
+                                        <h4>حالة البلاغات والمخالفات</h4>
+                                        <ResponsiveContainer width="100%" height={250}>
+                                            <PieChart>
+                                                <Pie
+                                                    data={[
+                                                        { name: 'معلقة', value: reportsStats.pending || 0 },
+                                                        { name: 'قيد المراجعة', value: reportsStats.reviewed || 0 },
+                                                        { name: 'تم الحل', value: reportsStats.resolved || 0 },
+                                                    ].filter(d => d.value > 0)}
+                                                    cx="50%" cy="50%"
+                                                    innerRadius={55} outerRadius={85}
+                                                    paddingAngle={4}
+                                                    dataKey="value"
+                                                    label={({ name, value }) => `${name} (${value})`}
+                                                >
+                                                    <Cell fill="#f59e0b" />
+                                                    <Cell fill="#3b82f6" />
+                                                    <Cell fill="#22c55e" />
+                                                </Pie>
+                                                <Tooltip />
+                                                <Legend />
+                                            </PieChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
@@ -463,6 +514,37 @@ function Dashboard({ user, onPageChange }) {
                                     >
                                         <option value="all">جميع المستخدمين</option>
                                         <option value="specific">مستخدمون محددون</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label>الجنس</label>
+                                    <select
+                                        value={notificationData.targetGender}
+                                        onChange={(e) => setNotificationData({
+                                            ...notificationData,
+                                            targetGender: e.target.value
+                                        })}
+                                    >
+                                        <option value="all">الكل</option>
+                                        <option value="male">ذكور فقط</option>
+                                        <option value="female">إناث فقط</option>
+                                    </select>
+                                </div>
+                                <div className="form-group">
+                                    <label>نوع الاشتراك</label>
+                                    <select
+                                        value={notificationData.targetPremium}
+                                        onChange={(e) => setNotificationData({
+                                            ...notificationData,
+                                            targetPremium: e.target.value
+                                        })}
+                                    >
+                                        <option value="all">الكل</option>
+                                        <option value="premium">مشتركين Premium فقط</option>
+                                        <option value="free">مستخدمين مجانيين فقط</option>
                                     </select>
                                 </div>
                             </div>
