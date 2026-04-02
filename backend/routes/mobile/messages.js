@@ -21,7 +21,7 @@ const { uploadMessageImage, getFullUrl } = require('./helpers');
 // @access  Private
 router.post('/messages/send', protect, async (req, res) => {
     try {
-        const { conversationId, content, type = 'text', mediaUrl, mediaMetadata } = req.body;
+        const { conversationId, content, type = 'text', mediaUrl, mediaMetadata, replyTo } = req.body;
 
         if (!conversationId || !content) {
             return res.status(400).json({
@@ -92,6 +92,7 @@ router.post('/messages/send', protect, async (req, res) => {
             type,
             mediaUrl: mediaUrl || null,
             mediaMetadata: mediaMetadata || null,
+            replyTo: replyTo || null,
             status: 'sent',
             filteredContent: filteredContent,
             reviewStatus: !bannedWordResult.isClean ? 'pending' : 'none',
@@ -207,9 +208,14 @@ router.post('/messages/send', protect, async (req, res) => {
         conversation.metadata.totalMessages = (conversation.metadata.totalMessages || 0) + 1;
         await conversation.save();
 
-        // جلب الرسالة مع بيانات المرسل
+        // جلب الرسالة مع بيانات المرسل + الرسالة المردود عليها
         const populatedMessage = await Message.findById(message._id)
-            .populate('sender', 'name email profileImage isPremium verification.isVerified');
+            .populate('sender', 'name email profileImage isPremium verification.isVerified')
+            .populate({
+                path: 'replyTo',
+                select: 'content type sender mediaUrl createdAt',
+                populate: { path: 'sender', select: 'name' }
+            });
 
         // تحويل الصور إلى URLs كاملة
         const messageObj = populatedMessage.toObject();
@@ -687,6 +693,12 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
             isDeleted: false
         })
             .populate('sender', 'name email profileImage isPremium verification.isVerified')
+            .populate({
+                path: 'replyTo',
+                select: 'content type sender mediaUrl createdAt',
+                populate: { path: 'sender', select: 'name' }
+            })
+            .populate('reactions.user', 'name')
             .sort({ createdAt: -1 })
             .limit(limit * 1)
             .skip((page - 1) * limit);
@@ -724,6 +736,64 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
             message: 'خطأ في السيرفر',
             ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// @route   POST /api/mobile/messages/:messageId/react
+// @desc    إضافة أو إزالة ردّ فعل (إيموجي) على رسالة
+// @access  Private
+// ═══════════════════════════════════════════════════════════════
+router.post('/messages/:messageId/react', protect, async (req, res) => {
+    try {
+        const { messageId } = req.params;
+        const { emoji } = req.body;
+        const userId = req.user._id;
+
+        if (!emoji) {
+            return res.status(400).json({ success: false, message: 'الإيموجي مطلوب' });
+        }
+
+        const message = await Message.findById(messageId);
+        if (!message) {
+            return res.status(404).json({ success: false, message: 'الرسالة غير موجودة' });
+        }
+
+        // التحقق من صلاحية الوصول (عضو في المحادثة)
+        const conversation = await Conversation.findById(message.conversation);
+        if (!conversation || !conversation.participants.some(p => p.toString() === userId.toString())) {
+            return res.status(403).json({ success: false, message: 'ليس لديك صلاحية' });
+        }
+
+        // إزالة أي ريأكشن سابق من نفس المستخدم
+        message.reactions = message.reactions.filter(r => r.user.toString() !== userId.toString());
+
+        // إضافة الريأكشن الجديد (إذا ليس فارغ)
+        if (emoji.trim() !== '') {
+            message.reactions.push({ user: userId, emoji: emoji.trim() });
+        }
+
+        await message.save();
+
+        // إرسال التحديث عبر Socket
+        if (global.io) {
+            const chatId = message.conversation || message.room;
+            global.io.to(`conversation-${chatId}`).emit('message-reaction', {
+                messageId: message._id,
+                reactions: message.reactions,
+                userId: userId,
+                emoji: emoji.trim()
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: { reactions: message.reactions }
+        });
+
+    } catch (error) {
+        console.error('خطأ في الريأكشن:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
 

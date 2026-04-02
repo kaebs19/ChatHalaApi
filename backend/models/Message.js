@@ -34,6 +34,20 @@ const messageSchema = new mongoose.Schema({
         ref: 'User',
         required: [true, 'المرسل مطلوب']
     },
+
+    // الرد على رسالة
+    replyTo: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Message',
+        default: null
+    },
+
+    // ردود الفعل (إيموجي)
+    reactions: [{
+        user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        emoji: { type: String, required: true },
+        createdAt: { type: Date, default: Date.now }
+    }],
     content: {
         type: String,
         required: [function() { return this.type === 'text'; }, 'محتوى الرسالة مطلوب'],
