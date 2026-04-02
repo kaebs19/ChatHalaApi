@@ -30,8 +30,14 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick }) {
         },
         {
             id: 'reports',
-            name: 'البلاغات',
-            icon: '⚠️',
+            name: 'الإشراف والمخالفات',
+            icon: '🛡️',
+            adminOnly: true
+        },
+        {
+            id: 'users-map',
+            name: 'خريطة المستخدمين',
+            icon: '🗺️',
             adminOnly: true
         },
         {
@@ -44,18 +50,6 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick }) {
             id: 'verification-requests',
             name: 'طلبات التوثيق',
             icon: '✅',
-            adminOnly: true
-        },
-        {
-            id: 'banned-words',
-            name: 'كلمات محظورة',
-            icon: '🚫',
-            adminOnly: true
-        },
-        {
-            id: 'flagged-messages',
-            name: 'رسائل للمراجعة',
-            icon: '⚠️',
             adminOnly: true
         },
         {
@@ -80,6 +74,8 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick }) {
         if (itemId === 'users' && currentPage === 'premium-users') return true;
         if (itemId === 'chat-rooms' && currentPage === 'categories') return true;
         if (itemId === 'reports' && currentPage === 'flagged-messages') return true;
+        if (itemId === 'reports' && currentPage === 'banned-words') return true;
+        if (itemId === 'reports' && currentPage === 'name-blocking') return true;
         return false;
     };
 

@@ -11,9 +11,10 @@ import Stats from '../pages/Stats';
 import Settings from '../pages/Settings';
 import Profile from '../pages/Profile';
 import Notifications from '../pages/Notifications';
-import BannedWords from '../pages/BannedWords';
+
 import VerificationRequests from '../pages/VerificationRequests';
 import SuperLikes from '../pages/SuperLikes';
+import UsersMap from '../pages/UsersMap';
 import { getReportsStats, getNotifications } from '../services/api';
 import { useToast } from '../components/Toast';
 import config from '../config';
@@ -170,11 +171,15 @@ function MainLayout({ onLogout, user: initialUser }) {
             case 'notifications':
                 return <Notifications onNotificationRead={fetchNotificationsCount} />;
             case 'banned-words':
-                return <BannedWords />;
+                return <ReportsManagement initialTab="banned-words" onViewUserDetail={handleViewUserDetail} onViewConversation={handleViewConversation} />;
+            case 'name-blocking':
+                return <ReportsManagement initialTab="name-blocking" onViewUserDetail={handleViewUserDetail} onViewConversation={handleViewConversation} />;
             case 'verification-requests':
                 return <VerificationRequests />;
             case 'super-likes':
                 return <SuperLikes />;
+            case 'users-map':
+                return <UsersMap onViewDetail={handleViewUserDetail} />;
             case 'user-detail':
                 return <UserDetail userId={selectedUserId} onBack={handleBackFromUserDetail} />;
             default:
@@ -198,14 +203,14 @@ function MainLayout({ onLogout, user: initialUser }) {
                         {(currentPage === 'users' || currentPage === 'premium-users') && '👥 إدارة المستخدمين'}
                         {currentPage === 'conversations' && '💬 المحادثات'}
                         {(currentPage === 'chat-rooms' || currentPage === 'categories') && '🏠 غرف المحادثة'}
-                        {(currentPage === 'reports' || currentPage === 'flagged-messages') && '⚠️ البلاغات والمخالفات'}
+                        {(currentPage === 'reports' || currentPage === 'flagged-messages' || currentPage === 'banned-words' || currentPage === 'name-blocking') && '🛡️ الإشراف والمخالفات'}
                         {currentPage === 'stats' && '📈 الإحصائيات'}
                         {currentPage === 'settings' && '⚙️ الإعدادات'}
                         {currentPage === 'profile' && '👤 الملف الشخصي'}
                         {currentPage === 'notifications' && '🔔 الإشعارات'}
-                        {currentPage === 'banned-words' && '🚫 الكلمات المحظورة'}
                         {currentPage === 'verification-requests' && '✅ طلبات التوثيق'}
                         {currentPage === 'super-likes' && '⚡ Super Likes'}
+                        {currentPage === 'users-map' && '🗺️ خريطة المستخدمين'}
                         {currentPage === 'user-detail' && '👤 تفاصيل المستخدم'}
                         {currentPage === 'report-conversation' && '💬 رسائل المحادثة'}
                     </h1>
