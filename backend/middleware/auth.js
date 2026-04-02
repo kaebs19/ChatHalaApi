@@ -27,10 +27,34 @@ const protect = async (req, res, next) => {
             }
 
             if (!req.user.isActive) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'الحساب غير مفعل'
-                });
+                // التحقق إذا انتهت مدة التعليق → إعادة التفعيل تلقائياً
+                if (req.user.suspendedUntil && new Date(req.user.suspendedUntil) <= new Date()) {
+                    req.user.isActive = true;
+                    req.user.suspendedUntil = null;
+                    req.user.suspendReason = null;
+                    req.user.dailyViolationCount = 0;
+                    await req.user.save();
+                    // يكمل الطلب بشكل طبيعي
+                } else {
+                    // 403 بدل 401 حتى لا يعمل logout
+                    const remaining = req.user.suspendedUntil
+                        ? Math.ceil((new Date(req.user.suspendedUntil) - new Date()) / (1000 * 60 * 60 * 24))
+                        : 0;
+                    return res.status(403).json({
+                        success: false,
+                        message: remaining > 365
+                            ? 'تم حظر حسابك نهائياً'
+                            : remaining > 0
+                                ? `الحساب معلّق. متبقي ${remaining} يوم.`
+                                : 'الحساب غير مفعل',
+                        data: {
+                            suspended: true,
+                            reason: req.user.suspendReason,
+                            suspendedUntil: req.user.suspendedUntil,
+                            remaining: remaining
+                        }
+                    });
+                }
             }
 
             next();
