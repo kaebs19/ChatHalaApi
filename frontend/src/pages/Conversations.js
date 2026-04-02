@@ -255,7 +255,7 @@ function Conversations({ onViewUserDetail }) {
                             <div
                                 key={conv._id}
                                 className={`conversation-item ${!conv.isActive ? 'inactive' : ''}`}
-                                onClick={() => handleViewDetails(conv._id)}
+                                onClick={() => handleViewMessages(conv._id)}
                             >
                                 {/* رقم المحادثة */}
                                 <div className="conversation-number">

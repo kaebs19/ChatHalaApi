@@ -557,8 +557,16 @@ io.on('connection', async (socket) => {
             });
             await message.save();
 
-            // تنبيه الأدمن بالكلمات المحظورة
+            // تنبيه الأدمن + تحذير المرسل بالكلمات المحظورة
             if (!bannedWordResult.isClean) {
+                const updatedUser = await User.findByIdAndUpdate(
+                    socket.userId,
+                    { $inc: { violationCount: 1 } },
+                    { new: true, select: 'violationCount' }
+                );
+                const vCount = updatedUser?.violationCount || 1;
+                const vRemaining = Math.max(0, 5 - vCount);
+
                 io.emit('banned-word-alert', {
                     messageId: message._id,
                     roomId: roomId,
@@ -570,6 +578,14 @@ io.on('connection', async (socket) => {
                     severity: bannedWordResult.highestSeverity,
                     chatType: 'room',
                     timestamp: new Date()
+                });
+                io.to(`user:${socket.userId}`).emit('banned-word-warning', {
+                    title: '⚠️ تنبيه',
+                    body: vRemaining > 0
+                        ? `رسالتك تحتوي على كلمات محظورة! متبقي ${vRemaining} مخالفات قبل تعليق حسابك.`
+                        : 'تم تعليق حسابك بسبب تكرار المخالفات.',
+                    violationCount: vCount,
+                    remaining: vRemaining
                 });
             }
 

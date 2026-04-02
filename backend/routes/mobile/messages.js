@@ -104,6 +104,15 @@ router.post('/messages/send', protect, async (req, res) => {
 
         // تنبيه الأدمن + تحذير المرسل إذا وُجدت كلمات محظورة
         if (!bannedWordResult.isClean) {
+            const User = require('../../models/User');
+            const updatedUser = await User.findByIdAndUpdate(
+                req.user._id,
+                { $inc: { violationCount: 1 } },
+                { new: true, select: 'violationCount' }
+            );
+            const vCount = updatedUser?.violationCount || 1;
+            const vRemaining = Math.max(0, 5 - vCount);
+
             if (global.io) {
                 global.io.emit('banned-word-alert', {
                     messageId: message._id,
@@ -116,15 +125,15 @@ router.post('/messages/send', protect, async (req, res) => {
                     chatType: 'conversation',
                     timestamp: new Date()
                 });
-                // تحذير المرسل
-                global.io.to(`user:${req.user._id}`).emit('notification', {
+                global.io.to(`user:${req.user._id}`).emit('banned-word-warning', {
                     title: '⚠️ تنبيه',
-                    body: 'رسالتك تحتوي على كلمات محظورة. تكرار المخالفة يعرض حسابك للتعليق والحظر.'
+                    body: vRemaining > 0
+                        ? `رسالتك تحتوي على كلمات محظورة! متبقي ${vRemaining} مخالفات قبل تعليق حسابك.`
+                        : 'تم تعليق حسابك بسبب تكرار المخالفات.',
+                    violationCount: vCount,
+                    remaining: vRemaining
                 });
             }
-            // زيادة عداد المخالفات
-            const User = require('../../models/User');
-            await User.findByIdAndUpdate(req.user._id, { $inc: { violationCount: 1 } });
         }
 
         // تحديث آخر رسالة + عداد الرسائل
@@ -405,6 +414,15 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
 
         // تنبيه الأدمن + تحذير المرسل إذا وُجدت كلمات محظورة
         if (!bannedWordResult.isClean) {
+            const User = require('../../models/User');
+            const updatedUser = await User.findByIdAndUpdate(
+                req.user._id,
+                { $inc: { violationCount: 1 } },
+                { new: true, select: 'violationCount' }
+            );
+            const vCount = updatedUser?.violationCount || 1;
+            const vRemaining = Math.max(0, 5 - vCount);
+
             if (global.io) {
                 global.io.emit('banned-word-alert', {
                     messageId: message._id,
@@ -417,15 +435,15 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
                     chatType: 'conversation',
                     timestamp: new Date()
                 });
-                // تحذير المرسل
-                global.io.to(`user:${req.user._id}`).emit('notification', {
+                global.io.to(`user:${req.user._id}`).emit('banned-word-warning', {
                     title: '⚠️ تنبيه',
-                    body: 'رسالتك تحتوي على كلمات محظورة. تكرار المخالفة يعرض حسابك للتعليق والحظر.'
+                    body: vRemaining > 0
+                        ? `رسالتك تحتوي على كلمات محظورة! متبقي ${vRemaining} مخالفات قبل تعليق حسابك.`
+                        : 'تم تعليق حسابك بسبب تكرار المخالفات.',
+                    violationCount: vCount,
+                    remaining: vRemaining
                 });
             }
-            // زيادة عداد المخالفات
-            const User = require('../../models/User');
-            await User.findByIdAndUpdate(req.user._id, { $inc: { violationCount: 1 } });
         }
 
         // تحديث آخر رسالة + عداد الرسائل
