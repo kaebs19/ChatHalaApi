@@ -1,10 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { getConversationMessages, deleteMessage, getConversationById, sendMessage, toggleUserActive } from '../services/api';
+import { getConversationMessages, deleteMessage, getConversationById, toggleUserActive } from '../services/api';
 import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
-import socketService from '../services/socket';
-import notificationService from '../services/notifications';
-import { getImageUrl } from '../config';
+import { getImageUrl, getDefaultAvatar } from '../config';
 import { formatDate } from '../utils/formatters';
 import './ConversationMessages.css';
 
@@ -17,96 +15,11 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
     const [totalPages, setTotalPages] = useState(1);
     const [selectedMessage, setSelectedMessage] = useState(null);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
-    const [typingUser, setTypingUser] = useState(null);
-    const [onlineCount, setOnlineCount] = useState(0);
-    const [newMessage, setNewMessage] = useState('');
-    const [sending, setSending] = useState(false);
     const [userActionMenu, setUserActionMenu] = useState(null);
     const [showBanConfirm, setShowBanConfirm] = useState(false);
     const [banningUser, setBanningUser] = useState(null);
     const messagesEndRef = useRef(null);
-    const typingTimeoutRef = useRef(null);
-    const typingDebounceRef = useRef(null);
     const { showToast } = useToast();
-
-    // Socket.IO: الاتصال والانضمام للمحادثة
-    useEffect(() => {
-        // الاتصال بـ Socket.IO إذا لم يكن متصلاً
-        if (!socketService.isConnected()) {
-            socketService.connect();
-        }
-
-        // طلب إذن الإشعارات
-        notificationService.requestPermission();
-
-        // الانضمام للمحادثة
-        socketService.joinConversation(conversationId);
-
-        // الاستماع للرسائل الجديدة
-        socketService.onNewMessage((data) => {
-            console.log('📩 رسالة جديدة:', data.message);
-
-            // إضافة الرسالة الجديدة فقط إذا كانت من نفس المحادثة
-            if (data.message.conversation === conversationId) {
-                setMessages(prevMessages => {
-                    // التحقق من عدم وجود الرسالة بالفعل
-                    const exists = prevMessages.some(msg => msg._id === data.message._id);
-                    if (!exists) {
-                        return [data.message, ...prevMessages];
-                    }
-                    return prevMessages;
-                });
-                showToast('رسالة جديدة 📩', 'success');
-
-                // إرسال إشعار نظام إذا كانت النافذة غير نشطة
-                if (document.hidden && notificationService.hasPermission()) {
-                    notificationService.notifyNewMessage(
-                        data.message.sender?.name || 'مستخدم',
-                        data.message.content,
-                        conversation?.title || 'محادثة'
-                    );
-                }
-
-                scrollToBottom();
-            }
-        });
-
-        // الاستماع لحدث "يكتب الآن"
-        socketService.onTyping((data) => {
-            if (data.isTyping) {
-                setTypingUser(data.userName);
-                // إخفاء المؤشر بعد 3 ثوانٍ
-                if (typingTimeoutRef.current) {
-                    clearTimeout(typingTimeoutRef.current);
-                }
-                typingTimeoutRef.current = setTimeout(() => {
-                    setTypingUser(null);
-                }, 3000);
-            } else {
-                setTypingUser(null);
-                if (typingTimeoutRef.current) {
-                    clearTimeout(typingTimeoutRef.current);
-                }
-            }
-        });
-
-        // الاستماع لعدد المستخدمين المتصلين
-        socketService.onUsersOnline((data) => {
-            setOnlineCount(data.count);
-            console.log(`👥 عدد المتصلين: ${data.count}`);
-        });
-
-        // تنظيف: مغادرة المحادثة عند الخروج
-        return () => {
-            socketService.leaveConversation(conversationId);
-            socketService.offNewMessage();
-            socketService.offTyping();
-            socketService.offUsersOnline();
-            if (typingTimeoutRef.current) {
-                clearTimeout(typingTimeoutRef.current);
-            }
-        };
-    }, [conversationId, conversation]);
 
     useEffect(() => {
         fetchMessages();
@@ -129,11 +42,12 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
             setLoading(true);
             const response = await getConversationMessages(conversationId, page, 50, search);
             if (response.success) {
-                setMessages(response.data.messages);
+                // ترتيب من الأقدم للأحدث (الأحدث في الأسفل)
+                const sorted = [...(response.data.messages || [])].reverse();
+                setMessages(sorted);
                 setTotalPages(response.data.totalPages);
             }
         } catch (err) {
-            console.error('خطأ في جلب الرسائل:', err);
             showToast('فشل تحميل الرسائل', 'error');
         } finally {
             setLoading(false);
@@ -142,14 +56,11 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
 
     const handleDeleteMessage = async () => {
         if (!selectedMessage) return;
-
         try {
             const response = await deleteMessage(selectedMessage._id);
             if (response.success) {
                 setMessages(messages.map(msg =>
-                    msg._id === selectedMessage._id
-                        ? { ...msg, isDeleted: true }
-                        : msg
+                    msg._id === selectedMessage._id ? { ...msg, isDeleted: true } : msg
                 ));
                 showToast('تم حذف الرسالة', 'success');
                 setShowDeleteModal(false);
@@ -160,11 +71,6 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
         }
     };
 
-    const handleSearch = (e) => {
-        setSearch(e.target.value);
-        setPage(1);
-    };
-
     const formatTime = (date) => {
         return new Date(date).toLocaleTimeString('ar-SA', {
             hour: '2-digit',
@@ -172,334 +78,216 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
         });
     };
 
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    };
-
-    // معالج الكتابة في الـ input
-    const handleMessageInput = (e) => {
-        const value = e.target.value;
-        setNewMessage(value);
-
-        // إرسال حدث "يكتب الآن"
-        if (value.trim()) {
-            const userName = localStorage.getItem('userName') || 'Admin';
-            socketService.emitTyping(conversationId, userName);
-
-            // إيقاف الحدث بعد 3 ثوانٍ
-            if (typingDebounceRef.current) {
-                clearTimeout(typingDebounceRef.current);
-            }
-            typingDebounceRef.current = setTimeout(() => {
-                socketService.emitStopTyping(conversationId);
-            }, 3000);
-        } else {
-            socketService.emitStopTyping(conversationId);
-        }
-    };
-
-    // إرسال رسالة جديدة
-    const handleSendMessage = async (e) => {
-        e.preventDefault();
-
-        if (!newMessage.trim() || sending) return;
-
-        const messageContent = newMessage;
-
-        try {
-            setSending(true);
-            socketService.emitStopTyping(conversationId);
-
-            // تفريغ الـ input فوراً لتحسين UX
-            setNewMessage('');
-
-            // إرسال الرسالة للـ API
-            // سيتم بث الرسالة تلقائياً عبر Socket.IO من Backend
-            const response = await sendMessage(conversationId, messageContent, 'text');
-
-            if (response.success) {
-                showToast('تم إرسال الرسالة ✅', 'success');
-                scrollToBottom();
-            } else {
-                // في حالة الفشل، نعيد النص للـ input
-                setNewMessage(messageContent);
-                showToast(response.message || 'فشل إرسال الرسالة', 'error');
-            }
-
-        } catch (error) {
-            console.error('خطأ في إرسال الرسالة:', error);
-            // نعيد النص للـ input
-            setNewMessage(messageContent);
-            showToast('فشل إرسال الرسالة', 'error');
-        } finally {
-            setSending(false);
-        }
-    };
-
     useEffect(() => {
         if (!loading) {
-            scrollToBottom();
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
         }
     }, [messages, loading]);
+
+    // أسماء المشاركين
+    const getParticipantNames = () => {
+        if (!conversation?.participants) return 'المحادثة';
+        return conversation.participants.map(p => p.name).join(' و ');
+    };
+
+    // صورة المرسل
+    const getSenderAvatar = (sender) => {
+        if (sender?.profileImage) {
+            return getImageUrl(sender.profileImage);
+        }
+        return getDefaultAvatar(sender?.name);
+    };
 
     if (loading && page === 1) {
         return <LoadingSpinner text="جاري تحميل الرسائل..." />;
     }
 
     return (
-        <div className="conversation-messages-page">
+        <div className="chat-viewer-page">
             {/* Header */}
-            <div className="messages-header">
-                <button onClick={onBack} className="back-btn">← رجوع</button>
-                <div className="conversation-info">
-                    <h2>{conversation?.title || 'المحادثة'}</h2>
-                    <div className="header-stats">
-                        <p>{messages.length} رسالة</p>
-                        {onlineCount > 0 && (
-                            <p className="online-count">
-                                <span className="online-dot"></span>
-                                {onlineCount} متصل
-                            </p>
-                        )}
+            <div className="chat-viewer-header">
+                <button onClick={onBack} className="chat-back-btn">← رجوع</button>
+                <div className="chat-header-info">
+                    <div className="chat-header-avatars">
+                        {conversation?.participants?.slice(0, 2).map((p, i) => (
+                            <img
+                                key={i}
+                                src={getSenderAvatar(p)}
+                                alt={p.name}
+                                className="chat-header-avatar"
+                                onError={(e) => { e.target.onerror = null; e.target.src = getDefaultAvatar(p.name); }}
+                                onClick={() => onViewUser && onViewUser(p._id)}
+                                style={{ cursor: onViewUser ? 'pointer' : 'default' }}
+                            />
+                        ))}
+                    </div>
+                    <div className="chat-header-text">
+                        <h2>{getParticipantNames()}</h2>
+                        <span className="chat-msg-count">{messages.length} رسالة</span>
                     </div>
                 </div>
-                <div className="search-box">
+                <div className="chat-header-search">
                     <input
                         type="text"
-                        placeholder="🔍 بحث في الرسائل..."
+                        placeholder="🔍 بحث..."
                         value={search}
-                        onChange={handleSearch}
-                        className="search-input"
+                        onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                     />
                 </div>
             </div>
 
-            {/* Messages Container */}
-            <div className="messages-container">
+            {/* Admin Notice */}
+            <div className="chat-admin-notice">
+                🔒 وضع المراقبة — لا يمكن الرد في هذه المحادثة
+            </div>
+
+            {/* Messages */}
+            <div className="chat-messages-container">
                 {messages.length === 0 ? (
-                    <div className="no-messages">
-                        <p>لا توجد رسائل في هذه المحادثة 💬</p>
+                    <div className="chat-empty">
+                        <p>💬 لا توجد رسائل</p>
                     </div>
                 ) : (
-                    <div className="messages-list">
+                    <div className="chat-messages-list">
                         {messages.map((message, index) => {
                             const showDate = index === 0 ||
                                 formatDate(message.createdAt) !== formatDate(messages[index - 1]?.createdAt);
 
+                            const isFirstParticipant = conversation?.participants?.[0]?._id === message.sender?._id;
+
                             return (
                                 <React.Fragment key={message._id}>
                                     {showDate && (
-                                        <div className="date-divider">
+                                        <div className="chat-date-divider">
                                             <span>{formatDate(message.createdAt)}</span>
                                         </div>
                                     )}
-                                    <div className={`message-bubble ${message.isDeleted ? 'deleted' : ''} ${message.hasBannedWords ? 'flagged' : ''}`}>
-                                        <div className="message-header">
-                                            <div className="sender-info" style={{cursor: 'pointer'}} onClick={(e) => {
-                                                e.stopPropagation();
-                                                if (message.sender?._id) {
-                                                    setUserActionMenu({ userId: message.sender._id, userName: message.sender.name, x: e.clientX, y: e.clientY });
-                                                }
-                                            }}>
-                                                <div className="sender-avatar">
-                                                    {message.sender?.name?.charAt(0) || '؟'}
-                                                </div>
-                                                <span className="sender-name">
-                                                    {message.sender?.name || 'مستخدم محذوف'}
+                                    <div className={`chat-msg ${isFirstParticipant ? 'right' : 'left'} ${message.isDeleted ? 'deleted' : ''} ${message.hasBannedWords ? 'flagged' : ''}`}>
+                                        {/* Avatar */}
+                                        <img
+                                            src={getSenderAvatar(message.sender)}
+                                            alt={message.sender?.name}
+                                            className="chat-msg-avatar"
+                                            onClick={() => message.sender?._id && onViewUser && onViewUser(message.sender._id)}
+                                            onError={(e) => { e.target.onerror = null; e.target.src = getDefaultAvatar(message.sender?.name); }}
+                                        />
+
+                                        <div className="chat-msg-body">
+                                            {/* Sender name */}
+                                            <div className="chat-msg-sender">
+                                                <span
+                                                    className="chat-sender-name"
+                                                    onClick={() => message.sender?._id && onViewUser && onViewUser(message.sender._id)}
+                                                >
+                                                    {message.sender?.name || 'مجهول'}
                                                 </span>
+                                                <span className="chat-msg-time">{formatTime(message.createdAt)}</span>
                                             </div>
-                                            <div className="message-actions">
-                                                <span className="message-time">
-                                                    {formatTime(message.createdAt)}
-                                                </span>
-                                                {!message.isDeleted && (
-                                                    <button
-                                                        className="delete-msg-btn"
-                                                        onClick={() => {
-                                                            setSelectedMessage(message);
-                                                            setShowDeleteModal(true);
-                                                        }}
-                                                        title="حذف الرسالة"
-                                                    >
-                                                        🗑️
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <div className="message-content">
-                                            {message.isDeleted ? (
-                                                <p className="deleted-text">
-                                                    <em>تم حذف هذه الرسالة</em>
-                                                </p>
-                                            ) : (
-                                                <>
-                                                    {message.content && <p>{message.content}</p>}
-                                                    {message.type === 'image' && message.mediaUrl && (
-                                                        <div className="message-image-container">
+
+                                            {/* Content */}
+                                            <div className="chat-msg-content">
+                                                {message.isDeleted ? (
+                                                    <em className="chat-deleted-text">تم حذف هذه الرسالة</em>
+                                                ) : (
+                                                    <>
+                                                        {message.content && <p>{message.content}</p>}
+                                                        {message.type === 'image' && message.mediaUrl && (
                                                             <img
                                                                 src={getImageUrl(message.mediaUrl)}
                                                                 alt="صورة"
-                                                                className="message-image"
-                                                                onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; }}
+                                                                className="chat-msg-image"
+                                                                onError={(e) => { e.target.style.display = 'none'; }}
                                                             />
-                                                        </div>
-                                                    )}
-                                                </>
-                                            )}
-                                            {message.type !== 'text' && message.type !== 'image' && !message.isDeleted && (
-                                                <span className="message-type-badge">
-                                                    {message.type === 'file' && '📎 ملف'}
-                                                    {message.type === 'audio' && '🎵 صوت'}
-                                                    {message.type === 'video' && '🎥 فيديو'}
-                                                </span>
-                                            )}
+                                                        )}
+                                                        {message.type !== 'text' && message.type !== 'image' && (
+                                                            <span className="chat-type-badge">
+                                                                {message.type === 'file' && '📎 ملف'}
+                                                                {message.type === 'audio' && '🎵 صوت'}
+                                                                {message.type === 'video' && '🎥 فيديو'}
+                                                            </span>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </div>
+
+                                            {/* Banned words */}
                                             {message.hasBannedWords && message.bannedWordsFound?.length > 0 && (
-                                                <div className="banned-words-badges">
-                                                    <span className="banned-label">⚠️ كلمات محظورة:</span>
-                                                    {message.bannedWordsFound.map((w, i) => (
-                                                        <span key={i} className={`banned-word-badge ${w.severity}`}>{w.word}</span>
+                                                <div className="chat-banned-words">
+                                                    ⚠️ {message.bannedWordsFound.map((w, i) => (
+                                                        <span key={i} className={`chat-banned-tag ${w.severity}`}>{w.word}</span>
                                                     ))}
                                                 </div>
                                             )}
                                         </div>
+
+                                        {/* Delete button */}
+                                        {!message.isDeleted && (
+                                            <button
+                                                className="chat-delete-btn"
+                                                onClick={() => { setSelectedMessage(message); setShowDeleteModal(true); }}
+                                                title="حذف"
+                                            >
+                                                🗑️
+                                            </button>
+                                        )}
                                     </div>
                                 </React.Fragment>
                             );
                         })}
-
-                        {/* مؤشر "يكتب الآن" */}
-                        {typingUser && (
-                            <div className="typing-indicator">
-                                <div className="typing-avatar">{typingUser.charAt(0)}</div>
-                                <div className="typing-bubble">
-                                    <span className="typing-text">{typingUser} يكتب</span>
-                                    <div className="typing-dots">
-                                        <span></span>
-                                        <span></span>
-                                        <span></span>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
                         <div ref={messagesEndRef} />
                     </div>
                 )}
             </div>
 
-            {/* Message Input - واجهة الإرسال */}
-            <form className="message-input-container" onSubmit={handleSendMessage}>
-                <input
-                    type="text"
-                    className="message-input"
-                    placeholder="اكتب رسالتك هنا..."
-                    value={newMessage}
-                    onChange={handleMessageInput}
-                    disabled={sending}
-                />
-                <button
-                    type="submit"
-                    className="send-btn"
-                    disabled={!newMessage.trim() || sending}
-                >
-                    {sending ? '⏳' : '📤'}
-                </button>
-            </form>
-
             {/* Pagination */}
             {totalPages > 1 && (
-                <div className="messages-pagination">
-                    <button
-                        onClick={() => setPage(p => Math.max(1, p - 1))}
-                        disabled={page === 1}
-                        className="pagination-btn"
-                    >
-                        السابق
-                    </button>
-                    <span className="page-info">
-                        صفحة {page} من {totalPages}
-                    </span>
-                    <button
-                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                        disabled={page === totalPages}
-                        className="pagination-btn"
-                    >
-                        التالي
-                    </button>
+                <div className="chat-pagination">
+                    <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>السابق</button>
+                    <span>صفحة {page} من {totalPages}</span>
+                    <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>التالي</button>
                 </div>
             )}
 
-            {/* User Action Menu */}
-            {userActionMenu && (
-                <div className="user-action-overlay" onClick={() => setUserActionMenu(null)}>
-                    <div className="user-action-menu"
-                         style={{ top: Math.min(userActionMenu.y, window.innerHeight - 150), left: Math.min(userActionMenu.x, window.innerWidth - 220) }}
-                         onClick={(e) => e.stopPropagation()}>
-                        <div className="user-action-header">{userActionMenu.userName}</div>
-                        <button className="user-action-btn view" onClick={() => {
-                            if (onViewUser) onViewUser(userActionMenu.userId);
-                            setUserActionMenu(null);
-                        }}>👤 عرض الملف الشخصي</button>
-                        <button className="user-action-btn ban" onClick={() => {
-                            setBanningUser({ id: userActionMenu.userId, name: userActionMenu.userName });
-                            setShowBanConfirm(true);
-                            setUserActionMenu(null);
-                        }}>🚫 حظر المستخدم</button>
-                    </div>
-                </div>
-            )}
-
-            {/* Ban Confirmation Modal */}
-            {showBanConfirm && banningUser && (
-                <div className="ban-modal-overlay" onClick={() => { setShowBanConfirm(false); setBanningUser(null); }}>
-                    <div className="ban-modal" onClick={(e) => e.stopPropagation()}>
-                        <h3>🚫 تأكيد الحظر</h3>
-                        <p>هل أنت متأكد من حظر المستخدم "{banningUser.name}"؟</p>
-                        <div className="ban-modal-actions">
-                            <button className="ban-cancel-btn" onClick={() => { setShowBanConfirm(false); setBanningUser(null); }}>إلغاء</button>
-                            <button className="ban-confirm-btn" onClick={async () => {
-                                try {
-                                    const response = await toggleUserActive(banningUser.id);
-                                    if (response.success) {
-                                        showToast('تم حظر المستخدم بنجاح', 'success');
-                                    }
-                                } catch (err) {
-                                    showToast('فشل في حظر المستخدم', 'error');
-                                }
-                                setShowBanConfirm(false);
-                                setBanningUser(null);
-                            }}>حظر</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Delete Confirmation Modal */}
+            {/* Delete Modal */}
             {showDeleteModal && selectedMessage && (
                 <div className="modal-overlay" onClick={() => setShowDeleteModal(false)}>
                     <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                        <h3>تأكيد الحذف</h3>
-                        <p>هل أنت متأكد من حذف هذه الرسالة؟</p>
+                        <h3>تأكيد حذف الرسالة</h3>
                         <div className="message-preview">
-                            <strong>المرسل:</strong> {selectedMessage.sender?.name}<br />
-                            <strong>المحتوى:</strong> {selectedMessage.content}
+                            <strong>{selectedMessage.sender?.name}:</strong> {selectedMessage.content}
                         </div>
                         <div className="modal-actions">
-                            <button
-                                className="btn-cancel"
-                                onClick={() => {
-                                    setShowDeleteModal(false);
-                                    setSelectedMessage(null);
-                                }}
-                            >
-                                إلغاء
-                            </button>
-                            <button
-                                className="btn-confirm-delete"
-                                onClick={handleDeleteMessage}
-                            >
-                                حذف
-                            </button>
+                            <button className="btn-cancel" onClick={() => { setShowDeleteModal(false); setSelectedMessage(null); }}>إلغاء</button>
+                            <button className="btn-confirm-delete" onClick={handleDeleteMessage}>حذف</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* User click menu */}
+            {userActionMenu && (
+                <div className="user-action-overlay" onClick={() => setUserActionMenu(null)}>
+                    <div className="user-action-menu" style={{ top: userActionMenu.y, left: userActionMenu.x }} onClick={(e) => e.stopPropagation()}>
+                        <button onClick={() => { onViewUser?.(userActionMenu.userId); setUserActionMenu(null); }}>👤 عرض الملف</button>
+                        <button onClick={() => { setBanningUser(userActionMenu); setShowBanConfirm(true); setUserActionMenu(null); }}>🚫 حظر</button>
+                    </div>
+                </div>
+            )}
+
+            {/* Ban confirm */}
+            {showBanConfirm && banningUser && (
+                <div className="modal-overlay" onClick={() => { setShowBanConfirm(false); setBanningUser(null); }}>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                        <h3>🚫 حظر "{banningUser.userName}"؟</h3>
+                        <div className="modal-actions">
+                            <button className="btn-cancel" onClick={() => { setShowBanConfirm(false); setBanningUser(null); }}>إلغاء</button>
+                            <button className="btn-confirm-delete" onClick={async () => {
+                                try {
+                                    await toggleUserActive(banningUser.userId);
+                                    showToast('تم حظر المستخدم', 'success');
+                                } catch (e) { showToast('فشل', 'error'); }
+                                setShowBanConfirm(false); setBanningUser(null);
+                            }}>حظر</button>
                         </div>
                     </div>
                 </div>
