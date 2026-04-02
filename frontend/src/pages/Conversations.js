@@ -15,7 +15,7 @@ import { formatDate } from '../utils/formatters';
 import { getImageUrl, getDefaultAvatar } from '../config';
 import './Conversations.css';
 
-function Conversations() {
+function Conversations({ onViewUserDetail }) {
     const [conversations, setConversations] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filterStatus, setFilterStatus] = useState('all');
@@ -179,12 +179,12 @@ function Conversations() {
 
     // إذا كنا نعرض رسائل محادثة مباشرة
     if (viewingConversationId && directToMessages) {
-        return <ConversationMessages conversationId={viewingConversationId} onBack={handleBackFromDetails} />;
+        return <ConversationMessages conversationId={viewingConversationId} onBack={handleBackFromDetails} onViewUser={onViewUserDetail} />;
     }
 
     // إذا كنا نعرض تفاصيل محادثة
     if (viewingConversationId) {
-        return <ConversationDetail conversationId={viewingConversationId} onBack={handleBackFromDetails} />;
+        return <ConversationDetail conversationId={viewingConversationId} onBack={handleBackFromDetails} onViewUser={onViewUserDetail} />;
     }
 
     return (
@@ -290,7 +290,19 @@ function Conversations() {
                                 <div className="conversation-info">
                                     <div className="conversation-header">
                                         <h3 className="conversation-title">
-                                            {conv.participants?.map(p => p.name).join(' و ') || conv.title}
+                                            {conv.participants?.map((p, i) => (
+                                                <span key={p._id}>
+                                                    {onViewUserDetail ? (
+                                                        <span
+                                                            className="user-name-link"
+                                                            onClick={(e) => { e.stopPropagation(); onViewUserDetail(p._id); }}
+                                                        >
+                                                            {p.name}
+                                                        </span>
+                                                    ) : p.name}
+                                                    {i < conv.participants.length - 1 && ' و '}
+                                                </span>
+                                            )) || conv.title}
                                         </h3>
                                         <span className="conversation-time">
                                             {formatRelativeTime(conv.updatedAt)}

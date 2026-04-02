@@ -151,7 +151,7 @@ function MainLayout({ onLogout, user: initialUser }) {
             case 'premium-users':
                 return <UsersManagement onViewDetail={handleViewUserDetail} initialTab="premium" />;
             case 'conversations':
-                return <Conversations />;
+                return <Conversations onViewUserDetail={handleViewUserDetail} />;
             case 'chat-rooms':
                 return <ChatRoomsManagement initialTab="rooms" />;
             case 'categories':
