@@ -52,19 +52,29 @@ const protect = async (req, res, next) => {
                         ? Math.ceil((new Date(req.user.suspendedUntil) - new Date()) / (1000 * 60 * 60 * 24))
                         : 0;
                     const isPermanent = remaining > 365;
+                    const isDeviceBanned = req.user.deviceBanned === true;
                     return res.status(403).json({
                         success: false,
-                        message: isPermanent
-                            ? 'تم حظر حسابك نهائياً'
-                            : remaining > 0
-                                ? `الحساب معلّق. متبقي ${remaining} يوم.`
-                                : 'الحساب غير مفعل',
+                        message: isDeviceBanned
+                            ? 'جهاز محظور نهائياً'
+                            : isPermanent
+                                ? 'تم حظر حسابك نهائياً'
+                                : remaining > 0
+                                    ? `الحساب معلّق. متبقي ${remaining} يوم.`
+                                    : 'الحساب غير مفعل',
+                        code: isDeviceBanned
+                            ? 'DEVICE_BANNED'
+                            : isPermanent
+                                ? 'ACCOUNT_BANNED_PERMANENT'
+                                : 'ACCOUNT_SUSPENDED',
                         data: {
                             suspended: true,
                             permanent: isPermanent,
+                            deviceBanned: isDeviceBanned,
                             reason: req.user.suspendReason,
                             suspendedUntil: req.user.suspendedUntil,
-                            remaining: isPermanent ? -1 : remaining
+                            remaining: isPermanent ? -1 : remaining,
+                            level: req.user.suspensionCount || 0
                         }
                     });
                 }

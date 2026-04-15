@@ -58,6 +58,54 @@ const checkDeviceBanned = async (req, res) => {
     return false;
 };
 
+/**
+ * Helper: فحص حظر الحساب وإعادة 403 مع token ليعمل الاستئناف
+ * يرجع true إذا تم إرسال الرد
+ */
+const checkAccountSuspended = (user, res) => {
+    if (user.isActive !== false) return false;
+    // التحقق من انتهاء التعليق التلقائي (تترك التفعيل للراوت الأصلي)
+    if (user.suspendedUntil && new Date(user.suspendedUntil) <= new Date()) {
+        return false; // سيتولى الراوت التفعيل
+    }
+
+    const isPermanent = user.suspendedUntil && (new Date(user.suspendedUntil) - new Date()) > 365 * 24 * 60 * 60 * 1000;
+    const isDeviceBanned = user.deviceBanned === true;
+    let remaining = '';
+    if (user.suspendedUntil) {
+        const diff = new Date(user.suspendedUntil) - new Date();
+        const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+        const hours = Math.ceil(diff / (1000 * 60 * 60));
+        remaining = days > 365 ? 'حظر دائم' : (days > 1 ? `متبقي ${days} يوم` : `متبقي ${hours} ساعة`);
+    }
+
+    res.status(403).json({
+        success: false,
+        message: isDeviceBanned ? 'جهاز محظور نهائياً' : (isPermanent ? 'تم حظر حسابك نهائياً' : 'الحساب معلّق'),
+        code: isDeviceBanned ? 'DEVICE_BANNED' : (isPermanent ? 'ACCOUNT_BANNED_PERMANENT' : 'ACCOUNT_SUSPENDED'),
+        data: {
+            suspended: true,
+            permanent: isPermanent,
+            deviceBanned: isDeviceBanned,
+            reason: user.suspendReason || 'مخالفة سياسة الاستخدام',
+            suspendedUntil: user.suspendedUntil,
+            remaining,
+            level: user.suspensionCount || 0,
+            token: generateToken(user._id),
+            refreshToken: generateRefreshToken(user._id),
+            user: {
+                id: user._id,
+                name: user.name,
+                email: user.email,
+                profileImage: user.profileImage,
+                role: user.role,
+                uniqueTag: user.uniqueTag
+            }
+        }
+    });
+    return true;
+};
+
 // @route   POST /api/auth/register
 // @desc    تسجيل مستخدم جديد
 // @access  Public
@@ -233,15 +281,31 @@ router.post('/login', loginValidation, validate, async (req, res) => {
                         remaining = `متبقي ${hours} ساعة`;
                     }
                 }
+                const isPermanent = user.suspendedUntil && (new Date(user.suspendedUntil) - new Date()) > 365 * 24 * 60 * 60 * 1000;
+                const isDeviceBanned = user.deviceBanned === true;
                 return res.status(403).json({
                     success: false,
-                    message: 'الحساب معلّق',
+                    message: isDeviceBanned ? 'جهاز محظور نهائياً' : (isPermanent ? 'تم حظر حسابك نهائياً' : 'الحساب معلّق'),
+                    code: isDeviceBanned ? 'DEVICE_BANNED' : (isPermanent ? 'ACCOUNT_BANNED_PERMANENT' : 'ACCOUNT_SUSPENDED'),
                     data: {
                         suspended: true,
+                        permanent: isPermanent,
+                        deviceBanned: isDeviceBanned,
                         reason: user.suspendReason || 'مخالفة سياسة الاستخدام',
                         suspendedUntil: user.suspendedUntil,
-                        remaining: remaining,
-                        permanent: user.suspendedUntil && (new Date(user.suspendedUntil) - new Date()) > 365 * 24 * 60 * 60 * 1000
+                        remaining,
+                        level: user.suspensionCount || 0,
+                        // توكن + بيانات حتى يقدر المستخدم يقدم استئناف
+                        token: generateToken(user._id),
+                        refreshToken: generateRefreshToken(user._id),
+                        user: {
+                            id: user._id,
+                            name: user.name,
+                            email: user.email,
+                            profileImage: user.profileImage,
+                            role: user.role,
+                            uniqueTag: user.uniqueTag
+                        }
                     }
                 });
             }
@@ -840,6 +904,9 @@ router.post('/google', async (req, res) => {
         let isNewUser = false;
 
         if (user) {
+            // فحص حظر الحساب قبل إكمال الدخول
+            if (checkAccountSuspended(user, res)) return;
+
             // تحديث معلومات Google إذا لم تكن موجودة
             if (!user.googleId) {
                 user.googleId = googleId;
@@ -975,6 +1042,9 @@ router.post('/apple', async (req, res) => {
         }
 
         if (user) {
+            // فحص حظر الحساب قبل إكمال الدخول
+            if (checkAccountSuspended(user, res)) return;
+
             // تحديث معلومات Apple إذا لم تكن موجودة
             if (!user.appleId) {
                 user.appleId = appleId;

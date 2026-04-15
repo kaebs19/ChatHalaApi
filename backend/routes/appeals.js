@@ -28,18 +28,20 @@ const protectEvenSuspended = async (req, res, next) => {
     }
 };
 
-// @route   POST /api/appeals/submit
+// @route   POST /api/appeals  و  POST /api/appeals/submit
 // @desc    تقديم طلب استئناف (للمستخدم المحظور)
 // @access  Private (يعمل حتى لو الحساب معلّق)
-router.post('/submit', protectEvenSuspended, async (req, res) => {
+const submitHandler = async (req, res) => {
     try {
-        const { message } = req.body;
-        if (!message || message.trim().length < 10) {
+        // دعم كلا المفتاحين: reason (iOS) و message
+        const text = (req.body.reason || req.body.message || '').toString();
+        if (!text || text.trim().length < 10) {
             return res.status(400).json({
                 success: false,
                 message: 'الرجاء كتابة سبب الاستئناف (10 أحرف على الأقل)'
             });
         }
+        const message = text;
 
         // لا يُقبل إلا من المعلّقين/المحظورين
         const isSuspended = !req.user.isActive || req.user.suspendedUntil;
@@ -84,19 +86,75 @@ router.post('/submit', protectEvenSuspended, async (req, res) => {
         console.error('خطأ في تقديم الاستئناف:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
-});
+};
+router.post('/', protectEvenSuspended, submitHandler);        // متوافق مع iOS
+router.post('/submit', protectEvenSuspended, submitHandler);  // احتياطي
 
 // @route   GET /api/appeals/my
-// @desc    طلبات الاستئناف الخاصة بالمستخدم الحالي
+// @desc    طلبات الاستئناف الخاصة بالمستخدم الحالي (صيغة متوافقة مع iOS)
 // @access  Private
 router.get('/my', protectEvenSuspended, async (req, res) => {
     try {
-        const appeals = await Appeal.find({ user: req.user._id })
+        const raw = await Appeal.find({ user: req.user._id })
             .sort('-createdAt')
             .limit(10)
             .lean();
-        res.json({ success: true, count: appeals.length, data: appeals });
+
+        // تحويل إلى صيغة iOS: reason + adminNote
+        const appeals = raw.map(a => ({
+            _id: a._id,
+            id: a._id,
+            status: a.status,
+            reason: a.message,         // iOS يتوقع reason
+            message: a.message,         // للتوافق
+            adminNote: a.decisionNote,  // iOS يتوقع adminNote
+            decisionNote: a.decisionNote,
+            suspensionType: a.suspensionType,
+            createdAt: a.createdAt,
+            reviewedAt: a.reviewedAt
+        }));
+
+        res.json({
+            success: true,
+            count: appeals.length,
+            data: { appeals }  // iOS يتوقع data.appeals
+        });
     } catch (error) {
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   GET /api/appeals/my-violations
+// @desc    سجل مخالفات/إيقافات المستخدم الحالي (للعرض في SuspendedAccountView)
+// @access  Private (يعمل حتى لو معلّق)
+router.get('/my-violations', protectEvenSuspended, async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id)
+            .select('warnings violationCount suspensionCount')
+            .lean();
+        if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+
+        // فلترة: فقط إجراءات الإيقاف (لا التحذيرات العادية)
+        const suspensionActions = ['suspend', 'auto_suspend', 'permanent_ban', 'device_ban'];
+        const suspensions = (user.warnings || [])
+            .filter(w => suspensionActions.includes(w.action))
+            .sort((a, b) => new Date(b.date) - new Date(a.date))
+            .map(w => ({
+                reason: w.reason,
+                action: w.action,
+                date: w.date
+            }));
+
+        res.json({
+            success: true,
+            data: {
+                suspensionCount: user.suspensionCount || suspensions.length,
+                violationCount: user.violationCount || 0,
+                suspensions
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في سجل المخالفات:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
