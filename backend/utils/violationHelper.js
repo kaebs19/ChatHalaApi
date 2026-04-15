@@ -4,6 +4,7 @@
 
 const Notification = require('../models/Notification');
 const pushNotificationService = require('../services/pushNotificationService');
+const modConfig = require('../config/moderation');
 
 /**
  * @param {Object} opts
@@ -57,23 +58,19 @@ async function recordViolation(opts) {
     if (oldName) warning.oldName = oldName;
     user.warnings.push(warning);
 
-    // فحص التعليق التلقائي (5 مخالفات/يوم)
+    // فحص التعليق التلقائي (حسب config)
     let autoSuspended = false;
     let suspendDays = 0;
-    if (autoSuspend && user.dailyViolationCount >= 5) {
+    if (autoSuspend && user.dailyViolationCount >= modConfig.MAX_DAILY_VIOLATIONS) {
         autoSuspended = true;
         user.suspensionCount = (user.suspensionCount || 0) + 1;
-
-        if (user.suspensionCount === 1) suspendDays = 1;
-        else if (user.suspensionCount === 2) suspendDays = 3;
-        else if (user.suspensionCount === 3) suspendDays = 7;
-        else suspendDays = 36500; // دائم
+        suspendDays = modConfig.getSuspensionDays(user.suspensionCount);
 
         user.isActive = false;
         user.suspendedUntil = new Date(Date.now() + suspendDays * 24 * 60 * 60 * 1000);
-        user.suspendReason = suspendDays >= 36500
+        user.suspendReason = suspendDays >= modConfig.PERMANENT_BAN_DAYS
             ? 'حظر دائم - تكرار المخالفات'
-            : `تعليق تلقائي ${suspendDays} يوم - تجاوز 5 مخالفات يومية`;
+            : `تعليق تلقائي ${suspendDays} يوم - تجاوز ${modConfig.MAX_DAILY_VIOLATIONS} مخالفات يومية`;
         user.warnings.push({
             reason: user.suspendReason,
             action: 'auto_suspend',
@@ -95,7 +92,7 @@ async function recordViolation(opts) {
     try { require('./cache').invalidateUsers(); } catch (e) {}
 
     // إرسال إشعار للمستخدم
-    const dailyRemaining = Math.max(0, 5 - user.dailyViolationCount);
+    const dailyRemaining = Math.max(0, modConfig.MAX_DAILY_VIOLATIONS - user.dailyViolationCount);
     if (sendNotification) {
         const reasonLabel = {
             banned_word: 'استخدام كلمات محظورة',
@@ -106,13 +103,13 @@ async function recordViolation(opts) {
 
         let notifTitle, notifBody;
         if (autoSuspended) {
-            notifTitle = suspendDays >= 36500 ? '🚫 تم حظر حسابك نهائياً' : '⏸️ تم تعليق حسابك';
-            notifBody = suspendDays >= 36500
+            notifTitle = suspendDays >= modConfig.PERMANENT_BAN_DAYS ? '🚫 تم حظر حسابك نهائياً' : '⏸️ تم تعليق حسابك';
+            notifBody = suspendDays >= modConfig.PERMANENT_BAN_DAYS
                 ? 'تم حظر حسابك نهائياً بسبب تكرار المخالفات.'
-                : `تم تعليق حسابك لمدة ${suspendDays} يوم بسبب تجاوز 5 مخالفات يومية.`;
+                : `تم تعليق حسابك لمدة ${suspendDays} يوم بسبب تجاوز ${modConfig.MAX_DAILY_VIOLATIONS} مخالفات يومية.`;
         } else {
             notifTitle = '⚠️ مخالفة مسجّلة';
-            notifBody = `تم تسجيل مخالفة: ${reasonLabel}. عدد المخالفات اليوم: ${user.dailyViolationCount}/5${dailyRemaining > 0 ? `، متبقي ${dailyRemaining} قبل التعليق التلقائي.` : '.'}`;
+            notifBody = `تم تسجيل مخالفة: ${reasonLabel}. عدد المخالفات اليوم: ${user.dailyViolationCount}/${modConfig.MAX_DAILY_VIOLATIONS}${dailyRemaining > 0 ? `، متبقي ${dailyRemaining} قبل التعليق التلقائي.` : '.'}`;
         }
 
         try {
