@@ -9,12 +9,15 @@ function Appeals({ onViewDetail }) {
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('pending');
     const [pendingCount, setPendingCount] = useState(0);
+    const [notes, setNotes] = useState({}); // per-appeal note
+    const [expandedIds, setExpandedIds] = useState(new Set());
+    const [processingId, setProcessingId] = useState(null);
     const toast = useToast();
 
     const fetch = async () => {
         try {
             setLoading(true);
-            const res = await getAppeals({ status: filter });
+            const res = await getAppeals({ status: filter, limit: 50 });
             if (res.success) {
                 setAppeals(res.data || []);
                 setPendingCount(res.pendingCount || 0);
@@ -25,142 +28,225 @@ function Appeals({ onViewDetail }) {
 
     useEffect(() => { fetch(); /* eslint-disable-next-line */ }, [filter]);
 
+    const toggleExpanded = (id) => {
+        const s = new Set(expandedIds);
+        s.has(id) ? s.delete(id) : s.add(id);
+        setExpandedIds(s);
+    };
+
     const handleApprove = async (appeal) => {
-        const note = window.prompt('ملاحظة (اختياري):', '');
-        if (note === null) return;
-        if (!window.confirm(`قبول الطلب وفك الحظر عن "${appeal.user?.name}"؟`)) return;
+        const note = notes[appeal._id] || '';
+        if (!window.confirm(`قبول الطلب وفك الحظر عن "${appeal.user?.name}"؟${note ? '\n\nملاحظة سترسل للمستخدم:\n' + note : ''}`)) return;
         try {
+            setProcessingId(appeal._id);
             await approveAppeal(appeal._id, note);
-            toast.success('تم قبول الطلب وفك الحظر');
+            toast.success('تم قبول الطلب');
+            setNotes({ ...notes, [appeal._id]: '' });
             fetch();
-        } catch (e) { toast.error(e.response?.data?.message || 'فشل القبول'); }
+        } catch (e) { toast.error(e.response?.data?.message || 'فشل'); }
+        finally { setProcessingId(null); }
     };
 
     const handleReject = async (appeal) => {
-        const note = window.prompt('سبب الرفض (سيظهر للمستخدم):', '');
-        if (note === null) return;
+        const note = notes[appeal._id] || '';
+        if (!note.trim()) {
+            toast.error('اكتب سبب الرفض أولاً ليعرفه المستخدم');
+            return;
+        }
+        if (!window.confirm(`رفض الطلب؟\n\nسبب الرفض الذي سيصل للمستخدم:\n${note}`)) return;
         try {
+            setProcessingId(appeal._id);
             await rejectAppeal(appeal._id, note);
             toast.success('تم رفض الطلب');
+            setNotes({ ...notes, [appeal._id]: '' });
             fetch();
-        } catch { toast.error('فشل الرفض'); }
+        } catch { toast.error('فشل'); }
+        finally { setProcessingId(null); }
     };
 
-    const statusBadge = (status) => {
-        const map = {
-            pending: { bg: '#fef3c7', color: '#92400e', label: '⏳ قيد المراجعة' },
-            approved: { bg: '#d1fae5', color: '#065f46', label: '✅ مقبول' },
-            rejected: { bg: '#fecaca', color: '#991b1b', label: '❌ مرفوض' }
-        };
-        const s = map[status] || map.pending;
-        return <span style={{ padding: '4px 10px', borderRadius: '12px', background: s.bg, color: s.color, fontSize: '12px', fontWeight: '700' }}>{s.label}</span>;
-    };
+    const typeInfo = (t) => ({
+        temporary: { label: 'تعليق مؤقت', color: '#f59e0b', bg: '#fef3c7' },
+        permanent: { label: 'حظر نهائي', color: '#dc2626', bg: '#fecaca' },
+        device: { label: 'حظر جهاز', color: '#111827', bg: '#d1d5db' },
+        name: { label: 'حظر اسم', color: '#be185d', bg: '#fce7f3' }
+    }[t] || { label: t || '-', color: '#6b7280', bg: '#e5e7eb' });
 
-    const typeLabel = (t) => ({
-        temporary: 'تعليق مؤقت',
-        permanent: 'حظر نهائي',
-        device: 'حظر جهاز',
-        name: 'حظر اسم'
-    }[t] || t);
+    const statusInfo = (s) => ({
+        pending: { label: 'قيد المراجعة', color: '#92400e', bg: '#fef3c7', icon: '⏳' },
+        approved: { label: 'مقبول', color: '#065f46', bg: '#d1fae5', icon: '✅' },
+        rejected: { label: 'مرفوض', color: '#991b1b', bg: '#fecaca', icon: '❌' }
+    }[s] || { label: s, color: '#6b7280', bg: '#e5e7eb', icon: '•' });
+
+    const renderCard = (a) => {
+        const t = typeInfo(a.suspensionType);
+        const st = statusInfo(a.status);
+        const isExpanded = expandedIds.has(a._id);
+        const isPending = a.status === 'pending';
+        const shortMsg = (a.message || '').length > 120 && !isExpanded
+            ? (a.message || '').substring(0, 120) + '...'
+            : a.message;
+
+        return (
+            <div key={a._id} style={{
+                background: '#fff',
+                borderRadius: '10px',
+                padding: '12px 14px',
+                border: isPending ? '1px solid #fbbf24' : '1px solid #e5e7eb',
+                boxShadow: isPending ? '0 1px 2px rgba(245,158,11,0.1)' : 'none',
+                marginBottom: '8px'
+            }}>
+                {/* سطر أعلى: الصورة + الاسم + النوع + الحالة */}
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                    <img
+                        src={a.user?.profileImage ? getImageUrl(a.user.profileImage) : getDefaultAvatar(a.user?.name)}
+                        alt=""
+                        style={{ width: '36px', height: '36px', borderRadius: '50%', cursor: 'pointer', objectFit: 'cover', flexShrink: 0 }}
+                        onClick={() => onViewDetail && onViewDetail(a.user?._id)}
+                        onError={(e) => { e.target.onerror = null; e.target.src = getDefaultAvatar(a.user?.name); }}
+                    />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <span style={{ fontWeight: '700', fontSize: '14px', cursor: 'pointer' }}
+                                onClick={() => onViewDetail && onViewDetail(a.user?._id)}>
+                                {a.user?.name || 'مستخدم محذوف'}
+                            </span>
+                            <span style={{ padding: '2px 8px', borderRadius: '10px', background: t.bg, color: t.color, fontSize: '11px', fontWeight: '600' }}>
+                                {t.label}
+                            </span>
+                            {a.user?.violationCount > 0 && (
+                                <span style={{ padding: '2px 6px', borderRadius: '10px', background: '#fee2e2', color: '#991b1b', fontSize: '11px', fontWeight: '700' }}>
+                                    ⚠️ {a.user.violationCount}
+                                </span>
+                            )}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>
+                            {a.user?.email} · {formatDateTimeLong(a.createdAt)}
+                        </div>
+                    </div>
+                    <span style={{ padding: '4px 10px', borderRadius: '12px', background: st.bg, color: st.color, fontSize: '11px', fontWeight: '700', flexShrink: 0 }}>
+                        {st.icon} {st.label}
+                    </span>
+                </div>
+
+                {/* رسالة المستخدم */}
+                <div style={{ marginTop: '10px', padding: '8px 10px', background: '#f9fafb', borderRadius: '6px', borderRight: '3px solid #6366f1' }}>
+                    <div style={{ fontSize: '13px', color: '#1f2937', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{shortMsg}</div>
+                    {(a.message || '').length > 120 && (
+                        <button onClick={() => toggleExpanded(a._id)}
+                            style={{ marginTop: '4px', background: 'none', border: 'none', color: '#6366f1', cursor: 'pointer', fontSize: '11px', padding: 0 }}>
+                            {isExpanded ? 'طي' : 'عرض الكل'}
+                        </button>
+                    )}
+                </div>
+
+                {/* تفاصيل إضافية إذا عم توسع */}
+                {isExpanded && a.suspendReasonSnapshot && (
+                    <div style={{ marginTop: '6px', padding: '6px 10px', background: '#fef2f2', borderRadius: '6px', fontSize: '12px', color: '#7f1d1d' }}>
+                        <b>سبب الحظر:</b> {a.suspendReasonSnapshot}
+                    </div>
+                )}
+
+                {/* قرار سابق */}
+                {!isPending && (a.decisionNote || a.reviewedBy) && (
+                    <div style={{ marginTop: '8px', padding: '8px 10px', background: a.status === 'approved' ? '#f0fdf4' : '#fef2f2', borderRadius: '6px', fontSize: '12px' }}>
+                        {a.reviewedBy?.name && <span><b>{a.reviewedBy.name}</b> · {formatDateTimeLong(a.reviewedAt)}</span>}
+                        {a.decisionNote && (
+                            <div style={{ marginTop: '4px', whiteSpace: 'pre-wrap' }}>
+                                <b>الملاحظة:</b> {a.decisionNote}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* أدوات القرار للطلبات المعلقة */}
+                {isPending && (
+                    <div style={{ marginTop: '10px' }}>
+                        <textarea
+                            value={notes[a._id] || ''}
+                            onChange={(e) => setNotes({ ...notes, [a._id]: e.target.value })}
+                            placeholder="اكتب ملاحظة ستصل للمستخدم كإشعار (مثلاً: سبب الرفض أو التنبيه)..."
+                            rows={2}
+                            style={{
+                                width: '100%',
+                                padding: '8px 10px',
+                                border: '1px solid #d1d5db',
+                                borderRadius: '6px',
+                                fontSize: '13px',
+                                resize: 'vertical',
+                                fontFamily: 'inherit',
+                                boxSizing: 'border-box'
+                            }}
+                        />
+                        <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                            <button onClick={() => handleApprove(a)} disabled={processingId === a._id}
+                                style={{
+                                    flex: 1, padding: '8px', borderRadius: '6px', border: 'none',
+                                    background: processingId === a._id ? '#9ca3af' : '#10b981',
+                                    color: '#fff', cursor: processingId === a._id ? 'wait' : 'pointer',
+                                    fontWeight: '700', fontSize: '13px'
+                                }}>
+                                ✅ قبول وفك الحظر
+                            </button>
+                            <button onClick={() => handleReject(a)} disabled={processingId === a._id}
+                                style={{
+                                    flex: 1, padding: '8px', borderRadius: '6px', border: 'none',
+                                    background: processingId === a._id ? '#9ca3af' : '#ef4444',
+                                    color: '#fff', cursor: processingId === a._id ? 'wait' : 'pointer',
+                                    fontWeight: '700', fontSize: '13px'
+                                }}>
+                                ❌ رفض
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
 
     return (
         <div style={{ padding: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
                 <div>
-                    <h1 style={{ margin: 0 }}>📝 طلبات الاستئناف</h1>
-                    <p style={{ color: '#6b7280', margin: '4px 0 0' }}>
+                    <h1 style={{ margin: 0, fontSize: '22px' }}>📝 طلبات الاستئناف</h1>
+                    <p style={{ color: '#6b7280', margin: '4px 0 0', fontSize: '13px' }}>
                         قيد المراجعة: <b style={{ color: '#f59e0b' }}>{pendingCount}</b>
+                        {appeals.length > 0 && filter !== 'pending' && <> · معروض: <b>{appeals.length}</b></>}
                     </p>
                 </div>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                    <select value={filter} onChange={(e) => setFilter(e.target.value)}
-                        style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #d1d5db' }}>
-                        <option value="pending">قيد المراجعة</option>
-                        <option value="approved">مقبولة</option>
-                        <option value="rejected">مرفوضة</option>
-                        <option value="all">الكل</option>
-                    </select>
-                    <button onClick={fetch} className="refresh-btn">تحديث</button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                    <div style={{ display: 'flex', gap: '4px', background: '#f3f4f6', padding: '4px', borderRadius: '8px' }}>
+                        {[
+                            { v: 'pending', l: '⏳ قيد المراجعة' },
+                            { v: 'approved', l: '✅ مقبولة' },
+                            { v: 'rejected', l: '❌ مرفوضة' },
+                            { v: 'all', l: '📋 الكل' }
+                        ].map(opt => (
+                            <button key={opt.v} onClick={() => setFilter(opt.v)}
+                                style={{
+                                    padding: '6px 12px', borderRadius: '6px', border: 'none',
+                                    background: filter === opt.v ? '#fff' : 'transparent',
+                                    color: filter === opt.v ? '#111827' : '#6b7280',
+                                    fontWeight: filter === opt.v ? '700' : '500',
+                                    cursor: 'pointer', fontSize: '12px',
+                                    boxShadow: filter === opt.v ? '0 1px 2px rgba(0,0,0,0.06)' : 'none'
+                                }}>
+                                {opt.l}
+                            </button>
+                        ))}
+                    </div>
+                    <button onClick={fetch} className="refresh-btn" style={{ padding: '6px 12px', fontSize: '13px' }}>🔄</button>
                 </div>
             </div>
 
             {loading ? (
                 <p style={{ textAlign: 'center', padding: '40px' }}>جاري التحميل...</p>
             ) : appeals.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '60px', background: '#f9fafb', borderRadius: '12px' }}>
-                    <div style={{ fontSize: '48px' }}>📬</div>
-                    <p style={{ color: '#6b7280', marginTop: '12px' }}>لا توجد طلبات</p>
+                <div style={{ textAlign: 'center', padding: '50px', background: '#f9fafb', borderRadius: '10px' }}>
+                    <div style={{ fontSize: '42px' }}>📬</div>
+                    <p style={{ color: '#6b7280', marginTop: '8px', fontSize: '14px' }}>لا توجد طلبات</p>
                 </div>
             ) : (
-                <div style={{ display: 'grid', gap: '15px' }}>
-                    {appeals.map((a) => (
-                        <div key={a._id} style={{
-                            background: '#fff',
-                            borderRadius: '12px',
-                            padding: '20px',
-                            border: a.status === 'pending' ? '2px solid #fbbf24' : '1px solid #e5e7eb',
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-                        }}>
-                            <div style={{ display: 'flex', gap: '15px', marginBottom: '15px', alignItems: 'flex-start' }}>
-                                <img
-                                    src={a.user?.profileImage ? getImageUrl(a.user.profileImage) : getDefaultAvatar(a.user?.name)}
-                                    alt=""
-                                    style={{ width: '48px', height: '48px', borderRadius: '50%', cursor: 'pointer', objectFit: 'cover' }}
-                                    onClick={() => onViewDetail && onViewDetail(a.user._id)}
-                                    onError={(e) => { e.target.onerror = null; e.target.src = getDefaultAvatar(a.user?.name); }}
-                                />
-                                <div style={{ flex: 1 }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <h4 style={{ margin: 0, cursor: 'pointer' }}
-                                            onClick={() => onViewDetail && onViewDetail(a.user._id)}>
-                                            {a.user?.name || 'مستخدم محذوف'}
-                                        </h4>
-                                        {statusBadge(a.status)}
-                                    </div>
-                                    <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
-                                        {a.user?.email} · النوع: <b>{typeLabel(a.suspensionType)}</b> · قُدّم في {formatDateTimeLong(a.createdAt)}
-                                    </div>
-                                    {a.user?.violationCount > 0 && (
-                                        <div style={{ fontSize: '12px', color: '#dc2626', marginTop: '2px' }}>
-                                            ⚠️ عدد المخالفات: {a.user.violationCount}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {a.suspendReasonSnapshot && (
-                                <div style={{ padding: '8px 12px', background: '#fef2f2', borderRadius: '8px', fontSize: '13px', marginBottom: '10px', borderRight: '3px solid #dc2626' }}>
-                                    <b>سبب الحظر:</b> {a.suspendReasonSnapshot}
-                                </div>
-                            )}
-
-                            <div style={{ padding: '12px', background: '#f9fafb', borderRadius: '8px', borderRight: '3px solid #6366f1' }}>
-                                <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px', fontWeight: '600' }}>📩 رسالة المستخدم:</div>
-                                <div style={{ fontSize: '14px', whiteSpace: 'pre-wrap' }}>{a.message}</div>
-                            </div>
-
-                            {a.status !== 'pending' && (
-                                <div style={{ marginTop: '10px', padding: '10px', background: a.status === 'approved' ? '#f0fdf4' : '#fef2f2', borderRadius: '8px', fontSize: '13px' }}>
-                                    <div><b>القرار بواسطة:</b> {a.reviewedBy?.name || '-'} · {formatDateTimeLong(a.reviewedAt)}</div>
-                                    {a.decisionNote && <div style={{ marginTop: '4px' }}><b>ملاحظة:</b> {a.decisionNote}</div>}
-                                </div>
-                            )}
-
-                            {a.status === 'pending' && (
-                                <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
-                                    <button onClick={() => handleApprove(a)} style={{
-                                        flex: 1, padding: '10px', borderRadius: '8px', border: 'none',
-                                        background: '#10b981', color: '#fff', cursor: 'pointer', fontWeight: '700'
-                                    }}>✅ قبول وفك الحظر</button>
-                                    <button onClick={() => handleReject(a)} style={{
-                                        flex: 1, padding: '10px', borderRadius: '8px', border: 'none',
-                                        background: '#ef4444', color: '#fff', cursor: 'pointer', fontWeight: '700'
-                                    }}>❌ رفض</button>
-                                </div>
-                            )}
-                        </div>
-                    ))}
-                </div>
+                <div>{appeals.map(renderCard)}</div>
             )}
         </div>
     );

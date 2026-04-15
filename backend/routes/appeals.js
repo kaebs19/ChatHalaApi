@@ -52,11 +52,12 @@ const submitHandler = async (req, res) => {
             });
         }
 
-        // منع طلبين معلّقين
+        // منع طلبين معلّقين — نرجع 200 مع success:false ليظهر في UI
         const existing = await Appeal.findOne({ user: req.user._id, status: 'pending' });
         if (existing) {
-            return res.status(409).json({
+            return res.status(200).json({
                 success: false,
+                code: 'APPEAL_ALREADY_PENDING',
                 message: 'لديك طلب استئناف معلّق بالفعل. يرجى انتظار الرد.',
                 data: { appealId: existing._id, submittedAt: existing.createdAt }
             });
@@ -242,18 +243,22 @@ router.put('/:id/approve', protect, adminOnly, async (req, res) => {
         appeal.decisionNote = note;
         await appeal.save();
 
-        // إشعار المستخدم
+        // إشعار المستخدم (مع ملاحظة الأدمن إن وُجدت)
         try {
+            const baseBody = 'تمت إعادة تفعيل حسابك. يرجى المحافظة على شروط الاستخدام.';
+            const fullBody = note && note.trim()
+                ? `${baseBody}\n\n📝 ملاحظة الإدارة:\n${note.trim()}`
+                : baseBody;
             await Notification.create({
                 title: '✅ تم قبول طلب الاستئناف',
-                body: 'تمت إعادة تفعيل حسابك. يرجى المحافظة على شروط الاستخدام.',
+                body: fullBody,
                 type: 'system',
                 sender: req.user._id,
                 targetUsers: [user._id],
                 recipients: 'specific'
             });
             await pushNotificationService.sendNotificationToUser(user._id,
-                { title: '✅ تم قبول الاستئناف', body: 'تم فك الحظر عن حسابك' },
+                { title: '✅ تم قبول الاستئناف', body: note ? `ملاحظة: ${note.substring(0,100)}` : 'تم فك الحظر عن حسابك' },
                 { type: 'system' }, false);
         } catch (e) {}
 
@@ -282,18 +287,21 @@ router.put('/:id/reject', protect, adminOnly, async (req, res) => {
         appeal.decisionNote = note;
         await appeal.save();
 
-        // إشعار المستخدم
+        // إشعار المستخدم (مع ملاحظة الأدمن إن وُجدت)
         try {
+            const bodyWithNote = note && note.trim()
+                ? `لم يتم قبول طلب الاستئناف.\n\n📝 سبب الرفض:\n${note.trim()}\n\nيمكنك تقديم طلب جديد لاحقاً.`
+                : 'لم يتم قبول طلب الاستئناف. يمكنك تقديم طلب جديد لاحقاً.';
             await Notification.create({
                 title: '❌ تم رفض طلب الاستئناف',
-                body: note || 'لم يتم قبول طلب الاستئناف. يمكنك تقديم طلب جديد لاحقاً.',
+                body: bodyWithNote,
                 type: 'system',
                 sender: req.user._id,
                 targetUsers: [appeal.user._id],
                 recipients: 'specific'
             });
             await pushNotificationService.sendNotificationToUser(appeal.user._id,
-                { title: '❌ تم رفض الاستئناف', body: note || 'لم يتم قبول الطلب' },
+                { title: '❌ تم رفض الاستئناف', body: note ? `سبب الرفض: ${note.substring(0,100)}` : 'لم يتم قبول الطلب' },
                 { type: 'system' }, false);
         } catch (e) {}
 
