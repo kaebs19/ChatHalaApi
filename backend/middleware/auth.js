@@ -51,18 +51,20 @@ const protect = async (req, res, next) => {
                     const remaining = req.user.suspendedUntil
                         ? Math.ceil((new Date(req.user.suspendedUntil) - new Date()) / (1000 * 60 * 60 * 24))
                         : 0;
+                    const isPermanent = remaining > 365;
                     return res.status(403).json({
                         success: false,
-                        message: remaining > 365
+                        message: isPermanent
                             ? 'تم حظر حسابك نهائياً'
                             : remaining > 0
                                 ? `الحساب معلّق. متبقي ${remaining} يوم.`
                                 : 'الحساب غير مفعل',
                         data: {
                             suspended: true,
+                            permanent: isPermanent,
                             reason: req.user.suspendReason,
                             suspendedUntil: req.user.suspendedUntil,
-                            remaining: remaining
+                            remaining: isPermanent ? -1 : remaining
                         }
                     });
                 }

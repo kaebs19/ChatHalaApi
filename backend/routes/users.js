@@ -438,6 +438,99 @@ router.put('/:id/suspend', protect, adminOnly, async (req, res) => {
     }
 });
 
+// @route   PUT /api/users/:id/ban-permanent
+// @desc    حظر مستخدم نهائياً
+// @access  Private/Admin
+router.put('/:id/ban-permanent', protect, adminOnly, async (req, res) => {
+    try {
+        const { reason = 'حظر دائم من قبل الإدارة' } = req.body;
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        }
+        if (user.role === 'admin') {
+            return res.status(403).json({ success: false, message: 'لا يمكن حظر مدير' });
+        }
+
+        user.isActive = false;
+        // تاريخ بعيد جداً (100 سنة) كعلامة على الحظر النهائي
+        user.suspendedUntil = new Date(Date.now() + 36500 * 24 * 60 * 60 * 1000);
+        user.suspendReason = reason;
+        user.violationCount = (user.violationCount || 0) + 1;
+        user.warnings.push({ reason, action: 'permanent_ban', adminId: req.user._id });
+        await user.save();
+
+        // إشعار في DB + FCM push
+        const notifTitle = '🚫 تم حظر حسابك نهائياً';
+        const notifBody = `تم حظر حسابك نهائياً. السبب: ${reason}`;
+        try {
+            await Notification.create({
+                title: notifTitle, body: notifBody, type: 'system',
+                sender: req.user._id, targetUsers: [user._id], recipients: 'specific'
+            });
+            await pushNotificationService.sendNotificationToUser(user._id, { title: notifTitle, body: notifBody }, { type: 'system' }, false);
+        } catch (e) { /* لا يوقف العملية */ }
+
+        // قطع اتصال Socket
+        if (global.connectedUsers && global.connectedUsers.has(user._id.toString())) {
+            const socketInfo = global.connectedUsers.get(user._id.toString());
+            const socket = global.io?.sockets?.sockets?.get(socketInfo.socketId);
+            if (socket) socket.disconnect(true);
+        }
+
+        invalidateUsers();
+
+        res.json({
+            success: true,
+            message: `تم حظر ${user.name} نهائياً`,
+            data: { suspendedUntil: user.suspendedUntil, reason }
+        });
+    } catch (error) {
+        console.error('خطأ في الحظر النهائي:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   PUT /api/users/:id/unban
+// @desc    فك الحظر/التعليق عن مستخدم
+// @access  Private/Admin
+router.put('/:id/unban', protect, adminOnly, async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        }
+
+        user.isActive = true;
+        user.suspendedUntil = null;
+        user.suspendReason = null;
+        user.dailyViolationCount = 0;
+        user.warnings.push({ reason: 'فك الحظر/التعليق', action: 'unban', adminId: req.user._id });
+        await user.save();
+
+        try {
+            await Notification.create({
+                title: '✅ تم رفع التعليق عن حسابك',
+                body: 'مرحباً بعودتك! يرجى المحافظة على شروط الاستخدام.',
+                type: 'system',
+                sender: req.user._id,
+                targetUsers: [user._id],
+                recipients: 'specific'
+            });
+            await pushNotificationService.sendNotificationToUser(user._id,
+                { title: '✅ تم رفع التعليق عن حسابك', body: 'مرحباً بعودتك!' },
+                { type: 'system' }, false);
+        } catch (e) {}
+
+        invalidateUsers();
+
+        res.json({ success: true, message: `تم فك الحظر عن ${user.name}`, data: { user } });
+    } catch (error) {
+        console.error('خطأ في فك الحظر:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 // @route   PUT /api/users/:id/reset-avatar
 // @desc    حذف صورة المستخدم + إشعار
 // @access  Private/Admin

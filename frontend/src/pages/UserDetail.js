@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getUserActivity, getUserViolations, warnUser, resetUserAvatar, banUserName, suspendUser, toggleUserActive } from '../services/api';
+import { getUserActivity, getUserViolations, warnUser, resetUserAvatar, banUserName, suspendUser, toggleUserActive, banUserPermanent, unbanUser } from '../services/api';
 import { useToast } from '../components/Toast';
 import { getImageUrl, getDefaultAvatar } from '../config';
 import { formatDateTimeLong, formatDateLong } from '../utils/formatters';
@@ -82,12 +82,31 @@ function UserDetail({ userId, onBack }) {
     };
 
     const handleBan = async () => {
-        if (!window.confirm('حظر المستخدم نهائياً؟')) return;
+        const u = userData?.user || userData;
+        // إذا كان المستخدم محظوراً نهائياً → فك الحظر
+        const isPermBanned = u?.suspendedUntil &&
+            (new Date(u.suspendedUntil) - new Date()) / (1000 * 60 * 60 * 24) > 365;
+
+        if (isPermBanned) {
+            if (!window.confirm('فك الحظر النهائي عن هذا المستخدم؟')) return;
+            try {
+                await unbanUser(userId);
+                showToast('تم فك الحظر', 'success');
+                fetchUserActivity();
+            } catch (error) { showToast('فشل فك الحظر', 'error'); }
+            return;
+        }
+
+        const reason = window.prompt('سبب الحظر النهائي:', 'حظر دائم - مخالفات متكررة');
+        if (reason === null) return;
+        if (!window.confirm(`⚠️ حظر "${u?.name || 'المستخدم'}" نهائياً؟\nلن يستطيع الدخول للتطبيق إلا بعد فك الحظر يدوياً.`)) return;
         try {
-            await toggleUserActive(userId);
-            showToast('تم الحظر', 'success');
+            await banUserPermanent(userId, reason || 'حظر دائم من قبل الإدارة');
+            showToast('تم الحظر نهائياً', 'success');
             fetchUserActivity();
-        } catch (error) { showToast('فشل', 'error'); }
+        } catch (error) {
+            showToast(error.response?.data?.message || 'فشل الحظر', 'error');
+        }
     };
 
     const formatDate = (date) => formatDateTimeLong(date) === '-' ? 'غير محدد' : formatDateTimeLong(date);
@@ -638,10 +657,25 @@ function UserDetail({ userId, onBack }) {
                                 ⏸️ تعليق مؤقت
                                 <div style={{ fontSize: '11px', color: '#c2410c', marginTop: '4px' }}>تعليق لفترة محددة</div>
                             </button>
-                            <button onClick={handleBan} style={{ padding: '16px', borderRadius: '12px', border: '2px solid #ef4444', background: '#fef2f2', cursor: 'pointer', fontSize: '14px', fontWeight: '600', color: '#dc2626' }}>
-                                🚫 حظر نهائي
-                                <div style={{ fontSize: '11px', color: '#991b1b', marginTop: '4px' }}>إيقاف الحساب بالكامل</div>
-                            </button>
+                            {(() => {
+                                const u = userData?.user || userData;
+                                const isPermBanned = u?.suspendedUntil &&
+                                    (new Date(u.suspendedUntil) - new Date()) / (1000 * 60 * 60 * 24) > 365;
+                                return (
+                                    <button onClick={handleBan} style={{
+                                        padding: '16px', borderRadius: '12px',
+                                        border: isPermBanned ? '2px solid #10b981' : '2px solid #ef4444',
+                                        background: isPermBanned ? '#ecfdf5' : '#fef2f2',
+                                        cursor: 'pointer', fontSize: '14px', fontWeight: '600',
+                                        color: isPermBanned ? '#059669' : '#dc2626'
+                                    }}>
+                                        {isPermBanned ? '✅ فك الحظر النهائي' : '🚫 حظر نهائي'}
+                                        <div style={{ fontSize: '11px', color: isPermBanned ? '#065f46' : '#991b1b', marginTop: '4px' }}>
+                                            {isPermBanned ? 'إعادة تفعيل الحساب' : 'إيقاف الحساب بالكامل'}
+                                        </div>
+                                    </button>
+                                );
+                            })()}
                         </div>
                     </div>
                 )}

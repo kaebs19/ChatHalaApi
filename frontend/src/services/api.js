@@ -116,6 +116,18 @@ export const suspendUser = async (userId, days = 7, reason = '') => {
     return response.data;
 };
 
+// حظر مستخدم نهائياً (Admin فقط)
+export const banUserPermanent = async (userId, reason = 'حظر دائم من قبل الإدارة') => {
+    const response = await api.put(`/users/${userId}/ban-permanent`, { reason });
+    return response.data;
+};
+
+// فك الحظر/التعليق عن مستخدم (Admin فقط)
+export const unbanUser = async (userId) => {
+    const response = await api.put(`/users/${userId}/unban`);
+    return response.data;
+};
+
 // حذف صورة المستخدم (Admin فقط)
 export const resetUserAvatar = async (userId) => {
     const response = await api.put(`/users/${userId}/reset-avatar`);
