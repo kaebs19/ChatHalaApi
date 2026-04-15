@@ -58,10 +58,13 @@ router.post('/conversations/request', protect, conversationRequestValidation, va
             });
         }
 
-        // التحقق من عدم وجود محادثة سابقة
+        // التحقق من وجود محادثة نشطة فقط (accepted/pending)
+        // المرفوضة/المحذوفة لا تمنع إنشاء طلب جديد
         const existingConversation = await Conversation.findOne({
             type: 'private',
-            participants: { $all: [req.user._id, targetUserId] }
+            participants: { $all: [req.user._id, targetUserId] },
+            status: { $in: ['accepted', 'pending'] },
+            isActive: true
         });
 
         if (existingConversation) {
