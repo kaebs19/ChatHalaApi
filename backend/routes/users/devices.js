@@ -18,17 +18,25 @@ router.get('/banned-devices/list', protect, adminOnly, async (req, res) => {
             .limit(200)
             .lean();
 
-        // إضافة عدد الحسابات المرتبطة لكل جهاز
-        // ملاحظة: نعتمد على tokens الفريدة فقط. البصمة (fingerprint) تستند
-        // لمعلومات عامة (iOS 17 + app v1.5) → غير موثوقة للمطابقة الدقيقة
+        // أولوية المطابقة: persistentDeviceId (الأدق من iOS Keychain)
+        // ثم tokens الفريدة (deviceToken/fcmToken)
         for (const d of devices) {
+            // جلب persistentDeviceId من المستخدم الأصلي لو ما كان في BannedDevice
+            let pid = null;
+            if (d.originalUserId) {
+                const originalUser = await User.findById(d.originalUserId).select('persistentDeviceId').lean();
+                pid = originalUser?.persistentDeviceId;
+            }
+
             const filters = [];
+            if (pid) filters.push({ persistentDeviceId: pid });
             if (d.deviceToken) filters.push({ deviceToken: d.deviceToken });
             if (d.fcmToken) filters.push({ fcmToken: d.fcmToken });
 
             d.linkedAccountsCount = filters.length > 0
                 ? await User.countDocuments({ $or: filters })
                 : 0;
+            d.persistentDeviceId = pid;
         }
 
         res.json({ success: true, count: devices.length, data: devices });
@@ -45,8 +53,15 @@ router.get('/banned-devices/:id/linked-accounts', protect, adminOnly, async (req
         const device = await BannedDevice.findById(req.params.id).lean();
         if (!device) return res.status(404).json({ success: false, message: 'الجهاز غير موجود' });
 
-        // نعتمد فقط على tokens الفريدة (deviceToken/fcmToken)
+        // أولوية: persistentDeviceId من المستخدم الأصلي (الأدق)
+        let pid = null;
+        if (device.originalUserId) {
+            const originalUser = await User.findById(device.originalUserId).select('persistentDeviceId').lean();
+            pid = originalUser?.persistentDeviceId;
+        }
+
         const filters = [];
+        if (pid) filters.push({ persistentDeviceId: pid });
         if (device.deviceToken) filters.push({ deviceToken: device.deviceToken });
         if (device.fcmToken) filters.push({ fcmToken: device.fcmToken });
 
@@ -55,14 +70,17 @@ router.get('/banned-devices/:id/linked-accounts', protect, adminOnly, async (req
         }
 
         const accounts = await User.find({ $or: filters })
-            .select('name email profileImage isActive suspendedUntil suspendReason deviceBanned violationCount createdAt lastLogin role uniqueTag')
+            .select('name email profileImage isActive suspendedUntil suspendReason deviceBanned violationCount createdAt lastLogin role uniqueTag persistentDeviceId')
             .sort('-createdAt')
             .lean();
 
         res.json({
             success: true,
             count: accounts.length,
-            data: { device, accounts }
+            data: {
+                device: { ...device, persistentDeviceId: pid },
+                accounts
+            }
         });
     } catch (error) {
         console.error('خطأ في الحسابات المرتبطة:', error);
@@ -75,12 +93,13 @@ router.get('/banned-devices/:id/linked-accounts', protect, adminOnly, async (req
 router.get('/:id/linked-accounts', protect, adminOnly, async (req, res) => {
     try {
         const user = await User.findById(req.params.id)
-            .select('deviceFingerprint deviceToken fcmToken deviceInfo name')
+            .select('deviceFingerprint persistentDeviceId deviceToken fcmToken deviceInfo name')
             .lean();
         if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
 
-        // نعتمد فقط على tokens الفريدة
+        // أولوية: persistentDeviceId (الأدق)
         const filters = [];
+        if (user.persistentDeviceId) filters.push({ persistentDeviceId: user.persistentDeviceId });
         if (user.deviceToken) filters.push({ deviceToken: user.deviceToken });
         if (user.fcmToken) filters.push({ fcmToken: user.fcmToken });
 

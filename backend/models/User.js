@@ -116,8 +116,15 @@ const userSchema = new mongoose.Schema({
         osVersion: { type: String, default: null },
         appVersion: { type: String, default: null }
     },
-    // بصمة الجهاز — مُحسبة من deviceInfo + IP (لتتبع الحسابات المتعددة لنفس الجهاز)
+    // بصمة الجهاز — مُحسبة من deviceInfo + IP (fallback قديم)
     deviceFingerprint: {
+        type: String,
+        default: null,
+        index: true
+    },
+    // معرّف فريد ومستمر للجهاز (من iOS DeviceIdentifier — Keychain-backed)
+    // يبقى بعد حذف التطبيق. الأدق لتتبع الحسابات المتعددة لنفس الجهاز
+    persistentDeviceId: {
         type: String,
         default: null,
         index: true
