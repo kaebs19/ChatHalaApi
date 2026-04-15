@@ -58,24 +58,35 @@ router.post('/conversations/request', protect, conversationRequestValidation, va
             });
         }
 
-        // التحقق من وجود محادثة نشطة فقط (accepted/pending)
-        // المرفوضة/المحذوفة لا تمنع إنشاء طلب جديد
-        const existingConversation = await Conversation.findOne({
+        // التحقق من وجود محادثة سابقة بين الطرفين
+        let existingConversation = await Conversation.findOne({
             type: 'private',
-            participants: { $all: [req.user._id, targetUserId] },
-            status: { $in: ['accepted', 'pending'] },
-            isActive: true
+            participants: { $all: [req.user._id, targetUserId] }
         });
 
         if (existingConversation) {
-            return res.status(200).json({
-                success: true,
-                message: 'محادثة موجودة بالفعل',
-                data: {
-                    conversation: existingConversation,
-                    isExisting: true
+            // إذا كانت مقبولة ونشطة → ارجع المحادثة الموجودة
+            if (existingConversation.status === 'accepted' && existingConversation.isActive) {
+                return res.status(200).json({
+                    success: true,
+                    message: 'محادثة موجودة بالفعل',
+                    data: { conversation: existingConversation, isExisting: true }
+                });
+            }
+            // إذا كانت معلقة — إلغِ الإخفاء ليظهر الطلب من جديد
+            if (existingConversation.status === 'pending') {
+                if (existingConversation.hiddenBy && existingConversation.hiddenBy.length > 0) {
+                    existingConversation.hiddenBy = [];
+                    await existingConversation.save();
                 }
-            });
+            } else {
+                // مرفوضة/محذوفة → أعد تفعيلها كطلب جديد
+                existingConversation.status = 'pending';
+                existingConversation.isActive = true;
+                existingConversation.creator = req.user._id;
+                existingConversation.hiddenBy = [];
+                await existingConversation.save();
+            }
         }
 
         // ========== معالجة Super Like ==========
@@ -115,8 +126,8 @@ router.post('/conversations/request', protect, conversationRequestValidation, va
             superLikeCreated = true;
         }
 
-        // إنشاء محادثة جديدة بحالة "pending"
-        const conversation = await Conversation.create({
+        // استخدام المحادثة الموجودة أو إنشاء جديدة
+        const conversation = existingConversation || await Conversation.create({
             type: 'private',
             participants: [req.user._id, targetUserId],
             creator: req.user._id,

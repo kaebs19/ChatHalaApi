@@ -91,14 +91,22 @@ router.post('/super-like', protect, async (req, res) => {
             'superLikes.lastReset': new Date()
         });
 
-        // إنشاء محادثة pending تلقائياً (إذا ما فيه محادثة سابقة)
-        let conversation = null;
-        const existingConversation = await Conversation.findOne({
+        // إنشاء أو إعادة تفعيل محادثة pending
+        let conversation = await Conversation.findOne({
             type: 'private',
             participants: { $all: [senderId, targetUserId] }
         });
 
-        if (!existingConversation) {
+        if (conversation) {
+            // إذا كانت مرفوضة/غير نشطة → أعد تفعيلها كطلب جديد
+            if (conversation.status === 'rejected' || !conversation.isActive || conversation.status !== 'accepted') {
+                conversation.status = 'pending';
+                conversation.isActive = true;
+                conversation.creator = senderId;
+                conversation.hiddenBy = []; // إلغاء الإخفاء
+                await conversation.save();
+            }
+        } else {
             conversation = await Conversation.create({
                 type: 'private',
                 participants: [senderId, targetUserId],
@@ -109,10 +117,10 @@ router.post('/super-like', protect, async (req, res) => {
             });
         }
 
-        // Socket.IO (لو متصل)
+        // Socket.IO
         if (global.io) {
             global.io.to(`user:${targetUserId}`).emit('conversation:request', {
-                conversationId: conversation ? conversation._id : existingConversation._id,
+                conversationId: conversation._id,
                 isSuperLike: true,
                 from: {
                     _id: senderId,
@@ -131,7 +139,7 @@ router.post('/super-like', protect, async (req, res) => {
             }, {
                 userId: senderId.toString(),
                 type: 'super_like',
-                conversationId: conversation ? conversation._id.toString() : existingConversation._id.toString()
+                conversationId: conversation._id.toString()
             });
         } catch (notifError) {
             logger.error('خطأ في إرسال إشعار Super Like:', notifError);
@@ -143,7 +151,7 @@ router.post('/super-like', protect, async (req, res) => {
             data: {
                 remaining: maxDaily - (dailyCount + 1),
                 max: maxDaily,
-                conversationId: conversation ? conversation._id : existingConversation._id
+                conversationId: conversation._id
             }
         });
     } catch (error) {
