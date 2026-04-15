@@ -480,27 +480,45 @@ router.get('/conversations/pending', protect, async (req, res) => {
         });
         const superLikeSet = new Set(superLikes.map(sl => sl.sender.toString()));
 
-        const { maskInPlace: maskCr, isUserSuspended: isSusp } = require('../../utils/userStatus');
+        const { isUserSuspended: isSusp } = require('../../utils/userStatus');
         const enrichedConversations = conversations.map(conv => {
             const convObj = conv.toObject();
             convObj.isSuperLike = superLikeSet.has(conv.creator._id.toString());
-            // قناع للـ creator إذا موقوف
-            maskCr(convObj, 'creator');
-            if (!convObj.creator.isSuspended) {
-                convObj.creator.isVerified = conv.creator.verification?.isVerified || false;
-                convObj.creator.profileImage = getFullUrl(convObj.creator.profileImage);
-            }
+
+            // قناع الـ creator إذا موقوف (مع حماية try/catch)
+            try {
+                if (convObj.creator && isSusp(convObj.creator)) {
+                    convObj.creator = {
+                        _id: convObj.creator._id,
+                        name: 'مستخدم موقوف',
+                        profileImage: null,
+                        isSuspended: true,
+                        isVerified: false,
+                        isPremium: false
+                    };
+                } else if (convObj.creator) {
+                    convObj.creator.isVerified = conv.creator.verification?.isVerified || false;
+                    convObj.creator.profileImage = getFullUrl(convObj.creator.profileImage);
+                    // حذف حقول الحالة الداخلية
+                    delete convObj.creator.isActive;
+                    delete convObj.creator.deviceBanned;
+                    delete convObj.creator.suspendedUntil;
+                }
+            } catch (e) { /* لا يوقف عرض المحادثة */ }
+
             if (convObj.participants) {
                 convObj.participants = convObj.participants.map(p => {
-                    if (isSusp(p)) {
-                        return {
-                            _id: p._id,
-                            name: 'مستخدم موقوف',
-                            profileImage: null,
-                            isSuspended: true,
-                            isOnline: false
-                        };
-                    }
+                    try {
+                        if (isSusp(p)) {
+                            return {
+                                _id: p._id,
+                                name: 'مستخدم موقوف',
+                                profileImage: null,
+                                isSuspended: true,
+                                isOnline: false
+                            };
+                        }
+                    } catch (e) {}
                     const { isActive, deviceBanned, suspendedUntil, ...rest } = p;
                     return { ...rest, profileImage: getFullUrl(p.profileImage) };
                 });
