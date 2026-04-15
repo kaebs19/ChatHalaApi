@@ -116,6 +116,12 @@ const userSchema = new mongoose.Schema({
         osVersion: { type: String, default: null },
         appVersion: { type: String, default: null }
     },
+    // بصمة الجهاز — مُحسبة من deviceInfo + IP (لتتبع الحسابات المتعددة لنفس الجهاز)
+    deviceFingerprint: {
+        type: String,
+        default: null,
+        index: true
+    },
     // إعدادات الخصوصية
     privacySettings: {
         // إخفاء الملف الشخصي: public (للجميع), contacts (جهات الاتصال فقط), private (مخفي)

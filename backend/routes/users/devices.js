@@ -15,9 +15,103 @@ router.get('/banned-devices/list', protect, adminOnly, async (req, res) => {
         const devices = await BannedDevice.find()
             .populate('bannedBy', 'name')
             .sort('-bannedAt')
-            .limit(200);
+            .limit(200)
+            .lean();
+
+        // إضافة عدد الحسابات المرتبطة لكل جهاز
+        for (const d of devices) {
+            const filters = [];
+            if (d.deviceFingerprint) filters.push({ deviceFingerprint: d.deviceFingerprint });
+            if (d.deviceToken) filters.push({ deviceToken: d.deviceToken });
+            if (d.fcmToken) filters.push({ fcmToken: d.fcmToken });
+
+            d.linkedAccountsCount = filters.length > 0
+                ? await User.countDocuments({ $or: filters })
+                : 0;
+        }
+
         res.json({ success: true, count: devices.length, data: devices });
     } catch (error) {
+        console.error('خطأ في قائمة الأجهزة:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   GET /api/users/banned-devices/:id/linked-accounts
+// @desc    جلب كل الحسابات المرتبطة بنفس بصمة الجهاز
+router.get('/banned-devices/:id/linked-accounts', protect, adminOnly, async (req, res) => {
+    try {
+        const device = await BannedDevice.findById(req.params.id).lean();
+        if (!device) return res.status(404).json({ success: false, message: 'الجهاز غير موجود' });
+
+        const filters = [];
+        if (device.deviceFingerprint) filters.push({ deviceFingerprint: device.deviceFingerprint });
+        if (device.deviceToken) filters.push({ deviceToken: device.deviceToken });
+        if (device.fcmToken) filters.push({ fcmToken: device.fcmToken });
+
+        if (filters.length === 0) {
+            return res.json({ success: true, count: 0, data: { device, accounts: [] } });
+        }
+
+        const accounts = await User.find({ $or: filters })
+            .select('name email profileImage isActive suspendedUntil suspendReason deviceBanned violationCount createdAt lastLogin role uniqueTag')
+            .sort('-createdAt')
+            .lean();
+
+        res.json({
+            success: true,
+            count: accounts.length,
+            data: { device, accounts }
+        });
+    } catch (error) {
+        console.error('خطأ في الحسابات المرتبطة:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   GET /api/users/:id/linked-accounts
+// @desc    جلب الحسابات التي تشارك نفس بصمة جهاز مستخدم محدد
+router.get('/:id/linked-accounts', protect, adminOnly, async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id)
+            .select('deviceFingerprint deviceToken fcmToken deviceInfo name')
+            .lean();
+        if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+
+        const filters = [];
+        if (user.deviceFingerprint) filters.push({ deviceFingerprint: user.deviceFingerprint });
+        if (user.deviceToken) filters.push({ deviceToken: user.deviceToken });
+        if (user.fcmToken) filters.push({ fcmToken: user.fcmToken });
+
+        if (filters.length === 0) {
+            return res.json({
+                success: true,
+                count: 0,
+                data: {
+                    user: { name: user.name, deviceInfo: user.deviceInfo, fingerprint: user.deviceFingerprint },
+                    accounts: []
+                }
+            });
+        }
+
+        const accounts = await User.find({
+            $or: filters,
+            _id: { $ne: user._id }
+        })
+            .select('name email profileImage isActive suspendedUntil suspendReason deviceBanned violationCount createdAt lastLogin role uniqueTag')
+            .sort('-createdAt')
+            .lean();
+
+        res.json({
+            success: true,
+            count: accounts.length,
+            data: {
+                user: { name: user.name, deviceInfo: user.deviceInfo, fingerprint: user.deviceFingerprint },
+                accounts
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في الحسابات المرتبطة:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });

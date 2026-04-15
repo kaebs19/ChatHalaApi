@@ -146,6 +146,18 @@ export const getBannedDevices = async () => {
     return response.data;
 };
 
+// الحسابات المرتبطة ببصمة جهاز محظور
+export const getDeviceLinkedAccounts = async (deviceId) => {
+    const response = await api.get(`/users/banned-devices/${deviceId}/linked-accounts`);
+    return response.data;
+};
+
+// الحسابات المرتبطة بمستخدم (نفس الجهاز)
+export const getUserLinkedAccounts = async (userId) => {
+    const response = await api.get(`/users/${userId}/linked-accounts`);
+    return response.data;
+};
+
 // إحصائيات مستخدمين سريعة
 export const getUsersOverview = async () => {
     const response = await api.get('/users/stats/overview');

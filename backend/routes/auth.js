@@ -31,8 +31,21 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 // Apple Auth
 const appleSignin = require('apple-signin-auth');
 
-// Device ban check
-const { isDeviceBanned } = require('../utils/deviceBan');
+// Device ban check + fingerprint
+const { isDeviceBanned, buildFingerprint } = require('../utils/deviceBan');
+
+/**
+ * Helper: تحديث بصمة جهاز المستخدم (تُحسب من deviceInfo + IP)
+ * تُستدعى بعد تعيين user.deviceInfo
+ */
+const updateUserFingerprint = (user, req) => {
+    if (user.deviceInfo && (user.deviceInfo.platform || user.deviceInfo.osVersion)) {
+        const ip = req.ip || req.connection?.remoteAddress;
+        const info = user.deviceInfo.toObject ? user.deviceInfo.toObject() : user.deviceInfo;
+        const fp = buildFingerprint(info, ip);
+        if (fp) user.deviceFingerprint = fp;
+    }
+};
 
 /**
  * Helper: فحص حظر الجهاز من بيانات الطلب
@@ -958,6 +971,7 @@ router.post('/google', async (req, res) => {
         // تحديث Device Token و معلومات الجهاز + backfill uniqueTag
         if (deviceToken) user.deviceToken = deviceToken;
         if (deviceInfo) user.deviceInfo = deviceInfo;
+        updateUserFingerprint(user, req);
         user.lastLogin = new Date();
         if (!user.uniqueTag) {
             user.uniqueTag = await generateUniqueTag(User);
@@ -1096,6 +1110,7 @@ router.post('/apple', async (req, res) => {
         // تحديث Device Token و معلومات الجهاز + backfill uniqueTag
         if (deviceToken) user.deviceToken = deviceToken;
         if (deviceInfo) user.deviceInfo = deviceInfo;
+        updateUserFingerprint(user, req);
         user.lastLogin = new Date();
         if (!user.uniqueTag) {
             user.uniqueTag = await generateUniqueTag(User);
@@ -1176,6 +1191,7 @@ router.put('/device-token', protect, async (req, res) => {
 
         user.deviceToken = deviceToken;
         if (deviceInfo) user.deviceInfo = deviceInfo;
+        updateUserFingerprint(user, req);
         await user.save();
 
         res.status(200).json({
