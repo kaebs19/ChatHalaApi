@@ -147,9 +147,25 @@ function Users({ onViewDetail }) {
         }
     };
 
-    const getStatusBadge = (isActive) => isActive
-        ? <span className="badge badge-success">نشط</span>
-        : <span className="badge badge-inactive">غير نشط</span>;
+    const getStatusBadge = (user) => {
+        // دعم استدعاء قديم يمرر isActive فقط
+        const u = typeof user === 'object' ? user : { isActive: user };
+        if (u.deviceBanned) {
+            return <span className="badge" style={{ background: '#111827', color: '#fca5a5' }}>📵 جهاز محظور</span>;
+        }
+        if (u.suspendedUntil) {
+            const daysLeft = (new Date(u.suspendedUntil) - new Date()) / (1000 * 60 * 60 * 24);
+            if (daysLeft > 365) {
+                return <span className="badge" style={{ background: '#dc2626', color: '#fff' }}>🚫 محظور نهائياً</span>;
+            }
+            if (daysLeft > 0) {
+                return <span className="badge" style={{ background: '#f59e0b', color: '#fff' }}>⏸️ معلّق {Math.ceil(daysLeft)} يوم</span>;
+            }
+        }
+        return u.isActive
+            ? <span className="badge badge-success">نشط</span>
+            : <span className="badge badge-inactive">غير نشط</span>;
+    };
 
     const getRoleBadge = (role) => role === 'admin'
         ? <span className="badge badge-admin">مدير</span>
@@ -189,6 +205,9 @@ function Users({ onViewDetail }) {
                     <select value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); setCurrentPage(1); }}>
                         <option value="all">جميع الحالات</option>
                         <option value="active">نشط</option>
+                        <option value="suspended">معلّق مؤقتاً</option>
+                        <option value="banned">محظور نهائياً</option>
+                        <option value="violators">لديه مخالفات</option>
                         <option value="inactive">غير نشط</option>
                     </select>
                     <select value={filterRole} onChange={(e) => { setFilterRole(e.target.value); setCurrentPage(1); }}>
@@ -220,6 +239,7 @@ function Users({ onViewDetail }) {
                             <th>الدور</th>
                             <th>نوع التسجيل</th>
                             <th>الحالة</th>
+                            <th onClick={() => handleSort('violationCount')} className="sortable">المخالفات {getSortIcon('violationCount')}</th>
                             <th onClick={() => handleSort('createdAt')} className="sortable">التسجيل {getSortIcon('createdAt')}</th>
                             <th onClick={() => handleSort('lastLogin')} className="sortable">آخر دخول {getSortIcon('lastLogin')}</th>
                             <th>الإجراءات</th>
@@ -227,9 +247,9 @@ function Users({ onViewDetail }) {
                     </thead>
                     <tbody>
                         {loading ? (
-                            Array.from({ length: 5 }).map((_, i) => <TableRowSkeleton key={i} columns={8} />)
+                            Array.from({ length: 5 }).map((_, i) => <TableRowSkeleton key={i} columns={9} />)
                         ) : users.length === 0 ? (
-                            <tr><td colSpan="8" style={{ textAlign: 'center', padding: '40px' }}>لا توجد نتائج</td></tr>
+                            <tr><td colSpan="9" style={{ textAlign: 'center', padding: '40px' }}>لا توجد نتائج</td></tr>
                         ) : (
                             users.map((user) => (
                                 <tr key={user._id}>
@@ -247,7 +267,22 @@ function Users({ onViewDetail }) {
                                     <td dir="ltr" className="email-cell">{user.email}</td>
                                     <td>{getRoleBadge(user.role)}</td>
                                     <td>{getAuthProviderBadge(user.authProvider)}</td>
-                                    <td>{getStatusBadge(user.isActive)}</td>
+                                    <td>{getStatusBadge(user)}</td>
+                                    <td style={{ textAlign: 'center' }}>
+                                        {user.violationCount > 0 ? (
+                                            <span style={{
+                                                display: 'inline-block',
+                                                padding: '4px 10px',
+                                                borderRadius: '12px',
+                                                background: user.violationCount >= 5 ? '#fecaca' : user.violationCount >= 3 ? '#fde68a' : '#e0e7ff',
+                                                color: user.violationCount >= 5 ? '#991b1b' : user.violationCount >= 3 ? '#92400e' : '#3730a3',
+                                                fontWeight: '700',
+                                                fontSize: '13px'
+                                            }}>
+                                                ⚠️ {user.violationCount}
+                                            </span>
+                                        ) : <span style={{ color: '#9ca3af' }}>—</span>}
+                                    </td>
                                     <td>{formatDate(user.createdAt)}</td>
                                     <td>{user.lastLogin ? formatDate(user.lastLogin) : <span className="no-login">-</span>}</td>
                                     <td>

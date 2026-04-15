@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getUserActivity, getUserViolations, warnUser, resetUserAvatar, banUserName, suspendUser, toggleUserActive, banUserPermanent, unbanUser } from '../services/api';
+import { getUserActivity, getUserViolations, warnUser, resetUserAvatar, banUserName, suspendUser, toggleUserActive, banUserPermanent, unbanUser, banUserDevice, unbanUserDevice } from '../services/api';
 import { useToast } from '../components/Toast';
 import { getImageUrl, getDefaultAvatar } from '../config';
 import { formatDateTimeLong, formatDateLong } from '../utils/formatters';
@@ -79,6 +79,29 @@ function UserDetail({ userId, onBack }) {
             showToast(`تم التعليق ${days} يوم`, 'success');
             fetchUserActivity();
         } catch (error) { showToast('فشل', 'error'); }
+    };
+
+    const handleBanDevice = async () => {
+        const u = userData?.user || userData;
+        if (u?.deviceBanned) {
+            if (!window.confirm('فك حظر الجهاز عن هذا المستخدم؟')) return;
+            try {
+                await unbanUserDevice(userId);
+                showToast('تم فك حظر الجهاز', 'success');
+                fetchUserActivity();
+            } catch (error) { showToast('فشل فك الحظر', 'error'); }
+            return;
+        }
+        const reason = window.prompt('سبب حظر الجهاز:', 'حظر الجهاز نهائياً - مخالفات متكررة');
+        if (reason === null) return;
+        if (!window.confirm(`⚠️ حظر جهاز "${u?.name || 'المستخدم'}" نهائياً؟\nسيتم منع الجهاز من التسجيل بأي حساب جديد.`)) return;
+        try {
+            await banUserDevice(userId, reason || 'حظر الجهاز نهائياً');
+            showToast('تم حظر الجهاز نهائياً', 'success');
+            fetchUserActivity();
+        } catch (error) {
+            showToast(error.response?.data?.message || 'فشل حظر الجهاز', 'error');
+        }
     };
 
     const handleBan = async () => {
@@ -592,13 +615,56 @@ function UserDetail({ userId, onBack }) {
                                         </div>
                                     )}
                                 </div>
+                                {/* الأسماء المحظورة السابقة */}
+                                {violations.bannedNamesHistory && violations.bannedNamesHistory.length > 0 && (
+                                    <div style={{ marginBottom: '20px', padding: '15px', background: '#fce7f3', borderRadius: '12px', border: '2px solid #f9a8d4' }}>
+                                        <h4 style={{ margin: '0 0 10px', color: '#be185d' }}>🚫 أسماء محظورة سابقة ({violations.bannedNamesHistory.length})</h4>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                            {violations.bannedNamesHistory.map((n, i) => (
+                                                <span key={i} style={{
+                                                    padding: '6px 12px', borderRadius: '20px',
+                                                    background: '#fff', border: '1px solid #f9a8d4',
+                                                    fontSize: '13px', color: '#be185d'
+                                                }} title={`تم حظره بواسطة: ${n.adminId?.name || 'غير معروف'} في ${new Date(n.bannedAt).toLocaleDateString('ar-SA')}`}>
+                                                    {n.name}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* الرسائل المخالفة مع الصور (دليل) */}
+                                {violations.flaggedMessages && violations.flaggedMessages.length > 0 && (
+                                    <div style={{ marginBottom: '20px', padding: '15px', background: '#fef2f2', borderRadius: '12px', border: '2px solid #fca5a5' }}>
+                                        <h4 style={{ margin: '0 0 10px', color: '#991b1b' }}>📸 رسائل مخالفة (دليل) — {violations.flaggedMessages.length}</h4>
+                                        <div style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
+                                            {violations.flaggedMessages.map((m, i) => (
+                                                <div key={i} style={{ padding: '10px', background: '#fff', borderRadius: '8px', border: '1px solid #fecaca' }}>
+                                                    <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '6px' }}>
+                                                        {new Date(m.createdAt).toLocaleString('ar-SA')}
+                                                        {m.isDeleted && <span style={{ marginRight: '8px', color: '#dc2626' }}>• محذوفة</span>}
+                                                    </div>
+                                                    {m.type === 'image' && m.mediaUrl ? (
+                                                        <img src={getImageUrl(m.mediaUrl)} alt="" style={{ width: '100%', maxHeight: '180px', objectFit: 'cover', borderRadius: '6px' }}
+                                                            onError={(e) => { e.target.style.display = 'none'; }} />
+                                                    ) : (
+                                                        <div style={{ fontSize: '13px', color: '#1f2937', wordBreak: 'break-word', maxHeight: '120px', overflow: 'auto' }}>
+                                                            {m.content || '(رسالة فارغة)'}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
                                 {violations.warnings && violations.warnings.length > 0 ? (
                                     <table className="data-table" style={{ width: '100%' }}>
                                         <thead>
                                             <tr>
                                                 <th>التاريخ</th>
                                                 <th>الإجراء</th>
-                                                <th>السبب</th>
+                                                <th>السبب / الدليل</th>
                                                 <th>بواسطة</th>
                                             </tr>
                                         </thead>
@@ -608,19 +674,43 @@ function UserDetail({ userId, onBack }) {
                                                     <td style={{ fontSize: '12px' }}>{w.date ? new Date(w.date).toLocaleDateString('ar-SA') : '-'}</td>
                                                     <td>
                                                         <span style={{ padding: '2px 8px', borderRadius: '8px', fontSize: '11px', background:
+                                                            w.action === 'permanent_ban' || w.action === 'device_ban' ? '#111827' :
                                                             w.action === 'auto_suspend' ? '#fecaca' :
                                                             w.action === 'suspend' ? '#fed7aa' :
                                                             w.action === 'name_ban' ? '#fce7f3' :
-                                                            w.action === 'avatar_reset' ? '#e0e7ff' : '#fef3c7'
+                                                            w.action === 'avatar_reset' ? '#e0e7ff' :
+                                                            w.action === 'unban' ? '#d1fae5' : '#fef3c7',
+                                                            color: (w.action === 'permanent_ban' || w.action === 'device_ban') ? '#fca5a5' : '#000'
                                                         }}>
                                                             {w.action === 'warn' ? '⚠️ تحذير' :
                                                              w.action === 'name_ban' ? '✏️ حظر اسم' :
                                                              w.action === 'avatar_reset' ? '🖼️ حذف صورة' :
                                                              w.action === 'suspend' ? '⏸️ تعليق' :
-                                                             w.action === 'auto_suspend' ? '🔴 إيقاف تلقائي' : w.action}
+                                                             w.action === 'auto_suspend' ? '🔴 إيقاف تلقائي' :
+                                                             w.action === 'permanent_ban' ? '🚫 حظر نهائي' :
+                                                             w.action === 'device_ban' ? '📵 حظر جهاز' :
+                                                             w.action === 'unban' ? '✅ فك حظر' : w.action}
                                                         </span>
                                                     </td>
-                                                    <td style={{ fontSize: '13px' }}>{w.reason}</td>
+                                                    <td style={{ fontSize: '13px' }}>
+                                                        {w.reason}
+                                                        {w.oldName && (
+                                                            <div style={{ fontSize: '11px', color: '#be185d', marginTop: '4px' }}>
+                                                                الاسم القديم: <b>{w.oldName}</b>
+                                                            </div>
+                                                        )}
+                                                        {w.evidence && (w.evidence.messageContent || w.evidence.messageMedia) && (
+                                                            <div style={{ marginTop: '8px', padding: '8px', background: '#fef2f2', borderRadius: '6px', borderRight: '3px solid #dc2626' }}>
+                                                                <div style={{ fontSize: '11px', color: '#991b1b', marginBottom: '4px', fontWeight: '600' }}>📎 الدليل:</div>
+                                                                {w.evidence.messageType === 'image' && w.evidence.messageMedia ? (
+                                                                    <img src={getImageUrl(w.evidence.messageMedia)} alt="" style={{ maxWidth: '150px', maxHeight: '150px', borderRadius: '4px' }}
+                                                                        onError={(e) => { e.target.style.display = 'none'; }} />
+                                                                ) : (
+                                                                    <div style={{ fontSize: '12px', color: '#7f1d1d' }}>{w.evidence.messageContent || '(بدون محتوى)'}</div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </td>
                                                     <td style={{ fontSize: '12px' }}>{w.adminId?.name || '-'}</td>
                                                 </tr>
                                             ))}
@@ -661,19 +751,34 @@ function UserDetail({ userId, onBack }) {
                                 const u = userData?.user || userData;
                                 const isPermBanned = u?.suspendedUntil &&
                                     (new Date(u.suspendedUntil) - new Date()) / (1000 * 60 * 60 * 24) > 365;
+                                const isDeviceBanned = u?.deviceBanned;
                                 return (
-                                    <button onClick={handleBan} style={{
-                                        padding: '16px', borderRadius: '12px',
-                                        border: isPermBanned ? '2px solid #10b981' : '2px solid #ef4444',
-                                        background: isPermBanned ? '#ecfdf5' : '#fef2f2',
-                                        cursor: 'pointer', fontSize: '14px', fontWeight: '600',
-                                        color: isPermBanned ? '#059669' : '#dc2626'
-                                    }}>
-                                        {isPermBanned ? '✅ فك الحظر النهائي' : '🚫 حظر نهائي'}
-                                        <div style={{ fontSize: '11px', color: isPermBanned ? '#065f46' : '#991b1b', marginTop: '4px' }}>
-                                            {isPermBanned ? 'إعادة تفعيل الحساب' : 'إيقاف الحساب بالكامل'}
-                                        </div>
-                                    </button>
+                                    <>
+                                        <button onClick={handleBan} style={{
+                                            padding: '16px', borderRadius: '12px',
+                                            border: isPermBanned ? '2px solid #10b981' : '2px solid #ef4444',
+                                            background: isPermBanned ? '#ecfdf5' : '#fef2f2',
+                                            cursor: 'pointer', fontSize: '14px', fontWeight: '600',
+                                            color: isPermBanned ? '#059669' : '#dc2626'
+                                        }}>
+                                            {isPermBanned ? '✅ فك الحظر النهائي' : '🚫 حظر نهائي'}
+                                            <div style={{ fontSize: '11px', color: isPermBanned ? '#065f46' : '#991b1b', marginTop: '4px' }}>
+                                                {isPermBanned ? 'إعادة تفعيل الحساب' : 'إيقاف الحساب بالكامل'}
+                                            </div>
+                                        </button>
+                                        <button onClick={handleBanDevice} style={{
+                                            padding: '16px', borderRadius: '12px',
+                                            border: isDeviceBanned ? '2px solid #10b981' : '2px solid #111827',
+                                            background: isDeviceBanned ? '#ecfdf5' : '#1f2937',
+                                            cursor: 'pointer', fontSize: '14px', fontWeight: '600',
+                                            color: isDeviceBanned ? '#059669' : '#fca5a5'
+                                        }}>
+                                            {isDeviceBanned ? '✅ فك حظر الجهاز' : '📵 حظر الجهاز'}
+                                            <div style={{ fontSize: '11px', color: isDeviceBanned ? '#065f46' : '#fecaca', marginTop: '4px' }}>
+                                                {isDeviceBanned ? 'السماح للجهاز بالتسجيل' : 'منع التسجيل من نفس الجهاز'}
+                                            </div>
+                                        </button>
+                                    </>
                                 );
                             })()}
                         </div>

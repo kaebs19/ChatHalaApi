@@ -225,11 +225,30 @@ const userSchema = new mongoose.Schema({
     suspensionCount: { type: Number, default: 0 },
     warnings: [{
         reason: String,
-        action: String,     // 'warn' | 'name_ban' | 'avatar_reset' | 'suspend' | 'auto_suspend'
+        action: String,     // 'warn' | 'name_ban' | 'avatar_reset' | 'suspend' | 'auto_suspend' | 'permanent_ban' | 'unban' | 'device_ban'
         adminId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-        date: { type: Date, default: Date.now }
+        date: { type: Date, default: Date.now },
+        // دليل المخالفة (snapshot — يبقى حتى لو حذف المستخدم الرسالة)
+        evidence: {
+            messageId: { type: mongoose.Schema.Types.ObjectId, ref: 'Message', default: null },
+            messageContent: { type: String, default: null },
+            messageMedia: { type: String, default: null }, // رابط الصورة/الفيديو
+            messageType: { type: String, default: null },  // text/image/video/file
+            conversationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Conversation', default: null }
+        },
+        // في حالة حظر الاسم: الاسم القديم المحظور
+        oldName: { type: String, default: null }
     }],
     nameBanned: { type: Boolean, default: false },
+    // سجل الأسماء المحظورة سابقاً للمستخدم
+    bannedNamesHistory: [{
+        name: String,
+        bannedAt: { type: Date, default: Date.now },
+        adminId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
+    }],
+    // حظر الجهاز (الجهاز الخاص بالمستخدم محظور نهائياً)
+    deviceBanned: { type: Boolean, default: false },
+    deviceBannedAt: { type: Date, default: null },
 
     // حماية من هجمات القوة الغاشمة
     loginAttempts: { type: Number, default: 0 },

@@ -31,6 +31,33 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 // Apple Auth
 const appleSignin = require('apple-signin-auth');
 
+// Device ban check
+const { isDeviceBanned } = require('../utils/deviceBan');
+
+/**
+ * Helper: فحص حظر الجهاز من بيانات الطلب
+ * يرجع true إذا كان محظوراً (بعد إرسال 403)
+ */
+const checkDeviceBanned = async (req, res) => {
+    try {
+        const banned = await isDeviceBanned({
+            deviceToken: req.body?.deviceToken,
+            fcmToken: req.body?.fcmToken,
+            deviceInfo: req.body?.deviceInfo,
+            ip: req.ip || req.connection?.remoteAddress
+        });
+        if (banned) {
+            res.status(403).json({
+                success: false,
+                message: 'تم حظر هذا الجهاز من استخدام التطبيق',
+                code: 'DEVICE_BANNED'
+            });
+            return true;
+        }
+    } catch (e) { /* لا نوقف التسجيل بسبب خطأ فحص */ }
+    return false;
+};
+
 // @route   POST /api/auth/register
 // @desc    تسجيل مستخدم جديد
 // @access  Public
@@ -45,6 +72,9 @@ router.post('/register', registerValidation, validate, async (req, res) => {
                 message: 'جميع الحقول مطلوبة'
             });
         }
+
+        // فحص حظر الجهاز
+        if (await checkDeviceBanned(req, res)) return;
 
         // فحص الاسم ضد الكلمات المحظورة
         const nameCheck = await BannedWord.checkText(name, 'name');
@@ -132,6 +162,9 @@ router.post('/login', loginValidation, validate, async (req, res) => {
                 message: 'البريد الإلكتروني وكلمة المرور مطلوبة'
             });
         }
+
+        // فحص حظر الجهاز
+        if (await checkDeviceBanned(req, res)) return;
 
         // البحث عن المستخدم (مع كلمة المرور)
         const user = await User.findOne({ email }).select('+password +loginAttempts +lockUntil');
@@ -775,6 +808,9 @@ router.post('/google', async (req, res) => {
             });
         }
 
+        // فحص حظر الجهاز
+        if (await checkDeviceBanned(req, res)) return;
+
         // التحقق من Google ID Token
         let payload;
         try {
@@ -897,6 +933,9 @@ router.post('/apple', async (req, res) => {
                 message: 'Apple Identity Token مطلوب'
             });
         }
+
+        // فحص حظر الجهاز
+        if (await checkDeviceBanned(req, res)) return;
 
         // التحقق من Apple Identity Token
         let applePayload;

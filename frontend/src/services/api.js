@@ -128,6 +128,18 @@ export const unbanUser = async (userId) => {
     return response.data;
 };
 
+// حظر جهاز المستخدم نهائياً (Admin فقط)
+export const banUserDevice = async (userId, reason = 'حظر الجهاز نهائياً') => {
+    const response = await api.put(`/users/${userId}/ban-device`, { reason });
+    return response.data;
+};
+
+// فك حظر جهاز المستخدم (Admin فقط)
+export const unbanUserDevice = async (userId) => {
+    const response = await api.put(`/users/${userId}/unban-device`);
+    return response.data;
+};
+
 // حذف صورة المستخدم (Admin فقط)
 export const resetUserAvatar = async (userId) => {
     const response = await api.put(`/users/${userId}/reset-avatar`);

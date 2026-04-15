@@ -7,7 +7,10 @@ const User = require('../models/User');
 const { protect, adminOnly } = require('../middleware/auth');
 const { get, set, CACHE_KEYS, CACHE_TTL, invalidateUsers } = require('../utils/cache');
 const Notification = require('../models/Notification');
+const BannedDevice = require('../models/BannedDevice');
+const Message = require('../models/Message');
 const pushNotificationService = require('../services/pushNotificationService');
+const { buildFingerprint } = require('../utils/deviceBan');
 
 // @route   GET /api/users
 // @desc    الحصول على جميع المستخدمين
@@ -28,6 +31,22 @@ router.get('/', protect, adminOnly, async (req, res) => {
         }
         if (status === 'active') filter.isActive = true;
         else if (status === 'inactive') filter.isActive = false;
+        else if (status === 'suspended') {
+            // معلّق مؤقتاً (أقل من سنة)
+            filter.isActive = false;
+            filter.suspendedUntil = {
+                $gte: new Date(),
+                $lte: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+            };
+        } else if (status === 'banned') {
+            // محظور نهائياً (أكثر من سنة) أو جهاز محظور
+            filter.$or = [
+                { suspendedUntil: { $gt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) } },
+                { deviceBanned: true }
+            ];
+        } else if (status === 'violators') {
+            filter.violationCount = { $gt: 0 };
+        }
         if (role && role !== 'all') filter.role = role;
 
         const total = await User.countDocuments(filter);
@@ -319,7 +338,6 @@ router.put('/:id/toggle-active', protect, adminOnly, async (req, res) => {
 router.get('/:id/activity', protect, adminOnly, async (req, res) => {
     try {
         const Conversation = require('../models/Conversation');
-        const Message = require('../models/Message');
 
         const user = await User.findById(req.params.id).select('-password');
 
@@ -576,7 +594,19 @@ router.put('/:id/ban-name', protect, adminOnly, async (req, res) => {
         user.name = '***مستخدم محظور***';
         user.nameBanned = true;
         user.violationCount = (user.violationCount || 0) + 1;
-        user.warnings.push({ reason: `حظر الاسم: ${oldName}`, action: 'name_ban', adminId: req.user._id });
+        user.warnings.push({
+            reason: `حظر الاسم: ${oldName}`,
+            action: 'name_ban',
+            adminId: req.user._id,
+            oldName
+        });
+        // حفظ في سجل الأسماء المحظورة
+        if (!user.bannedNamesHistory) user.bannedNamesHistory = [];
+        user.bannedNamesHistory.push({
+            name: oldName,
+            bannedAt: new Date(),
+            adminId: req.user._id
+        });
         await user.save();
 
         const notifTitle = 'تنبيه من الإدارة';
@@ -603,7 +633,7 @@ router.put('/:id/ban-name', protect, adminOnly, async (req, res) => {
 // @access  Private/Admin
 router.put('/:id/warn', protect, adminOnly, async (req, res) => {
     try {
-        const { reason = 'مخالفة سياسة الاستخدام' } = req.body;
+        const { reason = 'مخالفة سياسة الاستخدام', messageId } = req.body;
         const user = await User.findById(req.params.id);
         if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
 
@@ -614,7 +644,24 @@ router.put('/:id/warn', protect, adminOnly, async (req, res) => {
         }
         user.dailyViolationCount += 1;
         user.violationCount = (user.violationCount || 0) + 1;
-        user.warnings.push({ reason, action: 'warn', adminId: req.user._id });
+
+        // بناء كائن التحذير مع دليل (snapshot من الرسالة إن وُجدت)
+        const warning = { reason, action: 'warn', adminId: req.user._id };
+        if (messageId) {
+            try {
+                const msg = await Message.findById(messageId).select('content type mediaUrl conversationId');
+                if (msg && msg.sender?.toString() === user._id.toString() || msg) {
+                    warning.evidence = {
+                        messageId: msg._id,
+                        messageContent: msg.content || null,
+                        messageMedia: msg.mediaUrl || null,
+                        messageType: msg.type || 'text',
+                        conversationId: msg.conversationId || null
+                    };
+                }
+            } catch (e) { /* تجاهل - تحذير بدون دليل */ }
+        }
+        user.warnings.push(warning);
 
         // تعليق تصاعدي عند 5 مخالفات يومية
         let autoSuspended = false;
@@ -681,29 +728,163 @@ router.put('/:id/warn', protect, adminOnly, async (req, res) => {
 router.get('/:id/violations', protect, adminOnly, async (req, res) => {
     try {
         const user = await User.findById(req.params.id)
-            .select('name email violationCount warnings nameBanned suspendedUntil suspendReason isActive')
-            .populate('warnings.adminId', 'name');
+            .select('name email violationCount warnings nameBanned bannedNamesHistory suspendedUntil suspendReason isActive deviceBanned deviceBannedAt')
+            .populate('warnings.adminId', 'name')
+            .populate('bannedNamesHistory.adminId', 'name');
 
         if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
 
-        // عدد الرسائل المخالفة
-        const Message = require('../models/Message');
+        // عدد الرسائل المخالفة + آخر 20 رسالة مخالفة مع الدليل
         const flaggedCount = await Message.countDocuments({ sender: req.params.id, hasBannedWords: true });
+        const flaggedMessages = await Message.find({ sender: req.params.id, hasBannedWords: true })
+            .select('content type mediaUrl createdAt conversationId isDeleted')
+            .sort('-createdAt')
+            .limit(20)
+            .lean();
 
         res.json({
             success: true,
             data: {
-                user: { name: user.name, email: user.email, isActive: user.isActive },
+                user: {
+                    name: user.name, email: user.email, isActive: user.isActive,
+                    deviceBanned: user.deviceBanned || false,
+                    deviceBannedAt: user.deviceBannedAt
+                },
                 violationCount: user.violationCount || 0,
                 nameBanned: user.nameBanned || false,
+                bannedNamesHistory: user.bannedNamesHistory || [],
                 suspendedUntil: user.suspendedUntil,
                 suspendReason: user.suspendReason,
                 warnings: user.warnings || [],
-                flaggedMessagesCount: flaggedCount
+                flaggedMessagesCount: flaggedCount,
+                flaggedMessages
             }
         });
     } catch (error) {
         console.error('خطأ:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   PUT /api/users/:id/ban-device
+// @desc    حظر جهاز المستخدم نهائياً (يمنعه من التسجيل بحساب جديد)
+// @access  Private/Admin
+router.put('/:id/ban-device', protect, adminOnly, async (req, res) => {
+    try {
+        const { reason = 'حظر الجهاز نهائياً' } = req.body;
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        if (user.role === 'admin') {
+            return res.status(403).json({ success: false, message: 'لا يمكن حظر جهاز مدير' });
+        }
+
+        if (!user.deviceToken && !user.fcmToken && (!user.deviceInfo || !user.deviceInfo.platform)) {
+            return res.status(400).json({
+                success: false,
+                message: 'لا توجد معلومات جهاز لهذا المستخدم'
+            });
+        }
+
+        const fingerprint = user.deviceInfo
+            ? buildFingerprint(user.deviceInfo.toObject ? user.deviceInfo.toObject() : user.deviceInfo, null)
+            : null;
+
+        // تجنب التكرار
+        const existing = await BannedDevice.findOne({
+            $or: [
+                user.deviceToken ? { deviceToken: user.deviceToken } : null,
+                user.fcmToken ? { fcmToken: user.fcmToken } : null,
+                fingerprint ? { deviceFingerprint: fingerprint } : null
+            ].filter(Boolean)
+        });
+
+        if (!existing) {
+            await BannedDevice.create({
+                deviceToken: user.deviceToken || null,
+                fcmToken: user.fcmToken || null,
+                deviceFingerprint: fingerprint,
+                deviceInfo: user.deviceInfo || {},
+                originalUserId: user._id,
+                originalUserName: user.name,
+                reason,
+                bannedBy: req.user._id
+            });
+        }
+
+        // تفعيل الحظر على الحساب أيضاً (لن يستطيع الدخول حتى من جهاز آخر بنفس الحساب)
+        user.deviceBanned = true;
+        user.deviceBannedAt = new Date();
+        user.isActive = false;
+        user.suspendedUntil = new Date(Date.now() + 36500 * 24 * 60 * 60 * 1000);
+        user.suspendReason = reason;
+        user.warnings.push({
+            reason, action: 'device_ban', adminId: req.user._id
+        });
+        await user.save();
+
+        // فصل الـ socket
+        if (global.connectedUsers && global.connectedUsers.has(user._id.toString())) {
+            const info = global.connectedUsers.get(user._id.toString());
+            const sock = global.io?.sockets?.sockets?.get(info.socketId);
+            if (sock) sock.disconnect(true);
+        }
+
+        invalidateUsers();
+        res.json({
+            success: true,
+            message: `تم حظر جهاز ${user.name} نهائياً`,
+            data: { deviceBanned: true }
+        });
+    } catch (error) {
+        console.error('خطأ في حظر الجهاز:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   PUT /api/users/:id/unban-device
+// @desc    فك حظر جهاز المستخدم
+// @access  Private/Admin
+router.put('/:id/unban-device', protect, adminOnly, async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+
+        const fingerprint = user.deviceInfo
+            ? buildFingerprint(user.deviceInfo.toObject ? user.deviceInfo.toObject() : user.deviceInfo, null)
+            : null;
+
+        await BannedDevice.deleteMany({
+            $or: [
+                user.deviceToken ? { deviceToken: user.deviceToken } : null,
+                user.fcmToken ? { fcmToken: user.fcmToken } : null,
+                fingerprint ? { deviceFingerprint: fingerprint } : null,
+                { originalUserId: user._id }
+            ].filter(Boolean)
+        });
+
+        user.deviceBanned = false;
+        user.deviceBannedAt = null;
+        await user.save();
+
+        invalidateUsers();
+        res.json({ success: true, message: 'تم فك حظر الجهاز' });
+    } catch (error) {
+        console.error('خطأ في فك حظر الجهاز:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   GET /api/users/banned-devices
+// @desc    قائمة الأجهزة المحظورة
+// @access  Private/Admin
+router.get('/banned-devices/list', protect, adminOnly, async (req, res) => {
+    try {
+        const devices = await BannedDevice.find()
+            .populate('bannedBy', 'name')
+            .sort('-bannedAt')
+            .limit(200);
+        res.json({ success: true, count: devices.length, data: devices });
+    } catch (error) {
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
