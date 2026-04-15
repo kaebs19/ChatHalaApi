@@ -10,6 +10,7 @@ const {
 } = require('../config/firebase');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+const notificationService = require('./notificationService');
 
 /**
  * إرسال إشعار لمستخدم واحد
@@ -42,19 +43,45 @@ const sendNotificationToUser = async (userId, notification, data = {}, saveToDb 
             });
         }
 
-        // إذا لم يكن لدى المستخدم FCM Token، نرجع نجاح (تم الحفظ فقط)
-        if (!user.fcmToken) {
-            console.log(`⚠️ المستخدم ${user.name} ليس لديه FCM Token`);
-            return { success: true, saved: true, pushed: false };
+        // محاولة 1: FCM (Firebase) إذا كان لدى المستخدم fcmToken
+        if (user.fcmToken) {
+            try {
+                const fcmResult = await sendToDevice(user.fcmToken, notification, {
+                    ...data,
+                    userId: userId.toString()
+                });
+                if (fcmResult.success) {
+                    return { success: true, saved: true, pushed: true, via: 'fcm' };
+                }
+            } catch (e) {
+                console.log(`⚠️ FCM فشل للمستخدم ${user.name}:`, e.message);
+            }
         }
 
-        // إرسال Push Notification
-        const result = await sendToDevice(user.fcmToken, notification, {
-            ...data,
-            userId: userId.toString()
-        });
+        // محاولة 2: APNs (Apple) إذا كان لدى المستخدم deviceToken (iOS)
+        if (user.deviceToken) {
+            try {
+                const apnsResult = await notificationService.sendAPNsNotification(
+                    user.deviceToken,
+                    {
+                        title: notification.title,
+                        body: notification.body,
+                        data: { ...data, userId: userId.toString() },
+                        priority: 'high'
+                    }
+                );
+                if (apnsResult.success) {
+                    return { success: true, saved: true, pushed: true, via: 'apns' };
+                }
+            } catch (e) {
+                console.log(`⚠️ APNs فشل للمستخدم ${user.name}:`, e.message);
+            }
+        }
 
-        return { success: true, saved: true, pushed: result.success };
+        if (!user.fcmToken && !user.deviceToken) {
+            console.log(`⚠️ المستخدم ${user.name} ليس لديه FCM ولا APNs Token`);
+        }
+        return { success: true, saved: true, pushed: false };
     } catch (error) {
         console.error('❌ خطأ في إرسال الإشعار للمستخدم:', error.message);
         return { success: false, error: error.message };
