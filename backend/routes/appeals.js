@@ -366,7 +366,7 @@ router.post('/:id/message', protectEvenSuspended, async (req, res) => {
         // إشعار الطرف الآخر
         try {
             if (senderType === 'admin') {
-                // إشعار للمستخدم
+                // 1) إشعار DB
                 await Notification.create({
                     title: '💬 رسالة من الإدارة',
                     body: message.trim().substring(0, 200),
@@ -375,9 +375,28 @@ router.post('/:id/message', protectEvenSuspended, async (req, res) => {
                     targetUsers: [appeal.user],
                     recipients: 'specific'
                 });
+                // 2) Push notification (FCM/APNs) — إذا التطبيق مغلق أو في الخلفية
                 await pushNotificationService.sendNotificationToUser(appeal.user,
                     { title: '💬 رسالة من الإدارة', body: message.trim().substring(0, 100) },
-                    { type: 'appeal_message', appealId: String(appeal._id) }, false);
+                    {
+                        type: 'appeal_message',
+                        appealId: String(appeal._id),
+                        adminName: req.user.name
+                    }, false);
+                // 3) Socket event فوري — إذا التطبيق مفتوح
+                if (global.io) {
+                    global.io.to(`user:${appeal.user}`).emit('appeal-admin-reply', {
+                        appealId: String(appeal._id),
+                        message: entry.message,
+                        senderName: entry.senderName,
+                        createdAt: entry.createdAt
+                    });
+                    global.io.to(`user:${appeal.user}`).emit('notification', {
+                        title: '💬 رسالة من الإدارة',
+                        body: message.trim().substring(0, 100),
+                        type: 'appeal_message'
+                    });
+                }
             } else {
                 // إشعار للأدمن عبر socket (كل الأدمن)
                 if (global.io) {

@@ -466,8 +466,8 @@ router.get('/conversations/pending', protect, async (req, res) => {
         const total = await Conversation.countDocuments(query);
 
         const conversations = await Conversation.find(query)
-            .populate('creator', 'name email profileImage verification.isVerified isPremium')
-            .populate('participants', 'name email profileImage lastLogin isOnline isPremium verification.isVerified')
+            .populate('creator', 'name email profileImage verification.isVerified isPremium isActive deviceBanned suspendedUntil')
+            .populate('participants', 'name email profileImage lastLogin isOnline isPremium verification.isVerified isActive deviceBanned suspendedUntil')
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit);
@@ -480,16 +480,30 @@ router.get('/conversations/pending', protect, async (req, res) => {
         });
         const superLikeSet = new Set(superLikes.map(sl => sl.sender.toString()));
 
+        const { maskInPlace: maskCr, isUserSuspended: isSusp } = require('../../utils/userStatus');
         const enrichedConversations = conversations.map(conv => {
             const convObj = conv.toObject();
             convObj.isSuperLike = superLikeSet.has(conv.creator._id.toString());
-            convObj.creator.isVerified = conv.creator.verification?.isVerified || false;
-            convObj.creator.profileImage = getFullUrl(convObj.creator.profileImage);
+            // قناع للـ creator إذا موقوف
+            maskCr(convObj, 'creator');
+            if (!convObj.creator.isSuspended) {
+                convObj.creator.isVerified = conv.creator.verification?.isVerified || false;
+                convObj.creator.profileImage = getFullUrl(convObj.creator.profileImage);
+            }
             if (convObj.participants) {
-                convObj.participants = convObj.participants.map(p => ({
-                    ...p,
-                    profileImage: getFullUrl(p.profileImage)
-                }));
+                convObj.participants = convObj.participants.map(p => {
+                    if (isSusp(p)) {
+                        return {
+                            _id: p._id,
+                            name: 'مستخدم موقوف',
+                            profileImage: null,
+                            isSuspended: true,
+                            isOnline: false
+                        };
+                    }
+                    const { isActive, deviceBanned, suspendedUntil, ...rest } = p;
+                    return { ...rest, profileImage: getFullUrl(p.profileImage) };
+                });
             }
             return convObj;
         });
@@ -535,7 +549,7 @@ router.get('/conversations', protect, async (req, res) => {
             isActive: true,
             hiddenBy: { $ne: userId }
         })
-            .populate('participants', 'name email profileImage lastLogin isOnline isPremium verification.isVerified')
+            .populate('participants', 'name email profileImage lastLogin isOnline isPremium verification.isVerified isActive deviceBanned suspendedUntil')
             .populate('lastMessage')
             .sort({ updatedAt: -1 })
             .limit(limit * 1)
@@ -560,13 +574,23 @@ router.get('/conversations', protect, async (req, res) => {
             }
         ]);
 
+        const { isUserSuspended: isSuspHelper } = require('../../utils/userStatus');
         const unreadMap = new Map(unreadCounts.map(u => [u._id.toString(), u.count]));
         const conversationsWithUnread = conversations.map(conv => ({
             ...conv,
-            participants: conv.participants ? conv.participants.map(p => ({
-                ...p,
-                profileImage: getFullUrl(p.profileImage)
-            })) : conv.participants,
+            participants: conv.participants ? conv.participants.map(p => {
+                if (isSuspHelper(p)) {
+                    return {
+                        _id: p._id,
+                        name: 'مستخدم موقوف',
+                        profileImage: null,
+                        isSuspended: true,
+                        isOnline: false
+                    };
+                }
+                const { isActive, deviceBanned, suspendedUntil, ...rest } = p;
+                return { ...rest, profileImage: getFullUrl(p.profileImage) };
+            }) : conv.participants,
             unreadCount: unreadMap.get(conv._id.toString()) || 0
         }));
 

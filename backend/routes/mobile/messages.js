@@ -11,6 +11,7 @@ const BannedWord = require('../../models/BannedWord');
 const { protect } = require('../../middleware/auth');
 const pushNotificationService = require('../../services/pushNotificationService');
 const { uploadMessageImage, getFullUrl } = require('./helpers');
+const { userStatusFields, maskInPlace, isUserSuspended } = require('../../utils/userStatus');
 
 // ==========================================
 // نظام الرسائل
@@ -44,7 +45,7 @@ router.post('/messages/send', protect, async (req, res) => {
 
         // التحقق من المحادثة
         const conversation = await Conversation.findById(conversationId)
-            .populate('participants', 'name email deviceToken');
+            .populate('participants', 'name email deviceToken isActive deviceBanned suspendedUntil');
 
         if (!conversation) {
             return res.status(404).json({
@@ -62,6 +63,20 @@ router.post('/messages/send', protect, async (req, res) => {
             return res.status(403).json({
                 success: false,
                 message: 'ليس لديك صلاحية لهذه المحادثة'
+            });
+        }
+
+        // فحص: هل الطرف الآخر موقوف؟
+        const otherParticipants = conversation.participants.filter(
+            p => p._id.toString() !== req.user._id.toString()
+        );
+        const allSuspended = otherParticipants.length > 0 &&
+            otherParticipants.every(p => isUserSuspended(p));
+        if (allSuspended) {
+            return res.status(403).json({
+                success: false,
+                message: 'لا يمكن إرسال رسالة — مستخدم موقوف',
+                code: 'USER_SUSPENDED'
             });
         }
 
@@ -156,7 +171,7 @@ router.post('/messages/send', protect, async (req, res) => {
 
         // جلب الرسالة مع بيانات المرسل + الرسالة المردود عليها
         const populatedMessage = await Message.findById(message._id)
-            .populate('sender', 'name email profileImage isPremium verification.isVerified')
+            .populate('sender', 'name email profileImage isPremium verification.isVerified isActive deviceBanned suspendedUntil')
             .populate({
                 path: 'replyTo',
                 select: 'content type sender mediaUrl createdAt',
@@ -165,7 +180,8 @@ router.post('/messages/send', protect, async (req, res) => {
 
         // تحويل الصور إلى URLs كاملة
         const messageObj = populatedMessage.toObject();
-        if (messageObj.sender) messageObj.sender.profileImage = getFullUrl(messageObj.sender.profileImage);
+        maskInPlace(messageObj);
+        if (messageObj.sender && !messageObj.sender.isSuspended) messageObj.sender.profileImage = getFullUrl(messageObj.sender.profileImage);
         if (messageObj.mediaUrl) messageObj.mediaUrl = getFullUrl(messageObj.mediaUrl);
 
         // استبدال المحتوى بالمحتوى المفلتر للموبايل
@@ -307,11 +323,12 @@ router.post('/conversations/:conversationId/messages/image', protect, uploadMess
 
         // جلب الرسالة مع بيانات المرسل
         const populatedMessage = await Message.findById(message._id)
-            .populate('sender', 'name profileImage isPremium verification.isVerified');
+            .populate('sender', 'name profileImage isPremium verification.isVerified isActive deviceBanned suspendedUntil');
 
         // تحويل الصور إلى URLs كاملة
         const imgMsgObj = populatedMessage.toObject();
-        if (imgMsgObj.sender) imgMsgObj.sender.profileImage = getFullUrl(imgMsgObj.sender.profileImage);
+        maskInPlace(imgMsgObj);
+        if (imgMsgObj.sender && !imgMsgObj.sender.isSuspended) imgMsgObj.sender.profileImage = getFullUrl(imgMsgObj.sender.profileImage);
         if (imgMsgObj.mediaUrl) imgMsgObj.mediaUrl = getFullUrl(imgMsgObj.mediaUrl);
 
         // إرسال عبر Socket.IO
@@ -482,11 +499,12 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
 
         // جلب الرسالة مع بيانات المرسل
         const populatedMessage = await Message.findById(message._id)
-            .populate('sender', 'name email profileImage isPremium verification.isVerified');
+            .populate('sender', 'name email profileImage isPremium verification.isVerified isActive deviceBanned suspendedUntil');
 
         // تحويل الصور إلى URLs كاملة
         const altMsgObj = populatedMessage.toObject();
-        if (altMsgObj.sender) altMsgObj.sender.profileImage = getFullUrl(altMsgObj.sender.profileImage);
+        maskInPlace(altMsgObj);
+        if (altMsgObj.sender && !altMsgObj.sender.isSuspended) altMsgObj.sender.profileImage = getFullUrl(altMsgObj.sender.profileImage);
         if (altMsgObj.mediaUrl) altMsgObj.mediaUrl = getFullUrl(altMsgObj.mediaUrl);
 
         // استبدال المحتوى بالمحتوى المفلتر للموبايل
@@ -584,7 +602,7 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
             conversation: conversationId,
             isDeleted: false
         })
-            .populate('sender', 'name email profileImage isPremium verification.isVerified')
+            .populate('sender', 'name email profileImage isPremium verification.isVerified isActive deviceBanned suspendedUntil')
             .populate({
                 path: 'replyTo',
                 select: 'content type sender mediaUrl createdAt',
@@ -603,7 +621,8 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
         // تحويل الصور إلى URLs كاملة + استبدال المحتوى بالمفلتر للموبايل
         const messagesWithFullUrls = messages.reverse().map(msg => {
             const msgObj = msg.toObject();
-            if (msgObj.sender) msgObj.sender.profileImage = getFullUrl(msgObj.sender.profileImage);
+            maskInPlace(msgObj);
+            if (msgObj.sender && !msgObj.sender.isSuspended) msgObj.sender.profileImage = getFullUrl(msgObj.sender.profileImage);
             if (msgObj.mediaUrl) msgObj.mediaUrl = getFullUrl(msgObj.mediaUrl);
             if (msgObj.filteredContent) {
                 msgObj.content = msgObj.filteredContent;

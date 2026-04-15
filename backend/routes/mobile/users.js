@@ -87,7 +87,14 @@ router.get('/users/search', protect, async (req, res) => {
         // بناء الفلتر
         const filter = {
             _id: { $ne: req.user._id },
-            isActive: true
+            isActive: true,
+            deviceBanned: { $ne: true },
+            // استبعاد المعلّقين مؤقتاً (suspendedUntil في المستقبل)
+            $or: [
+                { suspendedUntil: null },
+                { suspendedUntil: { $exists: false } },
+                { suspendedUntil: { $lte: new Date() } }
+            ]
             // Stealth Mode لا يخفي من الاكتشاف — فقط يمنع تسجيل زيارات البروفايل ويخفي آخر ظهور
         };
 
