@@ -224,6 +224,15 @@ router.put('/:id/action', protect, adminOnly, async (req, res) => {
         report.resolvedAt = Date.now();
         if (reviewNotes) report.reviewNotes = reviewNotes;
 
+        // استخراج بيانات الدليل من الرسالة المُبلّغ عنها (إن وجدت)
+        const messageEvidence = report.reportedMessage ? {
+            messageId: report.reportedMessage._id,
+            messageContent: report.reportedMessage.content || null,
+            messageMedia: report.reportedMessage.mediaUrl || null,
+            messageType: report.reportedMessage.type || 'text',
+            conversationId: report.reportedMessage.conversation || null
+        } : null;
+
         // تنفيذ الإجراء
         switch (action) {
             case 'message_deleted':
@@ -232,22 +241,103 @@ router.put('/:id/action', protect, adminOnly, async (req, res) => {
                         isDeleted: true
                     });
                 }
+                // تسجيل مخالفة على المستخدم المُبلَّغ عنه + إشعار + تعليق تلقائي عند 5
+                if (report.reportedUser) {
+                    const { recordViolation } = require('../utils/violationHelper');
+                    const targetUser = await User.findById(report.reportedUser._id || report.reportedUser);
+                    if (targetUser) {
+                        await recordViolation({
+                            user: targetUser,
+                            type: 'report',
+                            reason: `بلاغ مقبول - تم حذف رسالة${reviewNotes ? ': ' + reviewNotes : ''}`,
+                            evidence: messageEvidence,
+                            adminId: req.user._id
+                        });
+                    }
+                }
+                break;
+
+            case 'user_warned':
+            case 'warning_sent':
+                if (report.reportedUser) {
+                    const { recordViolation } = require('../utils/violationHelper');
+                    const targetUser = await User.findById(report.reportedUser._id || report.reportedUser);
+                    if (targetUser) {
+                        await recordViolation({
+                            user: targetUser,
+                            type: 'report',
+                            reason: `بلاغ مقبول ضد المستخدم${reviewNotes ? ': ' + reviewNotes : ''}`,
+                            evidence: messageEvidence,
+                            adminId: req.user._id
+                        });
+                    }
+                }
                 break;
 
             case 'user_suspended':
                 if (report.reportedUser) {
-                    await User.findByIdAndUpdate(report.reportedUser, {
-                        isActive: false
-                    });
+                    const days = parseInt(req.body.suspendDays) || 7;
+                    const targetUser = await User.findById(report.reportedUser._id || report.reportedUser);
+                    if (targetUser) {
+                        targetUser.isActive = false;
+                        targetUser.suspendedUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+                        targetUser.suspendReason = `بلاغ${reviewNotes ? ': ' + reviewNotes : ''}`;
+                        targetUser.violationCount = (targetUser.violationCount || 0) + 1;
+                        targetUser.warnings.push({
+                            reason: targetUser.suspendReason,
+                            action: 'suspend',
+                            adminId: req.user._id,
+                            evidence: messageEvidence
+                        });
+                        await targetUser.save();
+
+                        // إشعار
+                        try {
+                            const Notification = require('../models/Notification');
+                            const pushNotificationService = require('../services/pushNotificationService');
+                            const notifTitle = '⏸️ تم تعليق حسابك';
+                            const notifBody = `تم تعليق حسابك لمدة ${days} يوم بناءً على بلاغ.`;
+                            await Notification.create({
+                                title: notifTitle, body: notifBody, type: 'system',
+                                sender: req.user._id, targetUsers: [targetUser._id], recipients: 'specific'
+                            });
+                            await pushNotificationService.sendNotificationToUser(
+                                targetUser._id, { title: notifTitle, body: notifBody }, { type: 'system' }, false
+                            );
+                        } catch (e) {}
+                    }
                 }
                 break;
 
             case 'user_banned':
                 if (report.reportedUser) {
-                    await User.findByIdAndUpdate(report.reportedUser, {
-                        isActive: false,
-                        isBanned: true
-                    });
+                    const targetUser = await User.findById(report.reportedUser._id || report.reportedUser);
+                    if (targetUser) {
+                        targetUser.isActive = false;
+                        targetUser.suspendedUntil = new Date(Date.now() + 36500 * 24 * 60 * 60 * 1000);
+                        targetUser.suspendReason = `حظر نهائي بناءً على بلاغ${reviewNotes ? ': ' + reviewNotes : ''}`;
+                        targetUser.violationCount = (targetUser.violationCount || 0) + 1;
+                        targetUser.warnings.push({
+                            reason: targetUser.suspendReason,
+                            action: 'permanent_ban',
+                            adminId: req.user._id,
+                            evidence: messageEvidence
+                        });
+                        await targetUser.save();
+                        try {
+                            const Notification = require('../models/Notification');
+                            const pushNotificationService = require('../services/pushNotificationService');
+                            const notifTitle = '🚫 تم حظر حسابك نهائياً';
+                            const notifBody = 'تم حظر حسابك نهائياً بناءً على بلاغ.';
+                            await Notification.create({
+                                title: notifTitle, body: notifBody, type: 'system',
+                                sender: req.user._id, targetUsers: [targetUser._id], recipients: 'specific'
+                            });
+                            await pushNotificationService.sendNotificationToUser(
+                                targetUser._id, { title: notifTitle, body: notifBody }, { type: 'system' }, false
+                            );
+                        } catch (e) {}
+                    }
                 }
                 break;
 

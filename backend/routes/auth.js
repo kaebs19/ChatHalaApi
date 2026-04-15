@@ -423,14 +423,40 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
             }
         }
 
-        // فحص الاسم ضد الكلمات المحظورة
-        if (name) {
+        // فحص الاسم ضد الكلمات المحظورة (مع تسجيل مخالفة)
+        if (name && name !== user.name) {
             const nameCheck = await BannedWord.checkText(name, 'name');
             if (!nameCheck.isClean) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'الاسم يحتوي على كلمات غير مسموحة'
-                });
+                // تسجيل مخالفة + إشعار + تعليق تلقائي عند 5/يوم
+                try {
+                    const { recordViolation } = require('../utils/violationHelper');
+                    const result = await recordViolation({
+                        user,
+                        type: 'banned_name',
+                        reason: `محاولة استخدام اسم مخالف: "${name}" - يحتوي: ${(nameCheck.foundWords || []).join(', ')}`,
+                        oldName: user.name
+                    });
+                    return res.status(400).json({
+                        success: false,
+                        message: result.autoSuspended
+                            ? (result.suspendDays >= 36500 ? 'تم حظر حسابك نهائياً بسبب تكرار المخالفات' : `تم تعليق حسابك لمدة ${result.suspendDays} يوم`)
+                            : 'الاسم يحتوي على كلمات غير مسموحة',
+                        code: 'BANNED_NAME',
+                        data: {
+                            violationCount: result.totalViolations,
+                            dailyViolationCount: result.dailyViolationCount,
+                            dailyRemaining: result.dailyRemaining,
+                            autoSuspended: result.autoSuspended,
+                            suspendDays: result.suspendDays
+                        }
+                    });
+                } catch (e) {
+                    console.error('recordViolation failed for banned name:', e);
+                    return res.status(400).json({
+                        success: false,
+                        message: 'الاسم يحتوي على كلمات غير مسموحة'
+                    });
+                }
             }
         }
 
