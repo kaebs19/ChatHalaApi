@@ -10,7 +10,7 @@ const User = require('../models/User');
 
 (async () => {
     try {
-        await mongoose.connect(process.env.MONGO_URI);
+        await mongoose.connect(process.env.MONGODB_URI);
         console.log('✅ اتصال بقاعدة البيانات\n');
 
         const uploadsDir = path.join(__dirname, '..', 'uploads');
