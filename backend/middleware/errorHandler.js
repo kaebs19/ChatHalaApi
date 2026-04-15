@@ -56,14 +56,21 @@ const errorHandler = (err, req, res, next) => {
         error = new ErrorResponse(message, 401);
     }
 
-    res.status(error.statusCode).json({
+    // دعم AppError (له code + data إضافية)
+    const responseBody = {
         success: false,
-        message: error.message || 'خطأ في السيرفر',
-        error: process.env.NODE_ENV === 'development' ? {
-            message: err.message,
-            stack: err.stack
-        } : undefined
-    });
+        message: error.message || 'خطأ في السيرفر'
+    };
+    if (err.code && typeof err.code === 'string' && err.code !== '11000') {
+        responseBody.code = err.code;
+    }
+    if (err.data) {
+        responseBody.data = err.data;
+    }
+    if (process.env.NODE_ENV === 'development') {
+        responseBody.error = { message: err.message, stack: err.stack };
+    }
+    res.status(error.statusCode).json(responseBody);
 };
 
 // معالج للطلبات غير الموجودة (404)
