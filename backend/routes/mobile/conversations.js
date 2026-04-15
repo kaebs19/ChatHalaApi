@@ -597,16 +597,19 @@ router.get('/conversations', protect, async (req, res) => {
         const conversationsWithUnread = conversations.map(conv => ({
             ...conv,
             participants: conv.participants ? conv.participants.map(p => {
-                if (isSuspHelper(p)) {
-                    return {
-                        _id: p._id,
-                        name: 'مستخدم موقوف',
-                        profileImage: null,
-                        isSuspended: true,
-                        isOnline: false
-                    };
-                }
+                // نحتفظ بكل الحقول (كي لا يفشل decode على iOS) ونعدّل فقط المرئية
                 const { isActive, deviceBanned, suspendedUntil, ...rest } = p;
+                try {
+                    if (isSuspHelper(p)) {
+                        return {
+                            ...rest,
+                            name: 'مستخدم موقوف',
+                            profileImage: null,
+                            isSuspended: true,
+                            isOnline: false
+                        };
+                    }
+                } catch (e) {}
                 return { ...rest, profileImage: getFullUrl(p.profileImage) };
             }) : conv.participants,
             unreadCount: unreadMap.get(conv._id.toString()) || 0

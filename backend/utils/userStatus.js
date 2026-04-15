@@ -68,23 +68,21 @@ const userStatusFields = 'isActive deviceBanned suspendedUntil';
 const maskInPlace = (obj, key = 'sender') => {
     const u = obj?.[key];
     if (!u) return;
-    if (isUserSuspended(u)) {
-        const id = u._id;
-        obj[key] = {
-            _id: id,
-            name: 'مستخدم موقوف',
-            profileImage: null,
-            isPremium: false,
-            isOnline: false,
-            isSuspended: true,
-            verification: { isVerified: false }
-        };
-    } else {
-        // لا نرسل حقول الحالة للواجهة — فقط نحذفها
+    try {
+        if (isUserSuspended(u)) {
+            // نحتفظ بكل الحقول الأصلية ونعدّل فقط المرئية
+            u.name = 'مستخدم موقوف';
+            u.profileImage = null;
+            u.isSuspended = true;
+            u.isOnline = false;
+            u.isPremium = false;
+            if (u.verification) u.verification.isVerified = false;
+        }
+        // حذف حقول الحالة الداخلية (في الحالتين)
         delete u.isActive;
         delete u.deviceBanned;
         delete u.suspendedUntil;
-    }
+    } catch (e) {}
 };
 
 module.exports = {

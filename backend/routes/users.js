@@ -183,6 +183,84 @@ router.put('/:id/premium', protect, adminOnly, async (req, res) => {
     }
 });
 
+// ============================================
+// ⚠️ Static routes MUST come before /:id to avoid catching them
+// ============================================
+
+// @route   GET /api/users/locations  -- مواقع المستخدمين للخريطة
+router.get('/locations', protect, adminOnly, async (req, res) => {
+    try {
+        const users = await User.find({
+            'location.coordinates': { $ne: [0, 0] },
+            isActive: true
+        }).select('name email profileImage gender isActive isOnline lastLogin location createdAt');
+        res.status(200).json({ success: true, count: users.length, data: { users } });
+    } catch (error) {
+        console.error('خطأ في جلب مواقع المستخدمين:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   GET /api/users/stats/overview  -- إحصائيات سريعة
+router.get('/stats/overview', protect, adminOnly, async (req, res) => {
+    try {
+        const now = new Date();
+        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const last7Days = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const last30Days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+        const [
+            total, active, newToday, new7Days, new30Days,
+            suspended, permanentBanned, deviceBanned, violators, onlineNow,
+            premiumCount, verifiedCount
+        ] = await Promise.all([
+            User.countDocuments({}),
+            User.countDocuments({ isActive: true, deviceBanned: { $ne: true } }),
+            User.countDocuments({ createdAt: { $gte: startOfDay } }),
+            User.countDocuments({ createdAt: { $gte: last7Days } }),
+            User.countDocuments({ createdAt: { $gte: last30Days } }),
+            User.countDocuments({
+                isActive: false,
+                suspendedUntil: { $gte: now, $lte: new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000) }
+            }),
+            User.countDocuments({
+                suspendedUntil: { $gt: new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000) }
+            }),
+            User.countDocuments({ deviceBanned: true }),
+            User.countDocuments({ violationCount: { $gt: 0 } }),
+            User.countDocuments({ isOnline: true }),
+            User.countDocuments({ isPremium: true }),
+            User.countDocuments({ 'verification.isVerified': true })
+        ]);
+
+        res.json({
+            success: true,
+            data: {
+                total, active,
+                newUsers: { today: newToday, last7Days: new7Days, last30Days: new30Days },
+                moderation: { suspended, permanentBanned, deviceBanned, violators },
+                engagement: { onlineNow, premium: premiumCount, verified: verifiedCount }
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في إحصائيات المستخدمين:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   GET /api/users/banned-devices/list
+router.get('/banned-devices/list', protect, adminOnly, async (req, res) => {
+    try {
+        const devices = await BannedDevice.find()
+            .populate('bannedBy', 'name')
+            .sort('-bannedAt')
+            .limit(200);
+        res.json({ success: true, count: devices.length, data: devices });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 // @route   GET /api/users/:id
 // @desc    الحصول على مستخدم واحد
 // @access  Private/Admin
@@ -390,29 +468,6 @@ router.get('/:id/activity', protect, adminOnly, async (req, res) => {
 
     } catch (error) {
         console.error('خطأ في جلب نشاط المستخدم:', error);
-        res.status(500).json({
-            success: false,
-            message: 'خطأ في السيرفر'
-        });
-    }
-});
-
-// @route   GET /api/users/locations
-// @desc    جلب مواقع جميع المستخدمين (للخريطة)
-// @access  Private/Admin
-router.get('/locations', protect, adminOnly, async (req, res) => {
-    try {
-        const users = await User.find({
-            'location.coordinates': { $ne: [0, 0] }
-        }).select('name email profileImage gender isActive isOnline lastLogin location createdAt');
-
-        res.status(200).json({
-            success: true,
-            count: users.length,
-            data: { users }
-        });
-    } catch (error) {
-        console.error('خطأ في جلب مواقع المستخدمين:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر'
@@ -778,57 +833,6 @@ router.get('/:id/violations', protect, adminOnly, async (req, res) => {
     }
 });
 
-// @route   GET /api/users/stats/overview
-// @desc    إحصائيات سريعة عن المستخدمين (للدشبورد)
-// @access  Private/Admin
-router.get('/stats/overview', protect, adminOnly, async (req, res) => {
-    try {
-        const now = new Date();
-        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const last7Days = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        const last30Days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-
-        const [
-            total, active, newToday, new7Days, new30Days,
-            suspended, permanentBanned, deviceBanned, violators, onlineNow,
-            premiumCount, verifiedCount
-        ] = await Promise.all([
-            User.countDocuments({}),
-            User.countDocuments({ isActive: true, deviceBanned: { $ne: true } }),
-            User.countDocuments({ createdAt: { $gte: startOfDay } }),
-            User.countDocuments({ createdAt: { $gte: last7Days } }),
-            User.countDocuments({ createdAt: { $gte: last30Days } }),
-            // معلقون مؤقتاً
-            User.countDocuments({
-                isActive: false,
-                suspendedUntil: { $gte: now, $lte: new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000) }
-            }),
-            // محظورون نهائياً
-            User.countDocuments({
-                suspendedUntil: { $gt: new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000) }
-            }),
-            User.countDocuments({ deviceBanned: true }),
-            User.countDocuments({ violationCount: { $gt: 0 } }),
-            User.countDocuments({ isOnline: true }),
-            User.countDocuments({ isPremium: true }),
-            User.countDocuments({ 'verification.isVerified': true })
-        ]);
-
-        res.json({
-            success: true,
-            data: {
-                total, active,
-                newUsers: { today: newToday, last7Days: new7Days, last30Days: new30Days },
-                moderation: { suspended, permanentBanned, deviceBanned, violators },
-                engagement: { onlineNow, premium: premiumCount, verified: verifiedCount }
-            }
-        });
-    } catch (error) {
-        console.error('خطأ في إحصائيات المستخدمين:', error);
-        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
-    }
-});
-
 // @route   PUT /api/users/:id/ban-device
 // @desc    حظر جهاز المستخدم نهائياً (يمنعه من التسجيل بحساب جديد)
 // @access  Private/Admin
@@ -933,21 +937,6 @@ router.put('/:id/unban-device', protect, adminOnly, async (req, res) => {
         res.json({ success: true, message: 'تم فك حظر الجهاز' });
     } catch (error) {
         console.error('خطأ في فك حظر الجهاز:', error);
-        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
-    }
-});
-
-// @route   GET /api/users/banned-devices
-// @desc    قائمة الأجهزة المحظورة
-// @access  Private/Admin
-router.get('/banned-devices/list', protect, adminOnly, async (req, res) => {
-    try {
-        const devices = await BannedDevice.find()
-            .populate('bannedBy', 'name')
-            .sort('-bannedAt')
-            .limit(200);
-        res.json({ success: true, count: devices.length, data: devices });
-    } catch (error) {
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
