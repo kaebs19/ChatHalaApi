@@ -227,8 +227,9 @@ router.put('/:id/approve', protect, adminOnly, async (req, res) => {
             await BannedDevice.deleteMany({ originalUserId: user._id });
         }
 
+        const appealSnippet = (appeal.message || '').substring(0, 100);
         user.warnings.push({
-            reason: `قبول استئناف: ${note || appeal.message.substring(0, 100)}`,
+            reason: `قبول استئناف: ${note || appealSnippet || 'بدون ملاحظة'}`,
             action: 'unban',
             adminId: req.user._id
         });
