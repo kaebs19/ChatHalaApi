@@ -21,7 +21,17 @@ const notificationSchema = new mongoose.Schema({
     // نوع الإشعار
     type: {
         type: String,
-        enum: ['general', 'message', 'report', 'announcement', 'system', 'new_message', 'new_follower', 'like', 'comment', 'conversation_request', 'broadcast', 'super_like', 'profile_view', 'verification'],
+        enum: [
+            'general', 'message', 'report', 'announcement', 'system',
+            'new_message', 'new_follower', 'like', 'comment',
+            'conversation_request', 'broadcast', 'super_like',
+            'profile_view', 'verification',
+            // إشعارات جديدة
+            'appeal_message', 'appeal_approved', 'appeal_rejected',
+            'banned_word', 'banned_name', 'banned_image',
+            'new_report', 'violation', 'suspension', 'unban',
+            'device_ban', 'name_ban', 'warning'
+        ],
         default: 'general'
     },
 
