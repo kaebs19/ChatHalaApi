@@ -19,9 +19,10 @@ router.get('/banned-devices/list', protect, adminOnly, async (req, res) => {
             .lean();
 
         // إضافة عدد الحسابات المرتبطة لكل جهاز
+        // ملاحظة: نعتمد على tokens الفريدة فقط. البصمة (fingerprint) تستند
+        // لمعلومات عامة (iOS 17 + app v1.5) → غير موثوقة للمطابقة الدقيقة
         for (const d of devices) {
             const filters = [];
-            if (d.deviceFingerprint) filters.push({ deviceFingerprint: d.deviceFingerprint });
             if (d.deviceToken) filters.push({ deviceToken: d.deviceToken });
             if (d.fcmToken) filters.push({ fcmToken: d.fcmToken });
 
@@ -44,8 +45,8 @@ router.get('/banned-devices/:id/linked-accounts', protect, adminOnly, async (req
         const device = await BannedDevice.findById(req.params.id).lean();
         if (!device) return res.status(404).json({ success: false, message: 'الجهاز غير موجود' });
 
+        // نعتمد فقط على tokens الفريدة (deviceToken/fcmToken)
         const filters = [];
-        if (device.deviceFingerprint) filters.push({ deviceFingerprint: device.deviceFingerprint });
         if (device.deviceToken) filters.push({ deviceToken: device.deviceToken });
         if (device.fcmToken) filters.push({ fcmToken: device.fcmToken });
 
@@ -78,8 +79,8 @@ router.get('/:id/linked-accounts', protect, adminOnly, async (req, res) => {
             .lean();
         if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
 
+        // نعتمد فقط على tokens الفريدة
         const filters = [];
-        if (user.deviceFingerprint) filters.push({ deviceFingerprint: user.deviceFingerprint });
         if (user.deviceToken) filters.push({ deviceToken: user.deviceToken });
         if (user.fcmToken) filters.push({ fcmToken: user.fcmToken });
 
