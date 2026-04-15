@@ -302,7 +302,9 @@ const apiRoutes = {
     privacy: require('./routes/privacy'),
     categories: require('./routes/categories'),
     verifications: require('./routes/verifications'),
-    appeals: require('./routes/appeals')
+    appeals: require('./routes/appeals'),
+    swipes: require('./routes/swipes'),
+    matches: require('./routes/matches')
 };
 
 // تسجيل المسارات مع دعم /api/v1/ و /api/ (للتوافق العكسي)
