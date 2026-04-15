@@ -92,6 +92,38 @@ OLD_BUILD=$(ls frontend/build/static/js/main.*.js 2>/dev/null | head -1)
 echo -e "${BLUE}[INFO]${NC} الحالة الحالية: commit ${OLD_COMMIT}"
 
 # ------------------------------------------
+# 0. حماية من التعارضات (مهم: لا تعدّل على السيرفر — القاعدة الذهبية)
+# ------------------------------------------
+git fetch origin main --quiet
+
+# 0.1 التحقق من وجود تعديلات محلية غير مرفوعة
+LOCAL_CHANGES=$(git status --porcelain | grep -v '^??' | wc -l)
+if [ "$LOCAL_CHANGES" -gt 0 ]; then
+    echo -e "${YELLOW}[WARN]${NC} هناك تعديلات محلية على السيرفر — سيتم stash:"
+    git status --porcelain | grep -v '^??' | sed 's/^/  /'
+    git stash push -m "auto-stash-$(date +%Y%m%d-%H%M%S)" --quiet
+    echo -e "${GREEN}[OK]${NC} تم حفظها في stash (استخدم 'git stash list' لعرضها)"
+fi
+
+# 0.2 نقل untracked files التي ستُنشأ من الـ pull
+CONFLICTS=$(git diff --name-only --diff-filter=A HEAD origin/main 2>/dev/null | while read f; do
+    if [ -f "$f" ] && ! git ls-files --error-unmatch "$f" &>/dev/null; then
+        echo "$f"
+    fi
+done)
+
+if [ -n "$CONFLICTS" ]; then
+    echo -e "${YELLOW}[CLEAN]${NC} تنظيف ملفات untracked متعارضة:"
+    echo "$CONFLICTS" | sed 's/^/  /'
+    BACKUP_DIR="/tmp/halachat-untracked-$(date +%Y%m%d-%H%M%S)"
+    mkdir -p "$BACKUP_DIR"
+    echo "$CONFLICTS" | while read f; do
+        [ -n "$f" ] && mkdir -p "$BACKUP_DIR/$(dirname "$f")" && mv "$f" "$BACKUP_DIR/$f"
+    done
+    echo -e "${GREEN}[OK]${NC} تم حفظ النسخ الاحتياطية في: ${BACKUP_DIR}"
+fi
+
+# ------------------------------------------
 # 1. سحب التحديثات من GitHub
 # ------------------------------------------
 echo -e "\n${BLUE}[1/4]${NC} سحب التحديثات من GitHub..."
