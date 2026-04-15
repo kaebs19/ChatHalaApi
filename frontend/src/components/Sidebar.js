@@ -35,6 +35,18 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick }) {
             adminOnly: true
         },
         {
+            id: 'appeals',
+            name: 'طلبات الاستئناف',
+            icon: '📝',
+            adminOnly: true
+        },
+        {
+            id: 'banned-devices',
+            name: 'الأجهزة المحظورة',
+            icon: '📵',
+            adminOnly: true
+        },
+        {
             id: 'users-map',
             name: 'خريطة المستخدمين',
             icon: '🗺️',

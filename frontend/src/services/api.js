@@ -140,6 +140,28 @@ export const unbanUserDevice = async (userId) => {
     return response.data;
 };
 
+// ============ الأجهزة المحظورة ============
+export const getBannedDevices = async () => {
+    const response = await api.get('/users/banned-devices/list');
+    return response.data;
+};
+
+// ============ طلبات الاستئناف ============
+export const getAppeals = async (params = {}) => {
+    const response = await api.get('/appeals', { params });
+    return response.data;
+};
+
+export const approveAppeal = async (appealId, note = '') => {
+    const response = await api.put(`/appeals/${appealId}/approve`, { note });
+    return response.data;
+};
+
+export const rejectAppeal = async (appealId, note = '') => {
+    const response = await api.put(`/appeals/${appealId}/reject`, { note });
+    return response.data;
+};
+
 // حذف صورة المستخدم (Admin فقط)
 export const resetUserAvatar = async (userId) => {
     const response = await api.put(`/users/${userId}/reset-avatar`);

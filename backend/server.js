@@ -301,7 +301,8 @@ const apiRoutes = {
     mobile: require('./routes/mobile'),
     privacy: require('./routes/privacy'),
     categories: require('./routes/categories'),
-    verifications: require('./routes/verifications')
+    verifications: require('./routes/verifications'),
+    appeals: require('./routes/appeals')
 };
 
 // تسجيل المسارات مع دعم /api/v1/ و /api/ (للتوافق العكسي)
