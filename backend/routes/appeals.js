@@ -265,7 +265,14 @@ router.put('/:id/approve', protect, adminOnly, async (req, res) => {
         res.json({ success: true, message: 'تم قبول الطلب وفك الحظر', data: { appeal } });
     } catch (error) {
         console.error('خطأ في قبول الاستئناف:', error);
-        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+        console.error('Stack:', error.stack);
+        console.error('Appeal ID:', req.params.id);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            error: error.message,
+            ...(process.env.NODE_ENV !== 'production' && { stack: error.stack })
+        });
     }
 });
 
@@ -308,6 +315,20 @@ router.put('/:id/reject', protect, adminOnly, async (req, res) => {
         res.json({ success: true, message: 'تم رفض الطلب' });
     } catch (error) {
         console.error('خطأ في رفض الاستئناف:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   DELETE /api/appeals/:id
+// @desc    حذف طلب استئناف (يسمح للمستخدم بتقديم طلب جديد)
+// @access  Private/Admin
+router.delete('/:id', protect, adminOnly, async (req, res) => {
+    try {
+        const appeal = await Appeal.findByIdAndDelete(req.params.id);
+        if (!appeal) return res.status(404).json({ success: false, message: 'الطلب غير موجود' });
+        res.json({ success: true, message: 'تم حذف الطلب' });
+    } catch (error) {
+        console.error('خطأ في حذف الاستئناف:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });

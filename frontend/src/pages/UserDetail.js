@@ -74,8 +74,13 @@ function UserDetail({ userId, onBack }) {
     const handleSuspend = async () => {
         const days = window.prompt('عدد أيام التعليق:', '7');
         if (!days) return;
+        const reason = window.prompt(
+            'سبب التعليق؟\n(سيظهر للمستخدم في إشعار)',
+            'مخالفة سياسة الاستخدام'
+        );
+        if (reason === null) return;
         try {
-            await suspendUser(userId, parseInt(days), 'تعليق من لوحة التحكم');
+            await suspendUser(userId, parseInt(days), reason.trim() || 'مخالفة سياسة الاستخدام');
             showToast(`تم التعليق ${days} يوم`, 'success');
             fetchUserActivity();
         } catch (error) { showToast('فشل', 'error'); }

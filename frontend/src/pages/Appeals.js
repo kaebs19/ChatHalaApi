@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getAppeals, approveAppeal, rejectAppeal } from '../services/api';
+import { getAppeals, approveAppeal, rejectAppeal, deleteAppeal } from '../services/api';
 import { useToast } from '../components/Toast';
 import { getImageUrl, getDefaultAvatar } from '../config';
 import { formatDateTimeLong } from '../utils/formatters';
@@ -61,6 +61,17 @@ function Appeals({ onViewDetail }) {
             setNotes({ ...notes, [appeal._id]: '' });
             fetch();
         } catch { toast.error('فشل'); }
+        finally { setProcessingId(null); }
+    };
+
+    const handleDelete = async (appeal) => {
+        if (!window.confirm(`حذف الطلب نهائياً؟\n\nسيتمكن المستخدم "${appeal.user?.name}" من تقديم طلب جديد.`)) return;
+        try {
+            setProcessingId(appeal._id);
+            await deleteAppeal(appeal._id);
+            toast.success('تم حذف الطلب');
+            fetch();
+        } catch { toast.error('فشل الحذف'); }
         finally { setProcessingId(null); }
     };
 
@@ -195,6 +206,16 @@ function Appeals({ onViewDetail }) {
                                     fontWeight: '700', fontSize: '13px'
                                 }}>
                                 ❌ رفض
+                            </button>
+                            <button onClick={() => handleDelete(a)} disabled={processingId === a._id}
+                                title="حذف الطلب (يسمح بتقديم طلب جديد)"
+                                style={{
+                                    padding: '8px 12px', borderRadius: '6px', border: '1px solid #d1d5db',
+                                    background: '#fff', color: '#6b7280',
+                                    cursor: processingId === a._id ? 'wait' : 'pointer',
+                                    fontWeight: '600', fontSize: '13px'
+                                }}>
+                                🗑️
                             </button>
                         </div>
                     </div>

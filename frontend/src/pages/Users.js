@@ -121,8 +121,13 @@ function Users({ onViewDetail }) {
             toast.error('أدخل عدد أيام صحيح (1-365)');
             return;
         }
+        const reason = window.prompt(
+            `سبب تعليق "${user.name}"؟\n(سيظهر للمستخدم في إشعار)`,
+            'مخالفة سياسة الاستخدام'
+        );
+        if (reason === null) return;
         try {
-            await suspendUser(user._id, numDays, 'تعليق من لوحة التحكم');
+            await suspendUser(user._id, numDays, reason.trim() || 'مخالفة سياسة الاستخدام');
             toast.success(`تم تعليق ${user.name} لمدة ${numDays} يوم`);
             fetchUsers();
         } catch (error) {
