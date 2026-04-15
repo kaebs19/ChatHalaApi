@@ -5,6 +5,7 @@ const express = require('express');
 const router = express.Router();
 const Appeal = require('../models/Appeal');
 const User = require('../models/User');
+const Message = require('../models/Message');
 const Notification = require('../models/Notification');
 const BannedDevice = require('../models/BannedDevice');
 const pushNotificationService = require('../services/pushNotificationService');
@@ -101,18 +102,21 @@ router.get('/my', protectEvenSuspended, async (req, res) => {
             .limit(10)
             .lean();
 
-        // تحويل إلى صيغة iOS: reason + adminNote
+        // تحويل إلى صيغة iOS: reason + adminNote + thread
         const appeals = raw.map(a => ({
             _id: a._id,
             id: a._id,
             status: a.status,
-            reason: a.message,         // iOS يتوقع reason
-            message: a.message,         // للتوافق
-            adminNote: a.decisionNote,  // iOS يتوقع adminNote
+            reason: a.message,
+            message: a.message,
+            adminNote: a.decisionNote,
             decisionNote: a.decisionNote,
             suspensionType: a.suspensionType,
             createdAt: a.createdAt,
-            reviewedAt: a.reviewedAt
+            reviewedAt: a.reviewedAt,
+            thread: a.thread || [],
+            unreadByUser: a.unreadByUser || 0,
+            lastMessageAt: a.lastMessageAt
         }));
 
         res.json({
@@ -318,6 +322,154 @@ router.put('/:id/reject', protect, adminOnly, async (req, res) => {
         res.json({ success: true, message: 'تم رفض الطلب' });
     } catch (error) {
         console.error('خطأ في رفض الاستئناف:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   POST /api/appeals/:id/message
+// @desc    إضافة رسالة في محادثة الاستئناف (من المستخدم أو الأدمن)
+// @access  Private
+router.post('/:id/message', protectEvenSuspended, async (req, res) => {
+    try {
+        const { message } = req.body;
+        if (!message || message.trim().length < 2) {
+            return res.status(400).json({ success: false, message: 'الرسالة قصيرة جداً' });
+        }
+
+        const appeal = await Appeal.findById(req.params.id);
+        if (!appeal) return res.status(404).json({ success: false, message: 'الطلب غير موجود' });
+
+        // من يحق له الإرسال
+        const isAdmin = req.user.role === 'admin';
+        const isOwner = appeal.user.toString() === req.user._id.toString();
+        if (!isAdmin && !isOwner) {
+            return res.status(403).json({ success: false, message: 'غير مصرح' });
+        }
+
+        const senderType = isAdmin ? 'admin' : 'user';
+        const entry = {
+            senderType,
+            senderId: req.user._id,
+            senderName: req.user.name,
+            message: message.trim(),
+            createdAt: new Date(),
+            readByUser: senderType === 'user',
+            readByAdmin: senderType === 'admin'
+        };
+
+        await Appeal.findByIdAndUpdate(appeal._id, {
+            $push: { thread: entry },
+            lastMessageAt: new Date(),
+            $inc: senderType === 'admin' ? { unreadByUser: 1 } : { unreadByAdmin: 1 }
+        }, { runValidators: false });
+
+        // إشعار الطرف الآخر
+        try {
+            if (senderType === 'admin') {
+                // إشعار للمستخدم
+                await Notification.create({
+                    title: '💬 رسالة من الإدارة',
+                    body: message.trim().substring(0, 200),
+                    type: 'system',
+                    sender: req.user._id,
+                    targetUsers: [appeal.user],
+                    recipients: 'specific'
+                });
+                await pushNotificationService.sendNotificationToUser(appeal.user,
+                    { title: '💬 رسالة من الإدارة', body: message.trim().substring(0, 100) },
+                    { type: 'appeal_message', appealId: String(appeal._id) }, false);
+            } else {
+                // إشعار للأدمن عبر socket (كل الأدمن)
+                if (global.io) {
+                    global.io.emit('appeal-message', {
+                        appealId: appeal._id,
+                        userId: appeal.user,
+                        senderName: req.user.name,
+                        preview: message.trim().substring(0, 100)
+                    });
+                }
+            }
+        } catch (e) { console.error('notify error', e.message); }
+
+        res.json({ success: true, message: 'تم الإرسال', data: { entry } });
+    } catch (error) {
+        console.error('خطأ في إرسال الرسالة:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   PUT /api/appeals/:id/mark-read
+// @desc    تحديد رسائل الـ thread كمقروءة (للطرف الحالي)
+// @access  Private
+router.put('/:id/mark-read', protectEvenSuspended, async (req, res) => {
+    try {
+        const appeal = await Appeal.findById(req.params.id);
+        if (!appeal) return res.status(404).json({ success: false, message: 'الطلب غير موجود' });
+        const isAdmin = req.user.role === 'admin';
+        const isOwner = appeal.user.toString() === req.user._id.toString();
+        if (!isAdmin && !isOwner) return res.status(403).json({ success: false, message: 'غير مصرح' });
+
+        const field = isAdmin ? 'readByAdmin' : 'readByUser';
+        const counterField = isAdmin ? 'unreadByAdmin' : 'unreadByUser';
+
+        await Appeal.updateOne(
+            { _id: appeal._id },
+            {
+                $set: {
+                    [`thread.$[].${field}`]: true,
+                    [counterField]: 0
+                }
+            },
+            { runValidators: false }
+        );
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   GET /api/appeals/:id/details
+// @desc    تفاصيل كاملة لطلب استئناف (للأدمن): مخالفات المستخدم + سجل + محادثة
+// @access  Private/Admin
+router.get('/:id/details', protect, adminOnly, async (req, res) => {
+    try {
+        const appeal = await Appeal.findById(req.params.id)
+            .populate('user', 'name email profileImage isActive suspendedUntil suspendReason deviceBanned nameBanned violationCount suspensionCount warnings bannedNamesHistory createdAt lastLogin')
+            .populate('reviewedBy', 'name')
+            .populate('thread.senderId', 'name profileImage role')
+            .lean();
+
+        if (!appeal) return res.status(404).json({ success: false, message: 'الطلب غير موجود' });
+
+        // تحديد كمقروء من الأدمن
+        await Appeal.updateOne(
+            { _id: appeal._id },
+            { $set: { 'thread.$[].readByAdmin': true, unreadByAdmin: 0 } },
+            { runValidators: false }
+        );
+
+        // عدد الاستئنافات السابقة
+        const totalAppeals = await Appeal.countDocuments({ user: appeal.user._id });
+        const approvedAppeals = await Appeal.countDocuments({ user: appeal.user._id, status: 'approved' });
+        const rejectedAppeals = await Appeal.countDocuments({ user: appeal.user._id, status: 'rejected' });
+
+        // عدد الرسائل المخالفة
+        const flaggedMessagesCount = await Message.countDocuments({ sender: appeal.user._id, hasBannedWords: true });
+
+        res.json({
+            success: true,
+            data: {
+                appeal,
+                stats: {
+                    totalAppeals,
+                    approvedAppeals,
+                    rejectedAppeals,
+                    flaggedMessagesCount
+                }
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في التفاصيل:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });

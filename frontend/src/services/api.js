@@ -167,6 +167,16 @@ export const deleteAppeal = async (appealId) => {
     return response.data;
 };
 
+export const getAppealDetails = async (appealId) => {
+    const response = await api.get(`/appeals/${appealId}/details`);
+    return response.data;
+};
+
+export const sendAppealMessage = async (appealId, message) => {
+    const response = await api.post(`/appeals/${appealId}/message`, { message });
+    return response.data;
+};
+
 // حذف صورة المستخدم (Admin فقط)
 export const resetUserAvatar = async (userId) => {
     const response = await api.put(`/users/${userId}/reset-avatar`);
