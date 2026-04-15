@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { getAllUsers, deleteUser, toggleUserActive, updateUser, suspendUser } from '../services/api';
+import { getAllUsers, deleteUser, toggleUserActive, updateUser, suspendUser, getUsersOverview } from '../services/api';
 import { useToast } from '../components/Toast';
 import EditUserModal from '../components/EditUserModal';
 import Pagination from '../components/Pagination';
@@ -27,7 +27,17 @@ function Users({ onViewDetail }) {
     const [totalPages, setTotalPages] = useState(1);
     const [sortField, setSortField] = useState('createdAt');
     const [sortOrder, setSortOrder] = useState('desc');
+    const [stats, setStats] = useState(null);
     const toast = useToast();
+
+    const fetchStats = useCallback(async () => {
+        try {
+            const res = await getUsersOverview();
+            if (res.success) setStats(res.data);
+        } catch {}
+    }, []);
+
+    useEffect(() => { fetchStats(); }, [fetchStats]);
 
     const fetchUsers = useCallback(async () => {
         try {
@@ -184,14 +194,91 @@ function Users({ onViewDetail }) {
         }
     };
 
+    // chip quick filter
+    const QuickChip = ({ value, label, icon, count, color }) => {
+        const active = filterStatus === value;
+        return (
+            <button onClick={() => { setFilterStatus(value); setCurrentPage(1); }}
+                style={{
+                    padding: '8px 14px', borderRadius: '20px',
+                    border: active ? `2px solid ${color}` : '1px solid #e5e7eb',
+                    background: active ? color + '15' : '#fff',
+                    color: active ? color : '#374151',
+                    fontWeight: active ? '700' : '500',
+                    fontSize: '13px', cursor: 'pointer',
+                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                    transition: 'all 0.15s'
+                }}>
+                <span>{icon}</span>
+                <span>{label}</span>
+                {typeof count === 'number' && (
+                    <span style={{
+                        padding: '1px 8px', borderRadius: '10px',
+                        background: active ? color : '#f3f4f6',
+                        color: active ? '#fff' : '#6b7280',
+                        fontSize: '11px', fontWeight: '700'
+                    }}>{count}</span>
+                )}
+            </button>
+        );
+    };
+
+    const StatCard = ({ label, value, color, icon, sub }) => (
+        <div style={{
+            padding: '14px 16px', borderRadius: '12px',
+            background: '#fff', border: '1px solid #e5e7eb',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+            minWidth: 0
+        }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                <span style={{ fontSize: '18px' }}>{icon}</span>
+                <span style={{ fontSize: '11px', color: '#6b7280', fontWeight: '600' }}>{label}</span>
+            </div>
+            <div style={{ fontSize: '22px', fontWeight: '800', color }}>{typeof value === 'number' ? value.toLocaleString('ar-SA') : value}</div>
+            {sub && <div style={{ fontSize: '10px', color: '#9ca3af', marginTop: '2px' }}>{sub}</div>}
+        </div>
+    );
+
     return (
         <div className="users-page">
             <div className="users-header">
                 <div>
                     <h1>إدارة المستخدمين</h1>
-                    <p>إجمالي: {totalUsers} مستخدم</p>
+                    <p>إجمالي: {totalUsers.toLocaleString('ar-SA')} مستخدم</p>
                 </div>
-                <button className="refresh-btn" onClick={fetchUsers}>تحديث</button>
+                <button className="refresh-btn" onClick={() => { fetchUsers(); fetchStats(); }}>تحديث</button>
+            </div>
+
+            {/* بطاقات إحصائيات */}
+            {stats && (
+                <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                    gap: '10px',
+                    marginBottom: '16px'
+                }}>
+                    <StatCard icon="👥" label="إجمالي" value={stats.total} color="#3b82f6" sub={`${stats.active} نشط`} />
+                    <StatCard icon="🆕" label="جدد اليوم" value={stats.newUsers?.today || 0} color="#10b981" sub={`${stats.newUsers?.last7Days || 0} خلال أسبوع`} />
+                    <StatCard icon="🟢" label="متصلون الآن" value={stats.engagement?.onlineNow || 0} color="#059669" />
+                    <StatCard icon="⏸️" label="معلّقون مؤقتاً" value={stats.moderation?.suspended || 0} color="#f59e0b" />
+                    <StatCard icon="🚫" label="محظورون نهائياً" value={stats.moderation?.permanentBanned || 0} color="#dc2626" />
+                    <StatCard icon="📵" label="أجهزة محظورة" value={stats.moderation?.deviceBanned || 0} color="#111827" />
+                    <StatCard icon="⚠️" label="لديهم مخالفات" value={stats.moderation?.violators || 0} color="#ef4444" />
+                    <StatCard icon="💎" label="مميّزون" value={stats.engagement?.premium || 0} color="#8b5cf6" />
+                </div>
+            )}
+
+            {/* Quick filter chips */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '14px', paddingBottom: '14px', borderBottom: '1px solid #f3f4f6' }}>
+                <QuickChip value="all" label="الكل" icon="👥" count={stats?.total} color="#3b82f6" />
+                <QuickChip value="new_today" label="جدد اليوم" icon="🆕" count={stats?.newUsers?.today} color="#10b981" />
+                <QuickChip value="new_week" label="أسبوع" icon="📅" count={stats?.newUsers?.last7Days} color="#0ea5e9" />
+                <QuickChip value="online" label="متصلون" icon="🟢" count={stats?.engagement?.onlineNow} color="#059669" />
+                <QuickChip value="suspended" label="معلّقون" icon="⏸️" count={stats?.moderation?.suspended} color="#f59e0b" />
+                <QuickChip value="banned" label="محظورون" icon="🚫" count={stats?.moderation?.permanentBanned} color="#dc2626" />
+                <QuickChip value="device_banned" label="جهاز محظور" icon="📵" count={stats?.moderation?.deviceBanned} color="#111827" />
+                <QuickChip value="violators" label="لديهم مخالفات" icon="⚠️" count={stats?.moderation?.violators} color="#ef4444" />
+                <QuickChip value="premium" label="مميّزون" icon="💎" count={stats?.engagement?.premium} color="#8b5cf6" />
             </div>
 
             {error && <div className="error-banner">{error}</div>}
@@ -260,13 +347,35 @@ function Users({ onViewDetail }) {
                                 <tr key={user._id}>
                                     <td>
                                         <div className="user-cell" onClick={() => onViewDetail && onViewDetail(user._id)} style={{ cursor: 'pointer' }}>
-                                            <img
-                                                src={user.profileImage ? getImageUrl(user.profileImage) : getDefaultAvatar(user.name)}
-                                                alt={user.name}
-                                                className="user-avatar-small"
-                                                onError={(e) => { e.target.onerror = null; e.target.src = getDefaultAvatar(user.name); }}
-                                            />
-                                            <span className="user-name-link">{user.name}</span>
+                                            <div style={{ position: 'relative', display: 'inline-block' }}>
+                                                <img
+                                                    src={user.profileImage ? getImageUrl(user.profileImage) : getDefaultAvatar(user.name)}
+                                                    alt={user.name}
+                                                    className="user-avatar-small"
+                                                    onError={(e) => { e.target.onerror = null; e.target.src = getDefaultAvatar(user.name); }}
+                                                />
+                                                {user.isOnline && (
+                                                    <span style={{
+                                                        position: 'absolute', bottom: 0, right: 0,
+                                                        width: '10px', height: '10px', borderRadius: '50%',
+                                                        background: '#10b981', border: '2px solid #fff'
+                                                    }} />
+                                                )}
+                                            </div>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                    <span className="user-name-link">{user.name}</span>
+                                                    {/* شارة: جديد اليوم */}
+                                                    {(() => {
+                                                        const hoursSinceCreated = (Date.now() - new Date(user.createdAt).getTime()) / (1000 * 60 * 60);
+                                                        if (hoursSinceCreated < 24) return <span style={{ padding: '1px 6px', borderRadius: '8px', background: '#10b981', color: '#fff', fontSize: '9px', fontWeight: '700' }}>🆕 جديد</span>;
+                                                        return null;
+                                                    })()}
+                                                    {user.isPremium && <span style={{ padding: '1px 6px', borderRadius: '8px', background: '#8b5cf6', color: '#fff', fontSize: '9px', fontWeight: '700' }}>💎</span>}
+                                                    {user.verification?.isVerified && <span style={{ fontSize: '11px' }} title="موثق">✓</span>}
+                                                </div>
+                                                {user.uniqueTag && <span style={{ fontSize: '10px', color: '#9ca3af', direction: 'ltr' }}>{user.uniqueTag}</span>}
+                                            </div>
                                         </div>
                                     </td>
                                     <td dir="ltr" className="email-cell">{user.email}</td>

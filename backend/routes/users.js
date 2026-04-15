@@ -46,6 +46,18 @@ router.get('/', protect, adminOnly, async (req, res) => {
             ];
         } else if (status === 'violators') {
             filter.violationCount = { $gt: 0 };
+        } else if (status === 'new_today') {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            filter.createdAt = { $gte: today };
+        } else if (status === 'new_week') {
+            filter.createdAt = { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) };
+        } else if (status === 'online') {
+            filter.isOnline = true;
+        } else if (status === 'premium') {
+            filter.isPremium = true;
+        } else if (status === 'device_banned') {
+            filter.deviceBanned = true;
         }
         if (role && role !== 'all') filter.role = role;
 
@@ -762,6 +774,57 @@ router.get('/:id/violations', protect, adminOnly, async (req, res) => {
         });
     } catch (error) {
         console.error('خطأ:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   GET /api/users/stats/overview
+// @desc    إحصائيات سريعة عن المستخدمين (للدشبورد)
+// @access  Private/Admin
+router.get('/stats/overview', protect, adminOnly, async (req, res) => {
+    try {
+        const now = new Date();
+        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const last7Days = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const last30Days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+        const [
+            total, active, newToday, new7Days, new30Days,
+            suspended, permanentBanned, deviceBanned, violators, onlineNow,
+            premiumCount, verifiedCount
+        ] = await Promise.all([
+            User.countDocuments({}),
+            User.countDocuments({ isActive: true, deviceBanned: { $ne: true } }),
+            User.countDocuments({ createdAt: { $gte: startOfDay } }),
+            User.countDocuments({ createdAt: { $gte: last7Days } }),
+            User.countDocuments({ createdAt: { $gte: last30Days } }),
+            // معلقون مؤقتاً
+            User.countDocuments({
+                isActive: false,
+                suspendedUntil: { $gte: now, $lte: new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000) }
+            }),
+            // محظورون نهائياً
+            User.countDocuments({
+                suspendedUntil: { $gt: new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000) }
+            }),
+            User.countDocuments({ deviceBanned: true }),
+            User.countDocuments({ violationCount: { $gt: 0 } }),
+            User.countDocuments({ isOnline: true }),
+            User.countDocuments({ isPremium: true }),
+            User.countDocuments({ 'verification.isVerified': true })
+        ]);
+
+        res.json({
+            success: true,
+            data: {
+                total, active,
+                newUsers: { today: newToday, last7Days: new7Days, last30Days: new30Days },
+                moderation: { suspended, permanentBanned, deviceBanned, violators },
+                engagement: { onlineNow, premium: premiumCount, verified: verifiedCount }
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في إحصائيات المستخدمين:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });

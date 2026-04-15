@@ -146,6 +146,12 @@ export const getBannedDevices = async () => {
     return response.data;
 };
 
+// إحصائيات مستخدمين سريعة
+export const getUsersOverview = async () => {
+    const response = await api.get('/users/stats/overview');
+    return response.data;
+};
+
 // ============ طلبات الاستئناف ============
 export const getAppeals = async (params = {}) => {
     const response = await api.get('/appeals', { params });
