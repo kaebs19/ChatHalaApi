@@ -197,10 +197,32 @@ router.post('/messages/send', protect, async (req, res) => {
             if (filteredContent) {
                 socketMessage.content = filteredContent;
             }
+            // 1) للموجودين داخل غرفة المحادثة (ChatRoomView)
             global.io.to(`conversation-${conversationId}`).emit('new-message', {
                 message: socketMessage
             });
-            logger.debug('Emitted!');
+            // 2) لكل مشارك في غرفة user:{id} — لتحديث قائمة المحادثات فوراً
+            conversation.participants.forEach(p => {
+                const pid = p._id.toString();
+                if (pid !== req.user._id.toString()) {
+                    global.io.to(`user:${pid}`).emit('new-message', {
+                        message: socketMessage,
+                        conversationId: conversationId
+                    });
+                    // حدث مخصص لتحديث قائمة المحادثات
+                    global.io.to(`user:${pid}`).emit('conversation-updated', {
+                        conversationId,
+                        lastMessage: {
+                            content: socketMessage.content,
+                            type: socketMessage.type,
+                            sender: req.user._id,
+                            createdAt: messageObj.createdAt
+                        },
+                        senderName: req.user.name
+                    });
+                }
+            });
+            logger.debug('Emitted to conversation + user rooms!');
         } else {
             logger.error('global.io is undefined!');
         }
@@ -335,6 +357,25 @@ router.post('/conversations/:conversationId/messages/image', protect, uploadMess
         if (global.io) {
             global.io.to(`conversation-${conversationId}`).emit('new-message', {
                 message: imgMsgObj
+            });
+            // لتحديث قائمة المحادثات عند كل مشارك
+            conversation.participants.forEach(p => {
+                const pid = p._id.toString();
+                if (pid !== senderId.toString()) {
+                    global.io.to(`user:${pid}`).emit('new-message', {
+                        message: imgMsgObj,
+                        conversationId
+                    });
+                    global.io.to(`user:${pid}`).emit('conversation-updated', {
+                        conversationId,
+                        lastMessage: {
+                            content: imgMsgObj.content,
+                            type: imgMsgObj.type,
+                            sender: senderId,
+                            createdAt: imgMsgObj.createdAt
+                        }
+                    });
+                }
             });
         }
 
@@ -522,6 +563,25 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
             }
             global.io.to(`conversation-${conversationId}`).emit('new-message', {
                 message: socketMessage
+            });
+            // لتحديث قائمة محادثات كل المشاركين
+            conversation.participants.forEach(p => {
+                const pid = p._id.toString();
+                if (pid !== req.user._id.toString()) {
+                    global.io.to(`user:${pid}`).emit('new-message', {
+                        message: socketMessage,
+                        conversationId
+                    });
+                    global.io.to(`user:${pid}`).emit('conversation-updated', {
+                        conversationId,
+                        lastMessage: {
+                            content: socketMessage.content,
+                            type: socketMessage.type,
+                            sender: req.user._id,
+                            createdAt: altMsgObj.createdAt
+                        }
+                    });
+                }
             });
             logger.debug('Emitted!');
         }
