@@ -237,11 +237,13 @@ router.put('/:id/approve', protect, adminOnly, async (req, res) => {
 
         await user.save();
 
-        appeal.status = 'approved';
-        appeal.reviewedBy = req.user._id;
-        appeal.reviewedAt = new Date();
-        appeal.decisionNote = note;
-        await appeal.save();
+        // استخدام update بدل save لتجنب فشل التحقق على الطلبات القديمة
+        await Appeal.findByIdAndUpdate(appeal._id, {
+            status: 'approved',
+            reviewedBy: req.user._id,
+            reviewedAt: new Date(),
+            decisionNote: note
+        }, { runValidators: false });
 
         // إشعار المستخدم (مع ملاحظة الأدمن إن وُجدت)
         try {
@@ -288,11 +290,12 @@ router.put('/:id/reject', protect, adminOnly, async (req, res) => {
             return res.status(400).json({ success: false, message: 'تم الرد على هذا الطلب بالفعل' });
         }
 
-        appeal.status = 'rejected';
-        appeal.reviewedBy = req.user._id;
-        appeal.reviewedAt = new Date();
-        appeal.decisionNote = note;
-        await appeal.save();
+        await Appeal.findByIdAndUpdate(appeal._id, {
+            status: 'rejected',
+            reviewedBy: req.user._id,
+            reviewedAt: new Date(),
+            decisionNote: note
+        }, { runValidators: false });
 
         // إشعار المستخدم (مع ملاحظة الأدمن إن وُجدت)
         try {

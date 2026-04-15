@@ -13,9 +13,9 @@ const appealSchema = new mongoose.Schema({
     // رسالة المستخدم (سبب طلب فك الحظر/التعليق)
     message: {
         type: String,
-        required: true,
         trim: true,
-        maxlength: 1000
+        maxlength: 1000,
+        default: ''
     },
     // نوع الحظر وقت تقديم الطلب (للمرجع)
     suspensionType: {
