@@ -308,4 +308,174 @@ router.put('/:id/warn', protect, adminOnly, async (req, res) => {
     }
 });
 
+// ============================================
+// 📨 تنبيهات احترافية (بدون تسجيل مخالفة)
+// ============================================
+
+// قوالب التنبيهات الجاهزة
+const NOTIFICATION_TEMPLATES = {
+    photo: {
+        title: '⚠️ تنبيه بشأن الصورة الشخصية',
+        body: 'صورتك الشخصية تخالف سياسة الاستخدام. يرجى تغييرها خلال 24 ساعة لتجنب الإيقاف.'
+    },
+    name: {
+        title: '⚠️ تنبيه بشأن الاسم',
+        body: 'اسمك الحالي يخالف سياسة التطبيق. يرجى تغييره لتجنب إيقاف حسابك.'
+    },
+    content: {
+        title: '⚠️ تنبيه بشأن المحتوى',
+        body: 'تم رصد محتوى مخالف لسياسة الاستخدام. يرجى الالتزام بالشروط لتجنب الإيقاف.'
+    },
+    behavior: {
+        title: '⚠️ تنبيه بشأن السلوك',
+        body: 'تلقينا بلاغات عن سلوك مزعج من حسابك. نأمل التزامك بقواعد التطبيق لتجنب الإجراءات.'
+    },
+    final_warning: {
+        title: '🚫 تحذير أخير',
+        body: 'هذا تحذيرك الأخير. أي مخالفة إضافية ستؤدي لإيقاف حسابك فوراً وبشكل نهائي.'
+    },
+    bio: {
+        title: '⚠️ تنبيه بشأن النبذة',
+        body: 'نبذتك الشخصية تحتوي على محتوى مخالف. يرجى تعديلها لتتوافق مع سياسة الاستخدام.'
+    }
+};
+
+// @route   POST /api/users/:id/notify
+// @desc    إرسال تنبيه رسمي للمستخدم (بدون تسجيل مخالفة)
+router.post('/:id/notify', protect, adminOnly, async (req, res) => {
+    try {
+        const { template, title, body } = req.body;
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+
+        let notifTitle, notifBody;
+
+        if (template && NOTIFICATION_TEMPLATES[template]) {
+            notifTitle = NOTIFICATION_TEMPLATES[template].title;
+            notifBody = NOTIFICATION_TEMPLATES[template].body;
+        } else if (title && body) {
+            notifTitle = title;
+            notifBody = body;
+        } else {
+            return res.status(400).json({ success: false, message: 'اختر قالب أو اكتب عنوان ومحتوى' });
+        }
+
+        // إشعار DB + Push + Socket
+        await Notification.create({
+            title: notifTitle, body: notifBody, type: 'warning',
+            sender: req.user._id, targetUsers: [user._id], recipients: 'specific'
+        });
+        await pushNotificationService.sendNotificationToUser(user._id,
+            { title: notifTitle, body: notifBody }, { type: 'warning' }, false);
+        if (global.io) {
+            global.io.to(`user:${user._id}`).emit('notification', {
+                title: notifTitle, body: notifBody, type: 'warning'
+            });
+        }
+
+        res.json({ success: true, message: `تم إرسال التنبيه لـ ${user.name}` });
+    } catch (error) {
+        console.error('خطأ في إرسال التنبيه:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   GET /api/users/notification-templates
+// @desc    قائمة قوالب التنبيهات المتاحة
+router.get('/notification-templates', protect, adminOnly, (req, res) => {
+    const templates = Object.entries(NOTIFICATION_TEMPLATES).map(([key, val]) => ({
+        key,
+        title: val.title,
+        body: val.body
+    }));
+    res.json({ success: true, data: templates });
+});
+
+// ============================================
+// ⚠️ إدارة عدد المخالفات
+// ============================================
+
+// @route   PUT /api/users/:id/adjust-violations
+// @desc    تعديل عدد المخالفات (+/-)
+router.put('/:id/adjust-violations', protect, adminOnly, async (req, res) => {
+    try {
+        const { amount = 1, reason = '' } = req.body;
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+
+        const oldCount = user.violationCount || 0;
+        user.violationCount = Math.max(0, oldCount + parseInt(amount));
+
+        // سجّل في warnings
+        user.warnings.push({
+            reason: reason || `تعديل المخالفات يدوياً: ${amount > 0 ? '+' : ''}${amount}`,
+            action: 'warn',
+            adminId: req.user._id
+        });
+
+        await user.save();
+
+        // إشعار المستخدم إذا كانت زيادة
+        if (amount > 0) {
+            const notifTitle = '⚠️ مخالفة مسجّلة';
+            const notifBody = reason
+                ? `تم تسجيل مخالفة: ${reason}. إجمالي المخالفات: ${user.violationCount}`
+                : `تم تسجيل ${amount} مخالفة. إجمالي المخالفات: ${user.violationCount}`;
+            await Notification.create({
+                title: notifTitle, body: notifBody, type: 'warning',
+                sender: req.user._id, targetUsers: [user._id], recipients: 'specific'
+            });
+            await pushNotificationService.sendNotificationToUser(user._id,
+                { title: notifTitle, body: notifBody }, { type: 'warning' }, false);
+            if (global.io) {
+                global.io.to(`user:${user._id}`).emit('notification', {
+                    title: notifTitle, body: notifBody
+                });
+            }
+        }
+
+        invalidateUsers();
+        res.json({
+            success: true,
+            message: `تم تعديل المخالفات: ${oldCount} → ${user.violationCount}`,
+            data: { oldCount, newCount: user.violationCount }
+        });
+    } catch (error) {
+        console.error('خطأ في تعديل المخالفات:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   PUT /api/users/:id/clear-violations
+// @desc    تصفير جميع المخالفات
+router.put('/:id/clear-violations', protect, adminOnly, async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+
+        const oldCount = user.violationCount || 0;
+        user.violationCount = 0;
+        user.dailyViolationCount = 0;
+        user.dailyViolationDate = null;
+        user.suspensionCount = 0;
+        user.warnings.push({
+            reason: `تصفير جميع المخالفات (كانت ${oldCount})`,
+            action: 'unban',
+            adminId: req.user._id
+        });
+
+        await user.save();
+        invalidateUsers();
+
+        res.json({
+            success: true,
+            message: `تم تصفير مخالفات ${user.name} (كانت ${oldCount})`,
+            data: { oldCount, newCount: 0 }
+        });
+    } catch (error) {
+        console.error('خطأ في تصفير المخالفات:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 module.exports = router;

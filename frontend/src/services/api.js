@@ -158,6 +158,24 @@ export const getUserLinkedAccounts = async (userId) => {
     return response.data;
 };
 
+// تنبيه رسمي للمستخدم (بدون مخالفة)
+export const sendUserNotification = async (userId, data) => {
+    const response = await api.post(`/users/${userId}/notify`, data);
+    return response.data;
+};
+
+// تعديل عدد المخالفات (+/-)
+export const adjustUserViolations = async (userId, amount, reason = '') => {
+    const response = await api.put(`/users/${userId}/adjust-violations`, { amount, reason });
+    return response.data;
+};
+
+// تصفير جميع المخالفات
+export const clearUserViolations = async (userId) => {
+    const response = await api.put(`/users/${userId}/clear-violations`);
+    return response.data;
+};
+
 // إحصائيات مستخدمين سريعة
 export const getUsersOverview = async () => {
     const response = await api.get('/users/stats/overview');

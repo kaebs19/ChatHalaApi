@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getUserActivity, getUserViolations, warnUser, resetUserAvatar, banUserName, suspendUser, toggleUserActive, banUserPermanent, unbanUser, banUserDevice, unbanUserDevice, getUserLinkedAccounts } from '../services/api';
+import { getUserActivity, getUserViolations, warnUser, resetUserAvatar, banUserName, suspendUser, toggleUserActive, banUserPermanent, unbanUser, banUserDevice, unbanUserDevice, getUserLinkedAccounts, sendUserNotification, adjustUserViolations, clearUserViolations } from '../services/api';
 import { useToast } from '../components/Toast';
 import { getImageUrl, getDefaultAvatar } from '../config';
 import { formatDateTimeLong, formatDateLong } from '../utils/formatters';
@@ -799,11 +799,115 @@ function UserDetail({ userId, onBack }) {
                 {/* Admin Tools Tab */}
                 {activeTab === 'admin' && (
                     <div className="admin-tools-section">
-                        <h3>🛡️ أدوات الإشراف</h3>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginTop: '15px' }}>
+
+                        {/* ═══ 📨 تنبيهات احترافية ═══ */}
+                        <div style={{ marginBottom: '24px' }}>
+                            <h3 style={{ fontSize: '16px', marginBottom: '12px' }}>📨 إرسال تنبيه رسمي</h3>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px' }}>
+                                {[
+                                    { key: 'photo', icon: '🖼️', label: 'صورة مخالفة', desc: 'تنبيه لتغيير الصورة', color: '#6366f1' },
+                                    { key: 'name', icon: '✏️', label: 'اسم مخالف', desc: 'تنبيه لتغيير الاسم', color: '#ec4899' },
+                                    { key: 'content', icon: '📝', label: 'محتوى غير لائق', desc: 'تنبيه عن المحتوى', color: '#f59e0b' },
+                                    { key: 'behavior', icon: '🤝', label: 'سلوك مزعج', desc: 'تنبيه عن السلوك', color: '#0ea5e9' },
+                                    { key: 'bio', icon: '📋', label: 'نبذة مخالفة', desc: 'تنبيه عن النبذة', color: '#8b5cf6' },
+                                    { key: 'final_warning', icon: '🚫', label: 'تحذير أخير', desc: 'آخر فرصة قبل الإيقاف', color: '#dc2626' }
+                                ].map(t => (
+                                    <button key={t.key} onClick={async () => {
+                                        if (!window.confirm(`إرسال تنبيه "${t.label}" لـ ${user?.name}؟\n\nسيصله إشعار push فوري.`)) return;
+                                        try {
+                                            await sendUserNotification(userId, { template: t.key });
+                                            showToast(`تم إرسال تنبيه "${t.label}"`, 'success');
+                                        } catch { showToast('فشل', 'error'); }
+                                    }} style={{
+                                        padding: '12px', borderRadius: '10px',
+                                        border: `1px solid ${t.color}30`,
+                                        background: `${t.color}08`,
+                                        cursor: 'pointer', textAlign: 'right'
+                                    }}>
+                                        <div style={{ fontSize: '14px', fontWeight: '600' }}>{t.icon} {t.label}</div>
+                                        <div style={{ fontSize: '10px', color: '#6b7280', marginTop: '2px' }}>{t.desc}</div>
+                                    </button>
+                                ))}
+                                {/* رسالة مخصصة */}
+                                <button onClick={async () => {
+                                    const title = window.prompt('عنوان التنبيه:', '⚠️ تنبيه من الإدارة');
+                                    if (!title) return;
+                                    const body = window.prompt('محتوى التنبيه:', '');
+                                    if (!body) return;
+                                    try {
+                                        await sendUserNotification(userId, { title, body });
+                                        showToast('تم إرسال التنبيه المخصص', 'success');
+                                    } catch { showToast('فشل', 'error'); }
+                                }} style={{
+                                    padding: '12px', borderRadius: '10px',
+                                    border: '2px dashed #9ca3af',
+                                    background: '#f9fafb',
+                                    cursor: 'pointer', textAlign: 'right'
+                                }}>
+                                    <div style={{ fontSize: '14px', fontWeight: '600' }}>💬 رسالة مخصصة</div>
+                                    <div style={{ fontSize: '10px', color: '#6b7280', marginTop: '2px' }}>اكتب عنوان ومحتوى</div>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* ═══ ⚠️ إدارة المخالفات ═══ */}
+                        <div style={{ marginBottom: '24px', padding: '16px', background: '#f9fafb', borderRadius: '12px', border: '1px solid #e5e7eb' }}>
+                            <h3 style={{ fontSize: '16px', marginBottom: '12px' }}>⚠️ إدارة المخالفات</h3>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                                <div style={{ fontSize: '13px', color: '#374151' }}>
+                                    العدد الحالي:
+                                    <span style={{
+                                        display: 'inline-block', padding: '4px 14px', borderRadius: '12px',
+                                        background: (user?.violationCount || 0) >= 5 ? '#fecaca' : (user?.violationCount || 0) > 0 ? '#fef3c7' : '#d1fae5',
+                                        fontWeight: '800', fontSize: '16px', marginRight: '8px', marginLeft: '8px'
+                                    }}>
+                                        {user?.violationCount || 0}
+                                    </span>
+                                </div>
+                                <div style={{ display: 'flex', gap: '6px' }}>
+                                    {[
+                                        { amount: 1, label: '+1', bg: '#fef3c7', color: '#92400e' },
+                                        { amount: 3, label: '+3', bg: '#fed7aa', color: '#c2410c' },
+                                        { amount: 5, label: '+5', bg: '#fecaca', color: '#991b1b' },
+                                        { amount: -1, label: '-1', bg: '#d1fae5', color: '#065f46' },
+                                        { amount: -3, label: '-3', bg: '#a7f3d0', color: '#047857' }
+                                    ].map(v => (
+                                        <button key={v.label} onClick={async () => {
+                                            const reason = v.amount > 0 ? window.prompt('سبب الإضافة (اختياري):', '') : null;
+                                            if (v.amount > 0 && reason === null) return;
+                                            try {
+                                                const res = await adjustUserViolations(userId, v.amount, reason || '');
+                                                showToast(res.message, 'success');
+                                                fetchUserActivity();
+                                            } catch { showToast('فشل', 'error'); }
+                                        }} style={{
+                                            padding: '6px 14px', borderRadius: '8px', border: 'none',
+                                            background: v.bg, color: v.color,
+                                            fontWeight: '700', fontSize: '14px', cursor: 'pointer'
+                                        }}>{v.label}</button>
+                                    ))}
+                                </div>
+                                <button onClick={async () => {
+                                    if (!window.confirm(`تصفير جميع مخالفات ${user?.name}؟\n\nسيُمحى: عداد المخالفات + عداد اليومي + عداد الإيقافات`)) return;
+                                    try {
+                                        const res = await clearUserViolations(userId);
+                                        showToast(res.message, 'success');
+                                        fetchUserActivity();
+                                    } catch { showToast('فشل', 'error'); }
+                                }} style={{
+                                    padding: '6px 14px', borderRadius: '8px', border: '1px solid #dc2626',
+                                    background: '#fff', color: '#dc2626',
+                                    fontWeight: '600', fontSize: '13px', cursor: 'pointer'
+                                }}>🗑️ تصفير الكل</button>
+                            </div>
+                        </div>
+
+                        {/* ═══ 🔧 إجراءات ═══ */}
+                        <h3 style={{ fontSize: '16px', marginBottom: '12px' }}>🔧 إجراءات</h3>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
                             <button onClick={handleWarn} style={{ padding: '16px', borderRadius: '12px', border: '2px solid #f59e0b', background: '#fffbeb', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>
-                                ⚠️ إرسال تحذير
-                                <div style={{ fontSize: '11px', color: '#92400e', marginTop: '4px' }}>يزيد عداد المخالفات +1</div>
+                                ⚠️ تحذير + مخالفة
+                                <div style={{ fontSize: '11px', color: '#92400e', marginTop: '4px' }}>يزيد العداد +1 + تعليق تلقائي عند 5</div>
                             </button>
                             <button onClick={handleResetAvatar} style={{ padding: '16px', borderRadius: '12px', border: '2px solid #6366f1', background: '#eef2ff', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>
                                 🖼️ حذف الصورة
