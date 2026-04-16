@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getUserActivity, getUserViolations, warnUser, resetUserAvatar, banUserName, suspendUser, toggleUserActive, banUserPermanent, unbanUser, banUserDevice, unbanUserDevice } from '../services/api';
+import { getUserActivity, getUserViolations, warnUser, resetUserAvatar, banUserName, suspendUser, toggleUserActive, banUserPermanent, unbanUser, banUserDevice, unbanUserDevice, getUserLinkedAccounts } from '../services/api';
 import { useToast } from '../components/Toast';
 import { getImageUrl, getDefaultAvatar } from '../config';
 import { formatDateTimeLong, formatDateLong } from '../utils/formatters';
@@ -14,6 +14,7 @@ function UserDetail({ userId, onBack }) {
     const [viewingConversationId, setViewingConversationId] = useState(null);
     const [viewingConversationMessages, setViewingConversationMessages] = useState(false);
     const [violations, setViolations] = useState(null);
+    const [linkedAccounts, setLinkedAccounts] = useState(null);
     const { showToast } = useToast();
 
     useEffect(() => {
@@ -31,6 +32,13 @@ function UserDetail({ userId, onBack }) {
         } finally {
             setLoading(false);
         }
+    };
+
+    const fetchLinkedAccounts = async () => {
+        try {
+            const res = await getUserLinkedAccounts(userId);
+            if (res.success) setLinkedAccounts(res.data);
+        } catch {}
     };
 
     const fetchViolations = async () => {
@@ -306,6 +314,10 @@ function UserDetail({ userId, onBack }) {
                 >
                     ⚠️ المخالفات
                 </button>
+                <button
+                    className={`tab-btn ${activeTab === 'linked' ? 'active' : ''}`}
+                    onClick={() => { setActiveTab('linked'); fetchLinkedAccounts(); }}
+                >👥 حسابات مرتبطة</button>
                 <button
                     className={`tab-btn ${activeTab === 'admin' ? 'active' : ''}`}
                     onClick={() => setActiveTab('admin')}
@@ -727,6 +739,59 @@ function UserDetail({ userId, onBack }) {
                             </>
                         ) : (
                             <p style={{ textAlign: 'center', color: '#999', padding: '30px' }}>جاري التحميل...</p>
+                        )}
+                    </div>
+                )}
+
+                {/* Linked Accounts Tab */}
+                {activeTab === 'linked' && (
+                    <div>
+                        <h3>👥 الحسابات المرتبطة (نفس الجهاز)</h3>
+                        {!linkedAccounts ? (
+                            <p style={{ textAlign: 'center', padding: '30px', color: '#9ca3af' }}>جاري التحميل...</p>
+                        ) : linkedAccounts.accounts.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '40px', background: '#f9fafb', borderRadius: '12px' }}>
+                                <div style={{ fontSize: '36px' }}>✅</div>
+                                <p style={{ color: '#6b7280', marginTop: '8px' }}>لا توجد حسابات مرتبطة بنفس الجهاز</p>
+                                <p style={{ color: '#9ca3af', fontSize: '12px' }}>هذا المستخدم لم يُنشئ حسابات أخرى من نفس التطبيق</p>
+                            </div>
+                        ) : (
+                            <>
+                                <div style={{
+                                    padding: '10px 14px', background: '#fef2f2', borderRadius: '8px',
+                                    marginBottom: '12px', fontSize: '13px', color: '#991b1b',
+                                    border: '1px solid #fecaca'
+                                }}>
+                                    ⚠️ تم اكتشاف <b>{linkedAccounts.accounts.length}</b> حسابات أخرى مرتبطة بنفس الجهاز — قد يكون المستخدم يتحايل على الحظر
+                                </div>
+                                <div style={{ display: 'grid', gap: '8px' }}>
+                                    {linkedAccounts.accounts.map(a => {
+                                        const isBanned = a.deviceBanned || (a.suspendedUntil && (new Date(a.suspendedUntil) - new Date()) > 365 * 24 * 60 * 60 * 1000);
+                                        return (
+                                            <div key={a._id} style={{
+                                                display: 'flex', gap: '10px', alignItems: 'center',
+                                                padding: '12px', border: '1px solid #e5e7eb', borderRadius: '8px',
+                                                background: isBanned ? '#fef2f2' : '#fff'
+                                            }}>
+                                                <img
+                                                    src={a.profileImage ? getImageUrl(a.profileImage) : getDefaultAvatar(a.name)}
+                                                    alt="" style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }}
+                                                    onError={(e) => { e.target.onerror = null; e.target.src = getDefaultAvatar(a.name); }}
+                                                />
+                                                <div style={{ flex: 1 }}>
+                                                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                        <span style={{ fontWeight: '700' }}>{a.name}</span>
+                                                        {a.deviceBanned && <span style={{ padding: '2px 6px', borderRadius: '8px', background: '#111827', color: '#fca5a5', fontSize: '10px' }}>📵 محظور</span>}
+                                                        {!a.isActive && !a.deviceBanned && <span style={{ padding: '2px 6px', borderRadius: '8px', background: '#fecaca', color: '#991b1b', fontSize: '10px' }}>غير نشط</span>}
+                                                        {a.violationCount > 0 && <span style={{ padding: '2px 6px', borderRadius: '8px', background: '#fee2e2', color: '#991b1b', fontSize: '10px' }}>⚠️ {a.violationCount}</span>}
+                                                    </div>
+                                                    <div style={{ fontSize: '11px', color: '#6b7280' }}>{a.email} · {a.uniqueTag}</div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </>
                         )}
                     </div>
                 )}
