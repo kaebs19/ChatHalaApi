@@ -138,6 +138,9 @@ function Appeals({ onViewDetail }) {
                     <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                             <span style={{ fontWeight: '700', fontSize: '13px' }}>{a.user?.name || '-'}</span>
+                            {a.user?.uniqueTag && (
+                                <span style={{ fontSize: '10px', color: '#6366f1', fontFamily: 'monospace' }}>{a.user.uniqueTag}</span>
+                            )}
                             <span style={{ padding: '1px 6px', borderRadius: '8px', background: t.bg, color: t.color, fontSize: '10px' }}>
                                 {t.label}
                             </span>

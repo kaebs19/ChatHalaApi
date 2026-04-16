@@ -180,7 +180,7 @@ router.get('/', protect, adminOnly, async (req, res) => {
 
         const total = await Appeal.countDocuments(filter);
         const appeals = await Appeal.find(filter)
-            .populate('user', 'name email profileImage isActive suspendedUntil suspendReason deviceBanned nameBanned violationCount')
+            .populate('user', 'name email profileImage isActive suspendedUntil suspendReason deviceBanned nameBanned violationCount uniqueTag')
             .populate('reviewedBy', 'name')
             .sort('-createdAt')
             .skip((page - 1) * limit)
@@ -332,8 +332,8 @@ router.put('/:id/reject', protect, adminOnly, async (req, res) => {
 router.post('/:id/message', protectEvenSuspended, async (req, res) => {
     try {
         const { message } = req.body;
-        if (!message || message.trim().length < 2) {
-            return res.status(400).json({ success: false, message: 'الرسالة قصيرة جداً' });
+        if (!message || message.trim().length < 1) {
+            return res.status(400).json({ success: false, message: 'الرسالة فارغة' });
         }
 
         const appeal = await Appeal.findById(req.params.id);
