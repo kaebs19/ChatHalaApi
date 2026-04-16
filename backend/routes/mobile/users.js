@@ -283,4 +283,91 @@ router.get('/users/search', protect, async (req, res) => {
     }
 });
 
+// ==========================================
+// جلب ملف مستخدم بالـ ID
+// ==========================================
+
+// @route   GET /api/mobile/users/:id
+// @desc    جلب بيانات مستخدم عام (لعرض الملف الشخصي)
+// @access  Protected
+router.get('/users/:id', protect, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // التحقق من صحة ObjectId
+        if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+            return res.status(400).json({
+                success: false,
+                message: 'معرّف مستخدم غير صحيح'
+            });
+        }
+
+        const user = await User.findById(id)
+            .select('name profileImage birthDate gender country bio isOnline lastLogin verification.isVerified isPremium stealthMode uniqueTag fuzzyLocation interests photos isActive isSuspended deviceBanned createdAt');
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'المستخدم غير موجود'
+            });
+        }
+
+        // التحقق من الحظر/الإيقاف
+        if (user.deviceBanned || !user.isActive) {
+            return res.status(404).json({
+                success: false,
+                message: 'المستخدم غير متاح'
+            });
+        }
+
+        // التحقق من الحظر المتبادل
+        if (req.user.blockedUsers && req.user.blockedUsers.some(b => b.toString() === id)) {
+            return res.status(403).json({
+                success: false,
+                message: 'لا يمكنك عرض هذا المستخدم'
+            });
+        }
+
+        // بناء response — إخفاء البيانات الحساسة
+        const userObj = user.toObject();
+        const result = {
+            _id: userObj._id,
+            name: userObj.name,
+            profileImage: getFullUrl(userObj.profileImage),
+            birthDate: userObj.birthDate,
+            gender: userObj.gender,
+            country: userObj.country,
+            bio: userObj.bio,
+            isOnline: userObj.isOnline,
+            lastLogin: userObj.stealthMode ? null : userObj.lastLogin,
+            isVerified: userObj.verification?.isVerified || false,
+            isPremium: userObj.isPremium || false,
+            uniqueTag: userObj.uniqueTag,
+            interests: userObj.interests || [],
+            photos: userObj.photos || [],
+            isSuspended: userObj.isSuspended || false,
+            createdAt: userObj.createdAt
+        };
+
+        // إضافة الموقع المموّه (إلا للمتخفين)
+        if (userObj.fuzzyLocation?.coordinates && !userObj.stealthMode) {
+            result.fuzzyLatitude = userObj.fuzzyLocation.coordinates[1];
+            result.fuzzyLongitude = userObj.fuzzyLocation.coordinates[0];
+        }
+
+        res.status(200).json({
+            success: true,
+            data: result
+        });
+
+    } catch (error) {
+        logger.error('خطأ في جلب ملف المستخدم:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
+        });
+    }
+});
+
 module.exports = router;
