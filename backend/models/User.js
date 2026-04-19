@@ -129,6 +129,17 @@ const userSchema = new mongoose.Schema({
         default: null,
         index: true
     },
+    // سجل عناوين IP المستخدمة (آخر 10 — للتدقيق فقط، ليس للحظر التلقائي)
+    knownIPs: {
+        type: [{
+            ip: { type: String, index: true },
+            userAgent: { type: String, default: null },
+            firstSeen: { type: Date, default: Date.now },
+            lastSeen: { type: Date, default: Date.now },
+            count: { type: Number, default: 1 }
+        }],
+        default: []
+    },
     // إعدادات الخصوصية
     privacySettings: {
         // إخفاء الملف الشخصي: public (للجميع), contacts (جهات الاتصال فقط), private (مخفي)

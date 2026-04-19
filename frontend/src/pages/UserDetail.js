@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getUserActivity, getUserViolations, warnUser, resetUserAvatar, banUserName, suspendUser, toggleUserActive, banUserPermanent, unbanUser, banUserDevice, unbanUserDevice, getUserLinkedAccounts, sendUserNotification, adjustUserViolations, clearUserViolations } from '../services/api';
+import { getUserActivity, getUserViolations, warnUser, resetUserAvatar, banUserName, suspendUser, toggleUserActive, banUserPermanent, unbanUser, banUserDevice, unbanUserDevice, getUserLinkedAccounts, sendUserNotification, adjustUserViolations, clearUserViolations, getAccountsByIP } from '../services/api';
 import { useToast } from '../components/Toast';
 import { getImageUrl, getDefaultAvatar } from '../config';
 import { formatDateTimeLong, formatDateLong } from '../utils/formatters';
@@ -454,6 +454,59 @@ function UserDetail({ userId, onBack }) {
                                             <span className="device-value">{user.deviceInfo.appVersion}</span>
                                         </div>
                                     )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Known IPs (audit trail) */}
+                        {Array.isArray(user.knownIPs) && user.knownIPs.length > 0 && (
+                            <div className="device-section" style={{ marginTop: '1rem' }}>
+                                <h4>🌐 عناوين IP المستخدمة (للتدقيق)</h4>
+                                <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '8px' }}>
+                                    آخر {user.knownIPs.length} عناوين — اضغط على IP للبحث عن حسابات أخرى استخدمته
+                                </div>
+                                <div style={{ display: 'grid', gap: '6px' }}>
+                                    {[...user.knownIPs]
+                                        .sort((a, b) => new Date(b.lastSeen) - new Date(a.lastSeen))
+                                        .map((entry, idx) => (
+                                            <div key={idx} style={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                padding: '8px 12px',
+                                                background: '#f9fafb',
+                                                borderRadius: '8px',
+                                                border: '1px solid #e5e7eb',
+                                                fontSize: '13px'
+                                            }}>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                    <code
+                                                        onClick={async () => {
+                                                            try {
+                                                                const res = await getAccountsByIP(entry.ip);
+                                                                const accounts = res?.data?.accounts || [];
+                                                                const count = accounts.length;
+                                                                const names = accounts.map(a => `• ${a.name}${a.isActive === false ? ' (معلّق)' : ''}`).join('\n');
+                                                                alert(`${count} حساب يستخدم IP ${entry.ip}:\n\n${names}`);
+                                                            } catch (e) { alert('فشل البحث'); }
+                                                        }}
+                                                        title="اضغط للبحث"
+                                                        style={{ color: '#2563eb', cursor: 'pointer', fontWeight: 'bold' }}
+                                                    >
+                                                        {entry.ip}
+                                                    </code>
+                                                    {entry.userAgent && (
+                                                        <span style={{ color: '#9ca3af', fontSize: '11px' }}>
+                                                            {entry.userAgent.substring(0, 60)}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', color: '#6b7280', fontSize: '11px' }}>
+                                                    <span>{entry.count} مرة</span>
+                                                    <span>{formatDate(entry.lastSeen)}</span>
+                                                </div>
+                                            </div>
+                                        ))}
                                 </div>
                             </div>
                         )}

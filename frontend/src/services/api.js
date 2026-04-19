@@ -158,6 +158,12 @@ export const getUserLinkedAccounts = async (userId) => {
     return response.data;
 };
 
+// الحسابات التي استخدمت IP محدد (للتدقيق — ليس حظر تلقائي)
+export const getAccountsByIP = async (ip) => {
+    const response = await api.get(`/users/by-ip/${encodeURIComponent(ip)}`);
+    return response.data;
+};
+
 // تنبيه رسمي للمستخدم (بدون مخالفة)
 export const sendUserNotification = async (userId, data) => {
     const response = await api.post(`/users/${userId}/notify`, data);

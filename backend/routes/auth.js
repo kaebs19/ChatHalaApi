@@ -33,6 +33,7 @@ const appleSignin = require('apple-signin-auth');
 
 // Device ban check + fingerprint
 const { isDeviceBanned, buildFingerprint } = require('../utils/deviceBan');
+const { trackUserIP } = require('../utils/trackUserIP');
 
 /**
  * Helper: تحديث بصمة جهاز المستخدم (تُحسب من deviceInfo + IP) + persistentDeviceId
@@ -50,6 +51,8 @@ const updateUserFingerprint = (user, req) => {
         const fp = buildFingerprint(info, ip);
         if (fp) user.deviceFingerprint = fp;
     }
+    // 3) تسجيل IP (للتدقيق فقط — ليس للحظر التلقائي)
+    trackUserIP(user, req);
 };
 
 /**
@@ -169,6 +172,11 @@ router.post('/register', registerValidation, validate, async (req, res) => {
             password,
             uniqueTag
         });
+
+        // تسجيل IP + persistentDeviceId للتدقيق
+        trackUserIP(user, req);
+        if (req.body?.persistentDeviceId) user.persistentDeviceId = req.body.persistentDeviceId;
+        await user.save();
 
         // تسجيل النشاط
         await ActivityLog.logActivity({
@@ -335,11 +343,12 @@ router.post('/login', loginValidation, validate, async (req, res) => {
             await user.resetLoginAttempts();
         }
 
-        // تحديث آخر تسجيل دخول + backfill uniqueTag
+        // تحديث آخر تسجيل دخول + backfill uniqueTag + تسجيل IP
         user.lastLogin = new Date();
         if (!user.uniqueTag) {
             user.uniqueTag = await generateUniqueTag(User);
         }
+        trackUserIP(user, req);
         await user.save();
 
         // تسجيل النشاط

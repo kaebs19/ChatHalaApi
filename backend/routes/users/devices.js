@@ -136,6 +136,41 @@ router.get('/:id/linked-accounts', protect, adminOnly, async (req, res) => {
     }
 });
 
+// @route   GET /api/users/by-ip/:ip
+// @desc    جلب الحسابات التي استخدمت IP محدد (knownIPs)
+router.get('/by-ip/:ip', protect, adminOnly, async (req, res) => {
+    try {
+        const ip = decodeURIComponent(req.params.ip || '').trim();
+        if (!ip) return res.status(400).json({ success: false, message: 'IP مطلوب' });
+
+        const accounts = await User.find({ 'knownIPs.ip': ip })
+            .select('name email profileImage isActive suspendedUntil suspendReason deviceBanned violationCount createdAt lastLogin role uniqueTag persistentDeviceId knownIPs')
+            .sort('-lastLogin')
+            .limit(100)
+            .lean();
+
+        // استخراج معلومات IP من كل حساب
+        const enriched = accounts.map(u => {
+            const entry = (u.knownIPs || []).find(e => e.ip === ip);
+            return {
+                ...u,
+                knownIPs: undefined,
+                ipActivity: entry ? {
+                    firstSeen: entry.firstSeen,
+                    lastSeen: entry.lastSeen,
+                    count: entry.count,
+                    userAgent: entry.userAgent
+                } : null
+            };
+        });
+
+        res.json({ success: true, count: enriched.length, data: { ip, accounts: enriched } });
+    } catch (error) {
+        console.error('خطأ في البحث بـ IP:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 // @route   PUT /api/users/:id/ban-device
 router.put('/:id/ban-device', protect, adminOnly, async (req, res) => {
     try {
