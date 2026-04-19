@@ -21,11 +21,11 @@ router.get('/banned-devices/list', protect, adminOnly, async (req, res) => {
         // أولوية المطابقة: persistentDeviceId (الأدق من iOS Keychain)
         // ثم tokens الفريدة (deviceToken/fcmToken)
         for (const d of devices) {
-            // جلب persistentDeviceId من المستخدم الأصلي لو ما كان في BannedDevice
-            let pid = null;
-            if (d.originalUserId) {
+            // fallback: جلب persistentDeviceId من المستخدم لو السجل قديم ما يحفظه
+            let pid = d.persistentDeviceId || null;
+            if (!pid && d.originalUserId) {
                 const originalUser = await User.findById(d.originalUserId).select('persistentDeviceId').lean();
-                pid = originalUser?.persistentDeviceId;
+                pid = originalUser?.persistentDeviceId || null;
             }
 
             const filters = [];
@@ -53,11 +53,11 @@ router.get('/banned-devices/:id/linked-accounts', protect, adminOnly, async (req
         const device = await BannedDevice.findById(req.params.id).lean();
         if (!device) return res.status(404).json({ success: false, message: 'الجهاز غير موجود' });
 
-        // أولوية: persistentDeviceId من المستخدم الأصلي (الأدق)
-        let pid = null;
-        if (device.originalUserId) {
+        // أولوية: persistentDeviceId من السجل نفسه، ثم من المستخدم الأصلي (للسجلات القديمة)
+        let pid = device.persistentDeviceId || null;
+        if (!pid && device.originalUserId) {
             const originalUser = await User.findById(device.originalUserId).select('persistentDeviceId').lean();
-            pid = originalUser?.persistentDeviceId;
+            pid = originalUser?.persistentDeviceId || null;
         }
 
         const filters = [];
@@ -146,7 +146,7 @@ router.put('/:id/ban-device', protect, adminOnly, async (req, res) => {
             return res.status(403).json({ success: false, message: 'لا يمكن حظر جهاز مدير' });
         }
 
-        if (!user.deviceToken && !user.fcmToken && (!user.deviceInfo || !user.deviceInfo.platform)) {
+        if (!user.deviceToken && !user.fcmToken && !user.persistentDeviceId && (!user.deviceInfo || !user.deviceInfo.platform)) {
             return res.status(400).json({ success: false, message: 'لا توجد معلومات جهاز لهذا المستخدم' });
         }
 
@@ -156,6 +156,7 @@ router.put('/:id/ban-device', protect, adminOnly, async (req, res) => {
 
         const existing = await BannedDevice.findOne({
             $or: [
+                user.persistentDeviceId ? { persistentDeviceId: user.persistentDeviceId } : null,
                 user.deviceToken ? { deviceToken: user.deviceToken } : null,
                 user.fcmToken ? { fcmToken: user.fcmToken } : null,
                 fingerprint ? { deviceFingerprint: fingerprint } : null
@@ -166,6 +167,7 @@ router.put('/:id/ban-device', protect, adminOnly, async (req, res) => {
             await BannedDevice.create({
                 deviceToken: user.deviceToken || null,
                 fcmToken: user.fcmToken || null,
+                persistentDeviceId: user.persistentDeviceId || null,
                 deviceFingerprint: fingerprint,
                 deviceInfo: user.deviceInfo || {},
                 originalUserId: user._id,
@@ -173,6 +175,10 @@ router.put('/:id/ban-device', protect, adminOnly, async (req, res) => {
                 reason,
                 bannedBy: req.user._id
             });
+        } else if (user.persistentDeviceId && !existing.persistentDeviceId) {
+            // تحديث سجل قديم بإضافة persistentDeviceId
+            existing.persistentDeviceId = user.persistentDeviceId;
+            await existing.save();
         }
 
         user.deviceBanned = true;
@@ -213,6 +219,7 @@ router.put('/:id/unban-device', protect, adminOnly, async (req, res) => {
 
         await BannedDevice.deleteMany({
             $or: [
+                user.persistentDeviceId ? { persistentDeviceId: user.persistentDeviceId } : null,
                 user.deviceToken ? { deviceToken: user.deviceToken } : null,
                 user.fcmToken ? { fcmToken: user.fcmToken } : null,
                 fingerprint ? { deviceFingerprint: fingerprint } : null,

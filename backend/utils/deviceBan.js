@@ -17,8 +17,9 @@ const buildFingerprint = ({ platform, osVersion, appVersion }, ip) => {
  * التحقق إن كان الجهاز محظوراً
  * يرجع document الحظر أو null
  */
-const isDeviceBanned = async ({ deviceToken, fcmToken, deviceInfo, ip }) => {
+const isDeviceBanned = async ({ deviceToken, fcmToken, persistentDeviceId, deviceInfo, ip }) => {
     const or = [];
+    if (persistentDeviceId) or.push({ persistentDeviceId });
     if (deviceToken) or.push({ deviceToken });
     if (fcmToken) or.push({ fcmToken });
     if (deviceInfo) {

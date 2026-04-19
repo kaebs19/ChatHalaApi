@@ -61,6 +61,7 @@ const checkDeviceBanned = async (req, res) => {
         const banned = await isDeviceBanned({
             deviceToken: req.body?.deviceToken,
             fcmToken: req.body?.fcmToken,
+            persistentDeviceId: req.body?.persistentDeviceId,
             deviceInfo: req.body?.deviceInfo,
             ip: req.ip || req.connection?.remoteAddress
         });
