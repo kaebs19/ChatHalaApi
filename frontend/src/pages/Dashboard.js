@@ -4,6 +4,7 @@ import { getDashboardStats, getConversationsStats, getReportsStats, getAllChatRo
 import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import StatCard from '../components/StatCard';
+import SecurityWidget from '../components/SecurityWidget';
 import { formatDateLong } from '../utils/formatters';
 import socketService from '../services/socket';
 import config, { getImageUrl, getDefaultAvatar } from '../config';
@@ -213,6 +214,10 @@ function Dashboard({ user, onPageChange }) {
     return (
         <div className="dashboard-content">
             {error && <div className="error-banner">{error}</div>}
+
+            {user?.role === 'admin' && (
+                <SecurityWidget onNavigate={(page) => onPageChange && onPageChange(page)} />
+            )}
 
             {/* الإجراءات السريعة */}
             {isAdmin && (

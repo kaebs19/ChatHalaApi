@@ -53,6 +53,12 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick }) {
             adminOnly: true
         },
         {
+            id: 'admin-activity',
+            name: 'سجل نشاط الأدمن',
+            icon: '📜',
+            adminOnly: true
+        },
+        {
             id: 'users-map',
             name: 'خريطة المستخدمين',
             icon: '🗺️',

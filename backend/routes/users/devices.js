@@ -9,6 +9,7 @@ const BannedIP = require('../../models/BannedIP');
 const { protect, adminOnly } = require('../../middleware/auth');
 const { invalidateUsers } = require('../../utils/cache');
 const { buildFingerprint } = require('../../utils/deviceBan');
+const { logAdminAction } = require('../../utils/logAdminAction');
 
 // @route   GET /api/users/banned-devices/list
 router.get('/banned-devices/list', protect, adminOnly, async (req, res) => {
@@ -232,6 +233,15 @@ router.put('/:id/ban-device', protect, adminOnly, async (req, res) => {
         }
 
         invalidateUsers();
+
+        await logAdminAction(req, {
+            action: 'admin_device_ban',
+            description: `حظر جهاز ${user.name} نهائياً`,
+            targetUser: user,
+            additionalInfo: { reason, persistentDeviceId: user.persistentDeviceId },
+            severity: 'high'
+        });
+
         res.json({
             success: true,
             message: `تم حظر جهاز ${user.name} نهائياً`,
@@ -268,6 +278,14 @@ router.put('/:id/unban-device', protect, adminOnly, async (req, res) => {
         await user.save();
 
         invalidateUsers();
+
+        await logAdminAction(req, {
+            action: 'admin_device_unban',
+            description: `فك حظر جهاز ${user.name}`,
+            targetUser: user,
+            severity: 'medium'
+        });
+
         res.json({ success: true, message: 'تم فك حظر الجهاز' });
     } catch (error) {
         console.error('خطأ في فك حظر الجهاز:', error);
@@ -336,6 +354,16 @@ router.post('/banned-ips', protect, adminOnly, async (req, res) => {
             { upsert: true, new: true }
         );
 
+        await logAdminAction(req, {
+            action: 'admin_ip_ban',
+            description: `حظر IP: ${cleanIP}`,
+            targetType: null,
+            targetId: banned._id,
+            targetName: cleanIP,
+            additionalInfo: { reason, days, expiresAt, originalUserId, originalUserName },
+            severity: 'high'
+        });
+
         res.json({ success: true, message: 'تم حظر IP', data: banned });
     } catch (error) {
         console.error('خطأ في حظر IP:', error);
@@ -349,6 +377,15 @@ router.delete('/banned-ips/:id', protect, adminOnly, async (req, res) => {
     try {
         const deleted = await BannedIP.findByIdAndDelete(req.params.id);
         if (!deleted) return res.status(404).json({ success: false, message: 'IP غير موجود' });
+
+        await logAdminAction(req, {
+            action: 'admin_ip_unban',
+            description: `فك حظر IP: ${deleted.ip}`,
+            targetType: null,
+            targetName: deleted.ip,
+            severity: 'medium'
+        });
+
         res.json({ success: true, message: 'تم فك حظر IP' });
     } catch (error) {
         console.error('خطأ في فك حظر IP:', error);

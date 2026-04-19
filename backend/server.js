@@ -304,7 +304,8 @@ const apiRoutes = {
     verifications: require('./routes/verifications'),
     appeals: require('./routes/appeals'),
     swipes: require('./routes/swipes'),
-    matches: require('./routes/matches')
+    matches: require('./routes/matches'),
+    'admin-activity': require('./routes/adminActivity')
 };
 
 // تسجيل المسارات مع دعم /api/v1/ و /api/ (للتوافق العكسي)

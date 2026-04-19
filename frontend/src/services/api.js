@@ -185,6 +185,17 @@ export const getBannedIPAccounts = async (id) => {
     return response.data;
 };
 
+// سجل نشاطات الأدمن (audit log)
+export const getAdminActivity = async (params = {}) => {
+    const response = await api.get('/admin-activity', { params });
+    return response.data;
+};
+
+export const getAdminActions = async () => {
+    const response = await api.get('/admin-activity/actions');
+    return response.data;
+};
+
 // تنبيه رسمي للمستخدم (بدون مخالفة)
 export const sendUserNotification = async (userId, data) => {
     const response = await api.post(`/users/${userId}/notify`, data);

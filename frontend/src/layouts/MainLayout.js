@@ -18,6 +18,7 @@ import UsersMap from '../pages/UsersMap';
 import Appeals from '../pages/Appeals';
 import BannedDevices from '../pages/BannedDevices';
 import BannedIPs from '../pages/BannedIPs';
+import AdminActivity from '../pages/AdminActivity';
 import { getReportsStats, getNotifications } from '../services/api';
 import { useToast } from '../components/Toast';
 import config from '../config';
@@ -189,6 +190,8 @@ function MainLayout({ onLogout, user: initialUser }) {
                 return <BannedDevices />;
             case 'banned-ips':
                 return <BannedIPs onViewDetail={handleViewUserDetail} />;
+            case 'admin-activity':
+                return <AdminActivity onViewDetail={handleViewUserDetail} />;
             case 'user-detail':
                 return <UserDetail userId={selectedUserId} onBack={handleBackFromUserDetail} />;
             default:
@@ -223,6 +226,7 @@ function MainLayout({ onLogout, user: initialUser }) {
                         {currentPage === 'appeals' && '📝 طلبات الاستئناف'}
                         {currentPage === 'banned-devices' && '📵 الأجهزة المحظورة'}
                         {currentPage === 'banned-ips' && '🌐 IPs المحظورة'}
+                        {currentPage === 'admin-activity' && '📜 سجل نشاط الأدمن'}
                         {currentPage === 'user-detail' && '👤 تفاصيل المستخدم'}
                         {currentPage === 'report-conversation' && '💬 رسائل المحادثة'}
                     </h1>

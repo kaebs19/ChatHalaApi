@@ -10,6 +10,7 @@ const { protect, adminOnly } = require('../../middleware/auth');
 const { invalidateUsers } = require('../../utils/cache');
 const pushNotificationService = require('../../services/pushNotificationService');
 const modConfig = require('../../config/moderation');
+const { logAdminAction } = require('../../utils/logAdminAction');
 
 // Helper: فصل socket للمستخدم عند الحظر
 const disconnectUserSocket = (userId) => {
@@ -66,6 +67,14 @@ router.put('/:id/suspend', protect, adminOnly, async (req, res) => {
         disconnectUserSocket(user._id);
         invalidateUsers();
 
+        await logAdminAction(req, {
+            action: 'admin_user_suspend',
+            description: `تعليق ${user.name} لمدة ${days} يوم`,
+            targetUser: user,
+            additionalInfo: { days, reason, suspendedUntil: user.suspendedUntil },
+            severity: 'high'
+        });
+
         res.json({
             success: true,
             message: `تم تعليق ${user.name} لمدة ${days} يوم`,
@@ -107,6 +116,14 @@ router.put('/:id/ban-permanent', protect, adminOnly, async (req, res) => {
         disconnectUserSocket(user._id);
         invalidateUsers();
 
+        await logAdminAction(req, {
+            action: 'admin_user_ban_permanent',
+            description: `حظر ${user.name} نهائياً`,
+            targetUser: user,
+            additionalInfo: { reason },
+            severity: 'critical'
+        });
+
         res.json({
             success: true,
             message: `تم حظر ${user.name} نهائياً`,
@@ -146,6 +163,14 @@ router.put('/:id/unban', protect, adminOnly, async (req, res) => {
         } catch (e) {}
 
         invalidateUsers();
+
+        await logAdminAction(req, {
+            action: 'admin_user_unsuspend',
+            description: `فك الحظر/التعليق عن ${user.name}`,
+            targetUser: user,
+            severity: 'medium'
+        });
+
         res.json({ success: true, message: `تم فك الحظر عن ${user.name}`, data: { user } });
     } catch (error) {
         console.error('خطأ في فك الحظر:', error);

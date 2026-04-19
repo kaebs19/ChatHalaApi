@@ -17,6 +17,11 @@ function Users({ onViewDetail }) {
     const [searchInput, setSearchInput] = useState('');
     const [filterStatus, setFilterStatus] = useState('all');
     const [filterRole, setFilterRole] = useState('all');
+    const [filterProvider, setFilterProvider] = useState('');
+    const [filterGender, setFilterGender] = useState('');
+    const [filterMinAge, setFilterMinAge] = useState('');
+    const [filterMaxAge, setFilterMaxAge] = useState('');
+    const [showAdvanced, setShowAdvanced] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [userToDelete, setUserToDelete] = useState(null);
     const [showEditModal, setShowEditModal] = useState(false);
@@ -48,6 +53,10 @@ function Users({ onViewDetail }) {
                 search: searchTerm || undefined,
                 status: filterStatus,
                 role: filterRole,
+                ...(filterProvider && { provider: filterProvider }),
+                ...(filterGender && { gender: filterGender }),
+                ...(filterMinAge && { minAge: filterMinAge }),
+                ...(filterMaxAge && { maxAge: filterMaxAge }),
                 sort: sortField,
                 order: sortOrder
             });
@@ -63,7 +72,7 @@ function Users({ onViewDetail }) {
         } finally {
             setLoading(false);
         }
-    }, [currentPage, itemsPerPage, searchTerm, filterStatus, filterRole, sortField, sortOrder]);
+    }, [currentPage, itemsPerPage, searchTerm, filterStatus, filterRole, filterProvider, filterGender, filterMinAge, filterMaxAge, sortField, sortOrder]);
 
     useEffect(() => {
         fetchUsers();
@@ -307,8 +316,64 @@ function Users({ onViewDetail }) {
                         <option value="admin">مدير</option>
                         <option value="user">مستخدم</option>
                     </select>
+                    <button
+                        onClick={() => setShowAdvanced(!showAdvanced)}
+                        style={{
+                            padding: '6px 12px', borderRadius: '6px', border: '1px solid #d1d5db',
+                            background: showAdvanced ? '#dbeafe' : '#fff', color: showAdvanced ? '#1e40af' : '#374151',
+                            cursor: 'pointer', fontSize: '13px'
+                        }}
+                    >
+                        {showAdvanced ? '▲' : '▼'} فلاتر متقدمة
+                    </button>
                 </div>
             </div>
+
+            {showAdvanced && (
+                <div style={{
+                    display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                    gap: '10px', padding: '12px', background: '#f9fafb', borderRadius: '8px',
+                    marginBottom: '1rem', border: '1px solid #e5e7eb'
+                }}>
+                    <select value={filterProvider} onChange={(e) => { setFilterProvider(e.target.value); setCurrentPage(1); }} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #d1d5db' }}>
+                        <option value="">كل مزوّدي الحساب</option>
+                        <option value="email">✉️ بريد إلكتروني</option>
+                        <option value="google">🟢 Google</option>
+                        <option value="apple">🍎 Apple</option>
+                    </select>
+                    <select value={filterGender} onChange={(e) => { setFilterGender(e.target.value); setCurrentPage(1); }} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #d1d5db' }}>
+                        <option value="">كل الأجناس</option>
+                        <option value="male">ذكر</option>
+                        <option value="female">أنثى</option>
+                    </select>
+                    <input
+                        type="number"
+                        placeholder="الحد الأدنى للعمر"
+                        value={filterMinAge}
+                        onChange={(e) => { setFilterMinAge(e.target.value); setCurrentPage(1); }}
+                        style={{ padding: '8px', borderRadius: '6px', border: '1px solid #d1d5db' }}
+                        min="16" max="100"
+                    />
+                    <input
+                        type="number"
+                        placeholder="الحد الأقصى للعمر"
+                        value={filterMaxAge}
+                        onChange={(e) => { setFilterMaxAge(e.target.value); setCurrentPage(1); }}
+                        style={{ padding: '8px', borderRadius: '6px', border: '1px solid #d1d5db' }}
+                        min="16" max="100"
+                    />
+                    {(filterProvider || filterGender || filterMinAge || filterMaxAge) && (
+                        <button
+                            onClick={() => {
+                                setFilterProvider(''); setFilterGender('');
+                                setFilterMinAge(''); setFilterMaxAge('');
+                                setCurrentPage(1);
+                            }}
+                            style={{ padding: '8px', background: '#f87171', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
+                        >✕ مسح</button>
+                    )}
+                </div>
+            )}
 
             <div className="table-controls">
                 <div className="results-info">عرض {users.length} من {totalUsers}</div>

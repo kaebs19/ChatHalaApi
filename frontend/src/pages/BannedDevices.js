@@ -10,7 +10,31 @@ function BannedDevices({ onViewDetail }) {
     const [selectedDevice, setSelectedDevice] = useState(null);
     const [linkedAccounts, setLinkedAccounts] = useState([]);
     const [linkedLoading, setLinkedLoading] = useState(false);
+    const [search, setSearch] = useState('');
     const toast = useToast();
+
+    // إحصائيات سريعة
+    const stats = React.useMemo(() => ({
+        total: devices.length,
+        withPersistentId: devices.filter(d => d.persistentDeviceId).length,
+        multiAccount: devices.filter(d => (d.linkedAccountsCount || 0) > 1).length,
+        last7d: devices.filter(d => {
+            const days = (new Date() - new Date(d.bannedAt)) / (1000 * 60 * 60 * 24);
+            return days <= 7;
+        }).length
+    }), [devices]);
+
+    // بحث
+    const filtered = React.useMemo(() => {
+        if (!search.trim()) return devices;
+        const q = search.toLowerCase();
+        return devices.filter(d =>
+            (d.originalUserName || '').toLowerCase().includes(q) ||
+            (d.reason || '').toLowerCase().includes(q) ||
+            (d.persistentDeviceId || '').toLowerCase().includes(q) ||
+            (d.deviceFingerprint || '').toLowerCase().includes(q)
+        );
+    }, [devices, search]);
 
     const fetch = async () => {
         try {
@@ -60,6 +84,13 @@ function BannedDevices({ onViewDetail }) {
             : { label: 'غير نشط', color: '#6b7280', bg: '#e5e7eb' };
     };
 
+    const statCard = (label, value, bg, color) => (
+        <div style={{ padding: '12px 16px', background: bg, borderRadius: '10px', minWidth: '130px' }}>
+            <div style={{ fontSize: '11px', color, opacity: 0.8 }}>{label}</div>
+            <div style={{ fontSize: '22px', fontWeight: '800', color }}>{value}</div>
+        </div>
+    );
+
     return (
         <div style={{ padding: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
@@ -69,6 +100,30 @@ function BannedDevices({ onViewDetail }) {
                 </div>
                 <button onClick={fetch} className="refresh-btn">🔄 تحديث</button>
             </div>
+
+            {/* شريط إحصائيات */}
+            {devices.length > 0 && (
+                <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                    {statCard('📦 الإجمالي', stats.total, '#f3f4f6', '#111827')}
+                    {statCard('🔑 بمعرّف Keychain', stats.withPersistentId, '#dbeafe', '#1e40af')}
+                    {statCard('⚠️ متعدد الحسابات', stats.multiAccount, '#fee2e2', '#991b1b')}
+                    {statCard('🆕 آخر 7 أيام', stats.last7d, '#fef3c7', '#92400e')}
+                </div>
+            )}
+
+            {/* بحث */}
+            {devices.length > 0 && (
+                <input
+                    type="text"
+                    placeholder="🔍 ابحث بالاسم، السبب، أو معرّف الجهاز..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    style={{
+                        width: '100%', padding: '10px 14px', borderRadius: '8px',
+                        border: '1px solid #d1d5db', marginBottom: '16px', fontSize: '14px'
+                    }}
+                />
+            )}
 
             {loading ? (
                 <p style={{ textAlign: 'center', padding: '40px' }}>جاري التحميل...</p>
@@ -83,7 +138,7 @@ function BannedDevices({ onViewDetail }) {
                         <thead>
                             <tr>
                                 <th>المستخدم الأصلي</th>
-                                <th>بصمة الجهاز</th>
+                                <th>معرّف الجهاز</th>
                                 <th>نوع الجهاز</th>
                                 <th>حسابات مرتبطة</th>
                                 <th>السبب</th>
@@ -93,7 +148,7 @@ function BannedDevices({ onViewDetail }) {
                             </tr>
                         </thead>
                         <tbody>
-                            {devices.map((d) => (
+                            {filtered.map((d) => (
                                 <tr key={d._id}>
                                     <td>
                                         <div style={{ fontWeight: '600' }}>{d.originalUserName || '-'}</div>
@@ -105,14 +160,26 @@ function BannedDevices({ onViewDetail }) {
                                         )}
                                     </td>
                                     <td>
-                                        {d.deviceFingerprint ? (
+                                        {d.persistentDeviceId ? (
                                             <div
-                                                title={d.deviceFingerprint}
+                                                title={`Keychain ID (الأدق)\n${d.persistentDeviceId}`}
+                                                style={{
+                                                    fontFamily: 'monospace', fontSize: '11px', color: '#1e40af',
+                                                    background: '#dbeafe', padding: '4px 8px', borderRadius: '6px',
+                                                    display: 'inline-block', maxWidth: '120px', overflow: 'hidden',
+                                                    textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'help'
+                                                }}
+                                            >
+                                                🔑 {d.persistentDeviceId.substring(0, 8)}...
+                                            </div>
+                                        ) : d.deviceFingerprint ? (
+                                            <div
+                                                title={`Fingerprint (fallback)\n${d.deviceFingerprint}`}
                                                 style={{
                                                     fontFamily: 'monospace', fontSize: '11px', color: '#7c3aed',
                                                     background: '#f5f3ff', padding: '4px 8px', borderRadius: '6px',
                                                     display: 'inline-block', maxWidth: '120px', overflow: 'hidden',
-                                                    textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                                                    textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'help'
                                                 }}
                                             >
                                                 🔒 {d.deviceFingerprint.substring(0, 12)}...

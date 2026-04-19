@@ -61,6 +61,30 @@ const activityLogSchema = new mongoose.Schema({
             'admin_user_unban',
             'admin_user_activate',
             'admin_user_deactivate',
+            'admin_user_suspend',
+            'admin_user_unsuspend',
+            'admin_user_warn',
+            'admin_user_ban_name',
+            'admin_user_ban_permanent',
+            'admin_user_reset_avatar',
+            'admin_user_adjust_violations',
+            'admin_user_clear_violations',
+            'admin_user_notify',
+
+            // حظر الأجهزة/IPs
+            'admin_device_ban',
+            'admin_device_unban',
+            'admin_ip_ban',
+            'admin_ip_unban',
+
+            // الاستئناف
+            'admin_appeal_approve',
+            'admin_appeal_reject',
+            'admin_appeal_reply',
+
+            // البلاغات (إشراف)
+            'admin_report_resolve',
+            'admin_report_reject',
 
             // نشاطات البلاغات
             'report_create',

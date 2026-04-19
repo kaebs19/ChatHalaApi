@@ -10,7 +10,7 @@ const { invalidateUsers } = require('../../utils/cache');
 // @route   GET /api/users
 router.get('/', protect, adminOnly, async (req, res) => {
     try {
-        const { page = 1, limit = 20, search, status, role, sort = 'createdAt', order = 'desc' } = req.query;
+        const { page = 1, limit = 20, search, status, role, provider, gender, minAge, maxAge, sort = 'createdAt', order = 'desc' } = req.query;
         const pageNum = parseInt(page);
         const limitNum = parseInt(limit);
 
@@ -47,6 +47,28 @@ router.get('/', protect, adminOnly, async (req, res) => {
         else if (status === 'device_banned') filter.deviceBanned = true;
 
         if (role && role !== 'all') filter.role = role;
+
+        // مزوّد الحساب
+        if (provider === 'email') filter.authProvider = { $in: [null, 'email', undefined] };
+        else if (provider === 'google') filter.authProvider = 'google';
+        else if (provider === 'apple') filter.authProvider = 'apple';
+
+        // الجنس
+        if (gender && ['male', 'female'].includes(gender)) filter.gender = gender;
+
+        // العمر (من birthdate)
+        if (minAge || maxAge) {
+            filter.birthdate = {};
+            const now = new Date();
+            if (maxAge) {
+                const minDate = new Date(now.getFullYear() - Number(maxAge) - 1, now.getMonth(), now.getDate());
+                filter.birthdate.$gte = minDate;
+            }
+            if (minAge) {
+                const maxDate = new Date(now.getFullYear() - Number(minAge), now.getMonth(), now.getDate());
+                filter.birthdate.$lte = maxDate;
+            }
+        }
 
         const total = await User.countDocuments(filter);
         const users = await User.find(filter)
