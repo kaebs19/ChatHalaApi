@@ -164,6 +164,17 @@ export const getAccountsByIP = async (ip) => {
     return response.data;
 };
 
+// 🔒 تقييد جزائي للمستخدم
+export const restrictUser = async (userId, { cannotStartChat = false, cannotReply = false, days = 7, reason = '' }) => {
+    const response = await api.put(`/users/${userId}/restrict`, { cannotStartChat, cannotReply, days, reason });
+    return response.data;
+};
+
+export const unrestrictUser = async (userId) => {
+    const response = await api.put(`/users/${userId}/unrestrict`);
+    return response.data;
+};
+
 // إدارة حظر IPs (يدوي من الأدمن)
 export const getBannedIPs = async () => {
     const response = await api.get('/users/banned-ips/list');

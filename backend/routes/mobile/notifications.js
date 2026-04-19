@@ -30,6 +30,12 @@ router.get('/notifications', protect, async (req, res) => {
             isActive: true
         };
 
+        // 🔕 الأدمن لا يستقبل تنبيهات البلاغات والكلمات المحجوبة في التطبيق
+        // (يتابعها من لوحة التحكم)
+        if (req.user.role === 'admin') {
+            query.type = { $nin: ['report', 'banned_word', 'new_report'] };
+        }
+
         const notifications = await Notification.find(query)
             .populate('sender', 'name profileImage isPremium verification.isVerified')
             .sort({ createdAt: -1 })

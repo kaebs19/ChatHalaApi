@@ -36,6 +36,7 @@ const { isDeviceBanned, buildFingerprint } = require('../utils/deviceBan');
 const { isIPBanned } = require('../utils/ipBan');
 const { trackUserIP } = require('../utils/trackUserIP');
 const { enforceRegistrationRateLimit } = require('../utils/registrationRateLimit');
+const { autoExpireRestriction } = require('../middleware/checkRestriction');
 
 /**
  * Helper: تحديث بصمة جهاز المستخدم (تُحسب من deviceInfo + IP) + persistentDeviceId
@@ -371,6 +372,9 @@ router.post('/login', loginValidation, validate, async (req, res) => {
         trackUserIP(user, req);
         await user.save();
 
+        // فحص انتهاء مدة التقييد تلقائياً (لا يوقف تسجيل الدخول)
+        await autoExpireRestriction(user);
+
         // تسجيل النشاط
         await ActivityLog.logActivity({
             user: user._id,
@@ -401,7 +405,8 @@ router.post('/login', loginValidation, validate, async (req, res) => {
                     role: user.role,
                     profileImage: user.profileImage,
                     lastLogin: user.lastLogin,
-                    uniqueTag: user.uniqueTag
+                    uniqueTag: user.uniqueTag,
+                    restrictions: user.restrictions || null
                 },
                 token: generateToken(user._id),
                 refreshToken: generateRefreshToken(user._id)
@@ -428,6 +433,9 @@ router.get('/me', protect, async (req, res) => {
             req.user.uniqueTag = await generateUniqueTag(User);
             await req.user.save();
         }
+
+        // فحص انتهاء مدة التقييد تلقائياً
+        await autoExpireRestriction(req.user);
 
         res.status(200).json({
             success: true,

@@ -1,0 +1,83 @@
+// HalaChat - Restriction Middleware
+// فحص التقييد الجزائي للمستخدم قبل بدء محادثة أو الرد
+
+const User = require('../models/User');
+
+/**
+ * تحقق إن انتهت مدة التقييد وأزلها تلقائياً.
+ * يرجع الـ user (مع التحديث لو تم).
+ */
+const autoExpireRestriction = async (user) => {
+    if (!user?.restrictions) return user;
+    const { until, cannotStartChat, cannotReply } = user.restrictions;
+    if ((cannotStartChat || cannotReply) && until && new Date(until) <= new Date()) {
+        user.restrictions.cannotStartChat = false;
+        user.restrictions.cannotReply = false;
+        user.restrictions.until = null;
+        user.restrictions.reason = null;
+        await user.save();
+    }
+    return user;
+};
+
+/**
+ * Helper: يبني رد 403 موحّد للتقييد
+ */
+const restrictionResponse = (res, user, type) => {
+    const { until, reason } = user.restrictions || {};
+    let remaining = '';
+    if (until) {
+        const diff = new Date(until) - new Date();
+        if (diff > 0) {
+            const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+            const hours = Math.ceil(diff / (1000 * 60 * 60));
+            remaining = days > 1 ? `${days} يوم` : `${hours} ساعة`;
+        }
+    }
+    return res.status(403).json({
+        success: false,
+        message: type === 'start_chat'
+            ? 'لا يمكنك بدء محادثات جديدة بسبب تقييد جزائي'
+            : 'لا يمكنك إرسال رسائل بسبب تقييد جزائي',
+        code: type === 'start_chat' ? 'RESTRICTED_START_CHAT' : 'RESTRICTED_REPLY',
+        data: {
+            reason: reason || 'مخالفة سياسة الاستخدام',
+            until: until || null,
+            remaining: remaining || 'دائم'
+        }
+    });
+};
+
+/**
+ * middleware: يمنع بدء محادثة جديدة إذا المستخدم مقيّد
+ */
+const checkCanStartChat = async (req, res, next) => {
+    try {
+        if (!req.user?._id) return next();
+        const user = await User.findById(req.user._id).select('restrictions');
+        if (!user) return next();
+        await autoExpireRestriction(user);
+        if (user.restrictions?.cannotStartChat) {
+            return restrictionResponse(res, user, 'start_chat');
+        }
+        next();
+    } catch (e) { next(); /* fail open */ }
+};
+
+/**
+ * middleware: يمنع الرد في محادثة موجودة إذا المستخدم مقيّد
+ */
+const checkCanReply = async (req, res, next) => {
+    try {
+        if (!req.user?._id) return next();
+        const user = await User.findById(req.user._id).select('restrictions');
+        if (!user) return next();
+        await autoExpireRestriction(user);
+        if (user.restrictions?.cannotReply) {
+            return restrictionResponse(res, user, 'reply');
+        }
+        next();
+    } catch (e) { next(); /* fail open */ }
+};
+
+module.exports = { checkCanStartChat, checkCanReply, autoExpireRestriction };

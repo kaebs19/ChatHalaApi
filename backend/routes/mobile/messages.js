@@ -9,6 +9,7 @@ const Message = require('../../models/Message');
 const Conversation = require('../../models/Conversation');
 const BannedWord = require('../../models/BannedWord');
 const { protect } = require('../../middleware/auth');
+const { checkCanReply } = require('../../middleware/checkRestriction');
 const pushNotificationService = require('../../services/pushNotificationService');
 const { uploadMessageImage, getFullUrl } = require('./helpers');
 const { userStatusFields, maskInPlace, isUserSuspended } = require('../../utils/userStatus');
@@ -20,7 +21,7 @@ const { userStatusFields, maskInPlace, isUserSuspended } = require('../../utils/
 // @route   POST /api/mobile/messages/send
 // @desc    إرسال رسالة
 // @access  Private
-router.post('/messages/send', protect, async (req, res) => {
+router.post('/messages/send', protect, checkCanReply, async (req, res) => {
     try {
         const { conversationId, content, type = 'text', mediaUrl, mediaMetadata, replyTo } = req.body;
 
@@ -286,7 +287,7 @@ router.post('/messages/send', protect, async (req, res) => {
 // @route   POST /api/mobile/conversations/:conversationId/messages/image
 // @desc    إرسال صورة في رسالة (multipart/form-data)
 // @access  Private
-router.post('/conversations/:conversationId/messages/image', protect, uploadMessageImage.single('image'), async (req, res) => {
+router.post('/conversations/:conversationId/messages/image', protect, checkCanReply, uploadMessageImage.single('image'), async (req, res) => {
     try {
         const { conversationId } = req.params;
         const senderId = req.user._id;
@@ -421,7 +422,7 @@ router.post('/conversations/:conversationId/messages/image', protect, uploadMess
 // @route   POST /api/mobile/conversations/:conversationId/messages
 // @desc    إرسال رسالة (route بديل للتوافق مع iOS)
 // @access  Private
-router.post('/conversations/:conversationId/messages', protect, async (req, res) => {
+router.post('/conversations/:conversationId/messages', protect, checkCanReply, async (req, res) => {
     try {
         const { conversationId } = req.params;
         const { content, type = 'text', mediaUrl, mediaMetadata } = req.body;

@@ -242,6 +242,16 @@ const userSchema = new mongoose.Schema({
     suspendedUntil: { type: Date, default: null },
     suspendReason: { type: String, default: null },
 
+    // تقييد جزائي — قيود جزئية (بدلاً من تعليق كامل)
+    restrictions: {
+        cannotStartChat: { type: Boolean, default: false },   // منع بدء محادثات جديدة
+        cannotReply: { type: Boolean, default: false },        // منع الرد في المحادثات الموجودة
+        until: { type: Date, default: null },                  // تاريخ انتهاء التقييد (null = دائم)
+        reason: { type: String, default: null },
+        appliedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+        appliedAt: { type: Date, default: null }
+    },
+
     // عداد المخالفات
     violationCount: { type: Number, default: 0 },
     dailyViolationCount: { type: Number, default: 0 },

@@ -70,6 +70,8 @@ const activityLogSchema = new mongoose.Schema({
             'admin_user_adjust_violations',
             'admin_user_clear_violations',
             'admin_user_notify',
+            'admin_user_restrict',
+            'admin_user_unrestrict',
 
             // حظر الأجهزة/IPs
             'admin_device_ban',

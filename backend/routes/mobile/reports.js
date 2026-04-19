@@ -122,8 +122,8 @@ router.post('/reports', protect, async (req, res) => {
                     });
                 }
 
-                // Push للأدمن الأوفلاين
-                if (!admin.isOnline && admin.deviceToken) {
+                // Push للأدمن الأوفلاين — معطّل (الأدمن يتابع من لوحة التحكم)
+                if (false && !admin.isOnline && admin.deviceToken) {
                     await notificationService.sendPush(
                         admin.deviceToken,
                         'بلاغ جديد ⚠️',

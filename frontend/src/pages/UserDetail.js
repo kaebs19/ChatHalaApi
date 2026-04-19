@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getUserActivity, getUserViolations, warnUser, resetUserAvatar, banUserName, suspendUser, toggleUserActive, banUserPermanent, unbanUser, banUserDevice, unbanUserDevice, getUserLinkedAccounts, sendUserNotification, adjustUserViolations, clearUserViolations, getAccountsByIP, banIP } from '../services/api';
+import { getUserActivity, getUserViolations, warnUser, resetUserAvatar, banUserName, suspendUser, toggleUserActive, banUserPermanent, unbanUser, banUserDevice, unbanUserDevice, getUserLinkedAccounts, sendUserNotification, adjustUserViolations, clearUserViolations, getAccountsByIP, banIP, restrictUser, unrestrictUser } from '../services/api';
 import { useToast } from '../components/Toast';
 import { getImageUrl, getDefaultAvatar } from '../config';
 import { formatDateTimeLong, formatDateLong } from '../utils/formatters';
@@ -15,6 +15,8 @@ function UserDetail({ userId, onBack }) {
     const [viewingConversationMessages, setViewingConversationMessages] = useState(false);
     const [violations, setViolations] = useState(null);
     const [linkedAccounts, setLinkedAccounts] = useState(null);
+    const [showRestrictModal, setShowRestrictModal] = useState(false);
+    const [restrictForm, setRestrictForm] = useState({ cannotStartChat: true, cannotReply: false, days: 7, reason: '' });
     const { showToast } = useToast();
 
     useEffect(() => {
@@ -92,6 +94,34 @@ function UserDetail({ userId, onBack }) {
             showToast(`تم التعليق ${days} يوم`, 'success');
             fetchUserActivity();
         } catch (error) { showToast('فشل', 'error'); }
+    };
+
+    const handleApplyRestrict = async () => {
+        const { cannotStartChat, cannotReply, days, reason } = restrictForm;
+        if (!cannotStartChat && !cannotReply) {
+            showToast('اختر نوع تقييد واحد على الأقل', 'warning');
+            return;
+        }
+        try {
+            await restrictUser(userId, {
+                cannotStartChat, cannotReply,
+                days: Number(days) || null,
+                reason: reason.trim() || 'تقييد جزائي من الإدارة'
+            });
+            showToast('تم تطبيق التقييد', 'success');
+            setShowRestrictModal(false);
+            setRestrictForm({ cannotStartChat: true, cannotReply: false, days: 7, reason: '' });
+            window.location.reload(); // إعادة تحميل لعرض الحالة الجديدة
+        } catch { showToast('فشل التقييد', 'error'); }
+    };
+
+    const handleUnrestrict = async () => {
+        if (!window.confirm('رفع التقييد الجزائي عن هذا المستخدم؟')) return;
+        try {
+            await unrestrictUser(userId);
+            showToast('تم رفع التقييد', 'success');
+            window.location.reload();
+        } catch { showToast('فشل', 'error'); }
     };
 
     const handleBanDevice = async () => {
@@ -996,6 +1026,26 @@ function UserDetail({ userId, onBack }) {
                             </button>
                             {(() => {
                                 const u = userData?.user || userData;
+                                const isRestricted = u?.restrictions && (u.restrictions.cannotStartChat || u.restrictions.cannotReply);
+                                return (
+                                    <button
+                                        onClick={isRestricted ? handleUnrestrict : () => setShowRestrictModal(true)}
+                                        style={{
+                                            padding: '16px', borderRadius: '12px',
+                                            border: isRestricted ? '2px solid #10b981' : '2px solid #8b5cf6',
+                                            background: isRestricted ? '#ecfdf5' : '#f5f3ff',
+                                            cursor: 'pointer', fontSize: '14px', fontWeight: '600'
+                                        }}
+                                    >
+                                        {isRestricted ? '✅ رفع التقييد الجزائي' : '🔒 تقييد جزائي'}
+                                        <div style={{ fontSize: '11px', color: isRestricted ? '#065f46' : '#6d28d9', marginTop: '4px' }}>
+                                            {isRestricted ? 'إزالة التقييد الحالي' : 'منع المراسلة دون تعليق كامل'}
+                                        </div>
+                                    </button>
+                                );
+                            })()}
+                            {(() => {
+                                const u = userData?.user || userData;
                                 const isPermBanned = u?.suspendedUntil &&
                                     (new Date(u.suspendedUntil) - new Date()) / (1000 * 60 * 60 * 24) > 365;
                                 const isDeviceBanned = u?.deviceBanned;
@@ -1032,6 +1082,91 @@ function UserDetail({ userId, onBack }) {
                     </div>
                 )}
             </div>
+
+            {/* Modal: تقييد جزائي */}
+            {showRestrictModal && (
+                <div
+                    onClick={() => setShowRestrictModal(false)}
+                    style={{
+                        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+                        display: 'flex', justifyContent: 'center', alignItems: 'center',
+                        zIndex: 1000, padding: '20px'
+                    }}
+                >
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ background: '#fff', borderRadius: '12px', padding: '24px', maxWidth: '480px', width: '100%' }}
+                    >
+                        <h3 style={{ marginTop: 0 }}>🔒 تقييد جزائي</h3>
+                        <p style={{ color: '#6b7280', fontSize: '13px', marginBottom: '16px' }}>
+                            يقيّد المستخدم من المراسلة دون تعليق الحساب كاملاً.
+                        </p>
+
+                        <div style={{ marginBottom: '12px' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px', background: '#f9fafb', borderRadius: '8px', cursor: 'pointer', marginBottom: '6px' }}>
+                                <input
+                                    type="checkbox"
+                                    checked={restrictForm.cannotStartChat}
+                                    onChange={(e) => setRestrictForm({ ...restrictForm, cannotStartChat: e.target.checked })}
+                                />
+                                <div>
+                                    <div style={{ fontWeight: '600' }}>🚫 منع بدء محادثات جديدة</div>
+                                    <div style={{ fontSize: '11px', color: '#6b7280' }}>لا يستطيع بدء محادثة مع مستخدم جديد</div>
+                                </div>
+                            </label>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px', background: '#f9fafb', borderRadius: '8px', cursor: 'pointer' }}>
+                                <input
+                                    type="checkbox"
+                                    checked={restrictForm.cannotReply}
+                                    onChange={(e) => setRestrictForm({ ...restrictForm, cannotReply: e.target.checked })}
+                                />
+                                <div>
+                                    <div style={{ fontWeight: '600' }}>💬 منع الرد في المحادثات</div>
+                                    <div style={{ fontSize: '11px', color: '#6b7280' }}>لا يستطيع إرسال رسائل في أي محادثة</div>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div style={{ marginBottom: '12px' }}>
+                            <label style={{ display: 'block', fontWeight: '600', marginBottom: '6px' }}>المدة (أيام):</label>
+                            <select
+                                value={restrictForm.days}
+                                onChange={(e) => setRestrictForm({ ...restrictForm, days: e.target.value })}
+                                style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #d1d5db' }}
+                            >
+                                <option value="1">يوم واحد</option>
+                                <option value="3">3 أيام</option>
+                                <option value="7">7 أيام</option>
+                                <option value="14">14 يوم</option>
+                                <option value="30">30 يوم</option>
+                                <option value="">دائم (بدون انتهاء)</option>
+                            </select>
+                        </div>
+
+                        <div style={{ marginBottom: '16px' }}>
+                            <label style={{ display: 'block', fontWeight: '600', marginBottom: '6px' }}>السبب:</label>
+                            <textarea
+                                placeholder="مثال: إرسال رسائل مزعجة"
+                                value={restrictForm.reason}
+                                onChange={(e) => setRestrictForm({ ...restrictForm, reason: e.target.value })}
+                                rows={3}
+                                style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #d1d5db', resize: 'vertical', fontFamily: 'inherit' }}
+                            />
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                            <button
+                                onClick={() => setShowRestrictModal(false)}
+                                style={{ padding: '10px 20px', background: '#e5e7eb', color: '#374151', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+                            >إلغاء</button>
+                            <button
+                                onClick={handleApplyRestrict}
+                                style={{ padding: '10px 20px', background: '#8b5cf6', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}
+                            >🔒 تطبيق التقييد</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

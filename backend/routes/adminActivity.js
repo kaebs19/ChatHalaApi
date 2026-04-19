@@ -13,6 +13,7 @@ const ADMIN_ACTIONS = [
     'admin_user_suspend', 'admin_user_unsuspend', 'admin_user_warn',
     'admin_user_ban_name', 'admin_user_ban_permanent', 'admin_user_reset_avatar',
     'admin_user_adjust_violations', 'admin_user_clear_violations', 'admin_user_notify',
+    'admin_user_restrict', 'admin_user_unrestrict',
     'admin_device_ban', 'admin_device_unban',
     'admin_ip_ban', 'admin_ip_unban',
     'admin_appeal_approve', 'admin_appeal_reject', 'admin_appeal_reply',

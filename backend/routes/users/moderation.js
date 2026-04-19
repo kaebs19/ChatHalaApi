@@ -503,4 +503,117 @@ router.put('/:id/clear-violations', protect, adminOnly, async (req, res) => {
     }
 });
 
+// ============================================
+// 🔒 تقييد جزائي (بدون تعليق كامل للحساب)
+// ============================================
+
+// @route   PUT /api/users/:id/restrict
+// @body    { cannotStartChat: bool, cannotReply: bool, days: number|null, reason: string }
+router.put('/:id/restrict', protect, adminOnly, async (req, res) => {
+    try {
+        const { cannotStartChat = false, cannotReply = false, days = 7, reason = 'تقييد جزائي من الإدارة' } = req.body;
+        if (!cannotStartChat && !cannotReply) {
+            return res.status(400).json({ success: false, message: 'اختر نوع تقييد واحد على الأقل' });
+        }
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        if (user.role === 'admin') {
+            return res.status(403).json({ success: false, message: 'لا يمكن تقييد مدير' });
+        }
+
+        const until = days ? new Date(Date.now() + Number(days) * 24 * 60 * 60 * 1000) : null;
+        user.restrictions = {
+            cannotStartChat: !!cannotStartChat,
+            cannotReply: !!cannotReply,
+            until,
+            reason,
+            appliedBy: req.user._id,
+            appliedAt: new Date()
+        };
+        user.warnings.push({ reason, action: 'warn', adminId: req.user._id });
+        await user.save();
+
+        // إشعار المستخدم
+        const typeLabel = cannotStartChat && cannotReply ? 'من بدء المحادثات والرد'
+                        : cannotStartChat ? 'من بدء محادثات جديدة'
+                        : 'من الرد على الرسائل';
+        const durationLabel = days ? `لمدة ${days} يوم` : 'بشكل دائم';
+        const notifTitle = '🔒 تم تقييد حسابك جزئياً';
+        const notifBody = `تم تقييد حسابك ${typeLabel} ${durationLabel}. السبب: ${reason}`;
+        try {
+            await Notification.create({
+                title: notifTitle, body: notifBody, type: 'warning',
+                sender: req.user._id, targetUsers: [user._id], recipients: 'specific'
+            });
+            await pushNotificationService.sendNotificationToUser(user._id,
+                { title: notifTitle, body: notifBody }, { type: 'warning' }, false);
+        } catch (_) {}
+
+        invalidateUsers();
+
+        const { logAdminAction } = require('../../utils/logAdminAction');
+        await logAdminAction(req, {
+            action: 'admin_user_restrict',
+            description: `تقييد جزائي ${typeLabel} ${durationLabel}`,
+            targetUser: user,
+            additionalInfo: { cannotStartChat, cannotReply, days, reason, until },
+            severity: 'high'
+        });
+
+        res.json({
+            success: true,
+            message: `تم تقييد ${user.name} ${typeLabel}`,
+            data: { restrictions: user.restrictions }
+        });
+    } catch (error) {
+        console.error('خطأ في التقييد:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   PUT /api/users/:id/unrestrict
+router.put('/:id/unrestrict', protect, adminOnly, async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+
+        user.restrictions = {
+            cannotStartChat: false,
+            cannotReply: false,
+            until: null,
+            reason: null,
+            appliedBy: null,
+            appliedAt: null
+        };
+        await user.save();
+
+        try {
+            await Notification.create({
+                title: '✅ تم رفع التقييد',
+                body: 'يمكنك الآن استخدام المراسلة كالمعتاد. يرجى المحافظة على قواعد الاستخدام.',
+                type: 'system',
+                sender: req.user._id, targetUsers: [user._id], recipients: 'specific'
+            });
+            await pushNotificationService.sendNotificationToUser(user._id,
+                { title: '✅ تم رفع التقييد', body: 'يمكنك الآن استخدام المراسلة كالمعتاد.' },
+                { type: 'system' }, false);
+        } catch (_) {}
+
+        invalidateUsers();
+
+        const { logAdminAction } = require('../../utils/logAdminAction');
+        await logAdminAction(req, {
+            action: 'admin_user_unrestrict',
+            description: `رفع التقييد الجزائي عن ${user.name}`,
+            targetUser: user,
+            severity: 'medium'
+        });
+
+        res.json({ success: true, message: `تم رفع التقييد عن ${user.name}` });
+    } catch (error) {
+        console.error('خطأ في رفع التقييد:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 module.exports = router;
