@@ -16,6 +16,26 @@ const settingsSchema = new mongoose.Schema({
         default: ''
     },
 
+    // 🔄 إعدادات ترقية التطبيق (Force Update)
+    // لكل منصة: minVersion (الإصدار الأدنى المسموح — أقل منه = إجبار)
+    //           latestVersion (الإصدار الحالي — أقل منه = اقتراح اختياري)
+    //           storeURL (رابط المتجر)
+    forceUpdate: {
+        ios: {
+            minVersion: { type: String, default: '1.0.0' },
+            latestVersion: { type: String, default: '1.0.0' },
+            storeURL: { type: String, default: 'https://apps.apple.com/app/id0000000000' },
+            enabled: { type: Boolean, default: false } // هل نظام الترقية مُفعّل
+        },
+        android: {
+            minVersion: { type: String, default: '1.0.0' },
+            latestVersion: { type: String, default: '1.0.0' },
+            storeURL: { type: String, default: 'https://play.google.com/store/apps/details?id=com.halachat' },
+            enabled: { type: Boolean, default: false }
+        },
+        message: { type: String, default: 'يتوفر إصدار جديد يحتوي على تحسينات مهمة. يُرجى التحديث للمتابعة.' }
+    },
+
     // صفحات المحتوى القابلة للتعديل
     privacyPolicy: {
         type: String,

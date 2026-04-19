@@ -99,7 +99,8 @@ router.put('/', protect, adminOnly, async (req, res) => {
             'contactEmail',
             'contactPhone',
             'websiteUrl',
-            'socialMedia'
+            'socialMedia',
+            'forceUpdate'
         ];
 
         allowedFields.forEach(field => {
@@ -281,6 +282,54 @@ router.put('/content/:type', protect, adminOnly, async (req, res) => {
             message: 'خطأ في تحديث المحتوى',
             ...(process.env.NODE_ENV === 'development' && { ...(process.env.NODE_ENV === 'development' && { error: error.message }) })
         });
+    }
+});
+
+// @route   GET /api/settings/app-version
+// @desc    جلب إعدادات ترقية التطبيق (public — يُستدعى قبل تسجيل الدخول)
+// @query   ?platform=ios|android&version=x.y.z
+// @access  Public
+router.get('/app-version', async (req, res) => {
+    try {
+        const platform = (req.query.platform || 'ios').toLowerCase();
+        const currentVersion = (req.query.version || '').trim();
+
+        const settings = await Settings.getSettings();
+        const cfg = settings.forceUpdate?.[platform] || { enabled: false, minVersion: '0.0.0', latestVersion: '0.0.0', storeURL: '' };
+
+        // مقارنة الإصدارات (semver-safe بسيط)
+        const cmp = (a, b) => {
+            const pa = (a || '0').split('.').map(Number);
+            const pb = (b || '0').split('.').map(Number);
+            for (let i = 0; i < 3; i++) {
+                const av = pa[i] || 0, bv = pb[i] || 0;
+                if (av < bv) return -1;
+                if (av > bv) return 1;
+            }
+            return 0;
+        };
+
+        let status = 'ok'; // ok | update_available | force_update
+        if (cfg.enabled && currentVersion) {
+            if (cmp(currentVersion, cfg.minVersion) < 0) status = 'force_update';
+            else if (cmp(currentVersion, cfg.latestVersion) < 0) status = 'update_available';
+        }
+
+        res.json({
+            success: true,
+            data: {
+                status,
+                enabled: cfg.enabled,
+                minVersion: cfg.minVersion,
+                latestVersion: cfg.latestVersion,
+                storeURL: cfg.storeURL,
+                message: settings.forceUpdate?.message || '',
+                currentVersion
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في جلب إصدار التطبيق:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
 

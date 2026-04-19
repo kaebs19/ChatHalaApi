@@ -59,6 +59,12 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick }) {
             adminOnly: true
         },
         {
+            id: 'app-version',
+            name: 'إعدادات التحديث',
+            icon: '🔄',
+            adminOnly: true
+        },
+        {
             id: 'users-map',
             name: 'خريطة المستخدمين',
             icon: '🗺️',

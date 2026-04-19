@@ -164,6 +164,22 @@ export const getAccountsByIP = async (ip) => {
     return response.data;
 };
 
+// 🔄 إعدادات ترقية التطبيق
+export const getAppVersionInfo = async (platform = 'ios', version = '0.0.0') => {
+    const response = await api.get(`/settings/app-version`, { params: { platform, version } });
+    return response.data;
+};
+
+export const getAppSettings = async () => {
+    const response = await api.get('/settings');
+    return response.data;
+};
+
+export const updateAppVersionSettings = async (forceUpdate) => {
+    const response = await api.put('/settings', { forceUpdate });
+    return response.data;
+};
+
 // 🔒 تقييد جزائي للمستخدم
 export const restrictUser = async (userId, { cannotStartChat = false, cannotReply = false, days = 7, reason = '' }) => {
     const response = await api.put(`/users/${userId}/restrict`, { cannotStartChat, cannotReply, days, reason });
