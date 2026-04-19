@@ -3,6 +3,7 @@ import { getSettings, updateSettings, updatePageContent, changePassword, updateP
 import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ImageUpload from '../components/ImageUpload';
+import AppVersion from './AppVersion';
 import './Settings.css';
 
 function Settings() {
@@ -286,6 +287,12 @@ function Settings() {
                 >
                     🎨 إعدادات التطبيق
                 </button>
+                <button
+                    className={`tab-btn ${activeTab === 'app-version' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('app-version')}
+                >
+                    🔄 تحديث التطبيق
+                </button>
             </div>
 
             {/* Content */}
@@ -503,6 +510,9 @@ function Settings() {
                         </form>
                     </div>
                 )}
+
+                {/* تبويب تحديث التطبيق (Force Update) */}
+                {activeTab === 'app-version' && <AppVersion />}
             </div>
         </div>
     );

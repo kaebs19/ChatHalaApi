@@ -551,6 +551,18 @@ router.put('/:id/restrict', protect, adminOnly, async (req, res) => {
 
         invalidateUsers();
 
+        // 📡 Real-time: أرسل حدث socket للمستخدم يُحدّث التطبيق فوراً
+        if (global.io) {
+            global.io.to(`user:${user._id}`).emit('restriction-updated', {
+                restrictions: {
+                    cannotStartChat: user.restrictions.cannotStartChat,
+                    cannotReply: user.restrictions.cannotReply,
+                    until: user.restrictions.until,
+                    reason: user.restrictions.reason
+                }
+            });
+        }
+
         const { logAdminAction } = require('../../utils/logAdminAction');
         await logAdminAction(req, {
             action: 'admin_user_restrict',
@@ -600,6 +612,18 @@ router.put('/:id/unrestrict', protect, adminOnly, async (req, res) => {
         } catch (_) {}
 
         invalidateUsers();
+
+        // 📡 Real-time: أرسل حدث socket للمستخدم يُحدّث التطبيق فوراً
+        if (global.io) {
+            global.io.to(`user:${user._id}`).emit('restriction-updated', {
+                restrictions: {
+                    cannotStartChat: false,
+                    cannotReply: false,
+                    until: null,
+                    reason: null
+                }
+            });
+        }
 
         const { logAdminAction } = require('../../utils/logAdminAction');
         await logAdminAction(req, {
