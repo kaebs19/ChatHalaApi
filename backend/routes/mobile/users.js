@@ -222,7 +222,9 @@ router.get('/users/search', protect, async (req, res) => {
                     isOnline: liveOnline || false,
                     distance: Math.round(u.distance / 100) / 10,
                     distanceLabel: getDistanceLabel(u.distance),
-                    lastActive: u.stealthMode ? null : u.lastLogin
+                    lastActive: u.stealthMode ? null : u.lastLogin,
+                    // الإبقاء على lastLogin للمستخدمين غير المتخفين (iOS يحتاجه لحساب "متصل قريباً")
+                    lastLogin: u.stealthMode ? null : u.lastLogin
                 };
                 result.profileImage = getFullUrl(u.profileImage);
                 // إضافة الموقع المموّه (إلا إذا متخفي)
@@ -233,7 +235,6 @@ router.get('/users/search', protect, async (req, res) => {
                 // لا نكشف الموقع الحقيقي أبداً
                 delete result.location;
                 delete result.fuzzyLocation;
-                delete result.lastLogin;
                 delete result.stealthMode;
                 return result;
             });
@@ -270,7 +271,8 @@ router.get('/users/search', protect, async (req, res) => {
                 // 🟢 isOnline الحي من Socket (أدق من حقل DB الجامد)
                 userObj.isOnline = global.connectedUsers && global.connectedUsers.has(userObj._id.toString());
                 userObj.lastActive = userObj.stealthMode ? null : userObj.lastLogin;
-                delete userObj.lastLogin;
+                // الإبقاء على lastLogin للمستخدمين غير المتخفين
+                if (userObj.stealthMode) userObj.lastLogin = null;
                 delete userObj.stealthMode;
                 userObj.profileImage = getFullUrl(userObj.profileImage);
                 userObj.isVerified = userObj.verification?.isVerified || false;
