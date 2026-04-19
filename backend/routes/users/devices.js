@@ -5,6 +5,7 @@ const express = require('express');
 const router = express.Router();
 const User = require('../../models/User');
 const BannedDevice = require('../../models/BannedDevice');
+const BannedIP = require('../../models/BannedIP');
 const { protect, adminOnly } = require('../../middleware/auth');
 const { invalidateUsers } = require('../../utils/cache');
 const { buildFingerprint } = require('../../utils/deviceBan');
@@ -270,6 +271,107 @@ router.put('/:id/unban-device', protect, adminOnly, async (req, res) => {
         res.json({ success: true, message: 'تم فك حظر الجهاز' });
     } catch (error) {
         console.error('خطأ في فك حظر الجهاز:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// ═══════════════════════════════════════════
+// إدارة حظر IPs (يدوي من الأدمن — TTL تلقائي)
+// ═══════════════════════════════════════════
+
+// @route   GET /api/users/banned-ips/list
+// @desc    قائمة IPs المحظورة
+router.get('/banned-ips/list', protect, adminOnly, async (req, res) => {
+    try {
+        const list = await BannedIP.find()
+            .populate('bannedBy', 'name')
+            .populate('originalUserId', 'name uniqueTag')
+            .sort('-bannedAt')
+            .limit(200)
+            .lean();
+
+        // لكل IP: كم حساب استخدمه
+        for (const b of list) {
+            b.accountsCount = await User.countDocuments({ 'knownIPs.ip': b.ip });
+        }
+
+        res.json({ success: true, count: list.length, data: list });
+    } catch (error) {
+        console.error('خطأ في قائمة IPs المحظورة:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   POST /api/users/banned-ips
+// @desc    حظر IP يدوياً (مع TTL اختياري)
+// @body    { ip, reason, days (optional, null = permanent), originalUserId (optional) }
+router.post('/banned-ips', protect, adminOnly, async (req, res) => {
+    try {
+        const { ip, reason = 'حظر يدوي من الأدمن', days = null, originalUserId = null } = req.body;
+        if (!ip || typeof ip !== 'string') {
+            return res.status(400).json({ success: false, message: 'IP مطلوب' });
+        }
+
+        const cleanIP = ip.trim();
+        const expiresAt = days ? new Date(Date.now() + Number(days) * 24 * 60 * 60 * 1000) : null;
+
+        let originalUserName = null;
+        if (originalUserId) {
+            const u = await User.findById(originalUserId).select('name').lean();
+            originalUserName = u?.name || null;
+        }
+
+        // upsert: إذا موجود → حدّث
+        const banned = await BannedIP.findOneAndUpdate(
+            { ip: cleanIP },
+            {
+                ip: cleanIP,
+                reason,
+                expiresAt,
+                bannedBy: req.user._id,
+                bannedAt: new Date(),
+                originalUserId,
+                originalUserName
+            },
+            { upsert: true, new: true }
+        );
+
+        res.json({ success: true, message: 'تم حظر IP', data: banned });
+    } catch (error) {
+        console.error('خطأ في حظر IP:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   DELETE /api/users/banned-ips/:id
+// @desc    فك حظر IP
+router.delete('/banned-ips/:id', protect, adminOnly, async (req, res) => {
+    try {
+        const deleted = await BannedIP.findByIdAndDelete(req.params.id);
+        if (!deleted) return res.status(404).json({ success: false, message: 'IP غير موجود' });
+        res.json({ success: true, message: 'تم فك حظر IP' });
+    } catch (error) {
+        console.error('خطأ في فك حظر IP:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   GET /api/users/banned-ips/:id/accounts
+// @desc    الحسابات التي استخدمت IP المحظور
+router.get('/banned-ips/:id/accounts', protect, adminOnly, async (req, res) => {
+    try {
+        const banned = await BannedIP.findById(req.params.id).lean();
+        if (!banned) return res.status(404).json({ success: false, message: 'IP غير موجود' });
+
+        const accounts = await User.find({ 'knownIPs.ip': banned.ip })
+            .select('name email profileImage isActive suspendedUntil deviceBanned createdAt lastLogin role uniqueTag')
+            .sort('-lastLogin')
+            .limit(100)
+            .lean();
+
+        res.json({ success: true, count: accounts.length, data: { ip: banned, accounts } });
+    } catch (error) {
+        console.error('خطأ في حسابات IP المحظور:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });

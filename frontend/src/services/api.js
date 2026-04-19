@@ -164,6 +164,27 @@ export const getAccountsByIP = async (ip) => {
     return response.data;
 };
 
+// إدارة حظر IPs (يدوي من الأدمن)
+export const getBannedIPs = async () => {
+    const response = await api.get('/users/banned-ips/list');
+    return response.data;
+};
+
+export const banIP = async ({ ip, reason = 'حظر يدوي من الأدمن', days = null, originalUserId = null }) => {
+    const response = await api.post('/users/banned-ips', { ip, reason, days, originalUserId });
+    return response.data;
+};
+
+export const unbanIP = async (id) => {
+    const response = await api.delete(`/users/banned-ips/${id}`);
+    return response.data;
+};
+
+export const getBannedIPAccounts = async (id) => {
+    const response = await api.get(`/users/banned-ips/${id}/accounts`);
+    return response.data;
+};
+
 // تنبيه رسمي للمستخدم (بدون مخالفة)
 export const sendUserNotification = async (userId, data) => {
     const response = await api.post(`/users/${userId}/notify`, data);

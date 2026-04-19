@@ -47,6 +47,12 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick }) {
             adminOnly: true
         },
         {
+            id: 'banned-ips',
+            name: 'IPs المحظورة',
+            icon: '🌐',
+            adminOnly: true
+        },
+        {
             id: 'users-map',
             name: 'خريطة المستخدمين',
             icon: '🗺️',

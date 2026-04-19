@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getUserActivity, getUserViolations, warnUser, resetUserAvatar, banUserName, suspendUser, toggleUserActive, banUserPermanent, unbanUser, banUserDevice, unbanUserDevice, getUserLinkedAccounts, sendUserNotification, adjustUserViolations, clearUserViolations, getAccountsByIP } from '../services/api';
+import { getUserActivity, getUserViolations, warnUser, resetUserAvatar, banUserName, suspendUser, toggleUserActive, banUserPermanent, unbanUser, banUserDevice, unbanUserDevice, getUserLinkedAccounts, sendUserNotification, adjustUserViolations, clearUserViolations, getAccountsByIP, banIP } from '../services/api';
 import { useToast } from '../components/Toast';
 import { getImageUrl, getDefaultAvatar } from '../config';
 import { formatDateTimeLong, formatDateLong } from '../utils/formatters';
@@ -504,6 +504,26 @@ function UserDetail({ userId, onBack }) {
                                                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center', color: '#6b7280', fontSize: '11px' }}>
                                                     <span>{entry.count} مرة</span>
                                                     <span>{formatDate(entry.lastSeen)}</span>
+                                                    <button
+                                                        onClick={async (e) => {
+                                                            e.stopPropagation();
+                                                            const days = prompt(`حظر IP ${entry.ip} لكم يوم؟\n(اتركه فارغاً للحظر الدائم، أو أدخل عدد الأيام)`, '30');
+                                                            if (days === null) return;
+                                                            const reason = prompt('سبب الحظر:', `حظر بسبب المستخدم: ${user.name}`) || 'حظر يدوي';
+                                                            try {
+                                                                await banIP({
+                                                                    ip: entry.ip,
+                                                                    reason,
+                                                                    days: days.trim() === '' ? null : Number(days),
+                                                                    originalUserId: user._id
+                                                                });
+                                                                alert('تم حظر IP');
+                                                            } catch { alert('فشل الحظر'); }
+                                                        }}
+                                                        style={{ padding: '3px 8px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}
+                                                    >
+                                                        🛡️ حظر
+                                                    </button>
                                                 </div>
                                             </div>
                                         ))}

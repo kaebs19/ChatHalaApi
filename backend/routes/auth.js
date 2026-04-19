@@ -33,6 +33,7 @@ const appleSignin = require('apple-signin-auth');
 
 // Device ban check + fingerprint
 const { isDeviceBanned, buildFingerprint } = require('../utils/deviceBan');
+const { isIPBanned } = require('../utils/ipBan');
 const { trackUserIP } = require('../utils/trackUserIP');
 const { enforceRegistrationRateLimit } = require('../utils/registrationRateLimit');
 
@@ -62,18 +63,33 @@ const updateUserFingerprint = (user, req) => {
  */
 const checkDeviceBanned = async (req, res) => {
     try {
-        const banned = await isDeviceBanned({
+        const ip = req.ip || req.connection?.remoteAddress;
+
+        // 1) فحص حظر الجهاز
+        const bannedDevice = await isDeviceBanned({
             deviceToken: req.body?.deviceToken,
             fcmToken: req.body?.fcmToken,
             persistentDeviceId: req.body?.persistentDeviceId,
             deviceInfo: req.body?.deviceInfo,
-            ip: req.ip || req.connection?.remoteAddress
+            ip
         });
-        if (banned) {
+        if (bannedDevice) {
             res.status(403).json({
                 success: false,
                 message: 'تم حظر هذا الجهاز من استخدام التطبيق',
                 code: 'DEVICE_BANNED'
+            });
+            return true;
+        }
+
+        // 2) فحص حظر IP (يدوي من الأدمن)
+        const bannedIP = await isIPBanned(ip);
+        if (bannedIP) {
+            res.status(403).json({
+                success: false,
+                message: 'تم حظر هذا الاتصال من استخدام التطبيق',
+                code: 'IP_BANNED',
+                data: { reason: bannedIP.reason, expiresAt: bannedIP.expiresAt }
             });
             return true;
         }
