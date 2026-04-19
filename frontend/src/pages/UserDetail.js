@@ -106,7 +106,7 @@ function UserDetail({ userId, onBack }) {
             await restrictUser(userId, {
                 cannotStartChat, cannotReply,
                 days: Number(days) || null,
-                reason: reason.trim() || 'تقييد جزائي من الإدارة'
+                reason: reason.trim() || 'تقييد آلي بسبب مخالفة سياسة الاستخدام'
             });
             showToast('تم تطبيق التقييد', 'success');
             setShowRestrictModal(false);

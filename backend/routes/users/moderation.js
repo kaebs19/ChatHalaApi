@@ -511,7 +511,7 @@ router.put('/:id/clear-violations', protect, adminOnly, async (req, res) => {
 // @body    { cannotStartChat: bool, cannotReply: bool, days: number|null, reason: string }
 router.put('/:id/restrict', protect, adminOnly, async (req, res) => {
     try {
-        const { cannotStartChat = false, cannotReply = false, days = 7, reason = 'تقييد جزائي من الإدارة' } = req.body;
+        const { cannotStartChat = false, cannotReply = false, days = 7, reason = 'تقييد آلي بسبب مخالفة سياسة الاستخدام' } = req.body;
         if (!cannotStartChat && !cannotReply) {
             return res.status(400).json({ success: false, message: 'اختر نوع تقييد واحد على الأقل' });
         }
@@ -538,8 +538,8 @@ router.put('/:id/restrict', protect, adminOnly, async (req, res) => {
                         : cannotStartChat ? 'من بدء محادثات جديدة'
                         : 'من الرد على الرسائل';
         const durationLabel = days ? `لمدة ${days} يوم` : 'بشكل دائم';
-        const notifTitle = '🔒 تم تقييد حسابك جزئياً';
-        const notifBody = `تم تقييد حسابك ${typeLabel} ${durationLabel}. السبب: ${reason}`;
+        const notifTitle = '🔒 تم تقييد حسابك آلياً';
+        const notifBody = `قام النظام بتقييدك آلياً ${typeLabel} ${durationLabel}. السبب: ${reason}`;
         try {
             await Notification.create({
                 title: notifTitle, body: notifBody, type: 'warning',
