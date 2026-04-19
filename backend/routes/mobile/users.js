@@ -81,7 +81,10 @@ router.get('/users/search', protect, async (req, res) => {
             maxAge,      // أكبر عمر
             latitude,    // خط العرض (اختياري)
             longitude,   // خط الطول (اختياري)
-            maxDistance = 50 // أقصى مسافة بالكيلومتر
+            maxDistance = 50, // أقصى مسافة بالكيلومتر
+            onlineOnly,  // 'true' = فقط المتصلين الآن
+            completeOnly,// 'true' = فقط الملفات المكتملة (صورة + جنس + عمر + دولة)
+            verifiedOnly // 'true' = فقط الموثّقين
         } = req.query;
 
         // بناء الفلتر
@@ -131,6 +134,21 @@ router.get('/users/search', protect, async (req, res) => {
             filter.country = country.toUpperCase();
         }
 
+        const wantsCompleteOnly = (completeOnly === 'true' || completeOnly === true);
+        if (wantsCompleteOnly) {
+            filter.profileImage = { $nin: [null, ''], $exists: true };
+            if (!filter.gender) filter.gender = { $in: ['male', 'female'] };
+            if (!filter.country) filter.country = { $nin: [null, ''], $exists: true };
+        }
+
+        // فلتر "موثّقين فقط"
+        if (verifiedOnly === 'true' || verifiedOnly === true) {
+            filter['verification.isVerified'] = true;
+        }
+
+        // فلتر "متصل الآن فقط" — يُطبّق بعد الاستعلام (يعتمد على global.connectedUsers)
+        const filterOnlineOnly = (onlineOnly === 'true' || onlineOnly === true);
+
         // فلتر العمر (من birthDate)
         if (minAge || maxAge) {
             filter.birthDate = {};
@@ -144,6 +162,8 @@ router.get('/users/search', protect, async (req, res) => {
                 maxDate.setFullYear(maxDate.getFullYear() - parseInt(minAge));
                 filter.birthDate.$lte = maxDate;
             }
+        } else if (wantsCompleteOnly) {
+            filter.birthDate = { $ne: null, $exists: true };
         }
 
         const pageNum = Math.max(1, parseInt(page) || 1);
@@ -195,8 +215,11 @@ router.get('/users/search', protect, async (req, res) => {
 
             // حساب distanceLabel + إخفاء lastLogin للمتخفين + إضافة fuzzyLocation
             users = users.map(u => {
+                // 🟢 isOnline الحي من Socket (أدق من حقل DB الجامد)
+                const liveOnline = global.connectedUsers && global.connectedUsers.has(u._id.toString());
                 const result = {
                     ...u,
+                    isOnline: liveOnline || false,
                     distance: Math.round(u.distance / 100) / 10,
                     distanceLabel: getDistanceLabel(u.distance),
                     lastActive: u.stealthMode ? null : u.lastLogin
@@ -244,6 +267,8 @@ router.get('/users/search', protect, async (req, res) => {
             // إخفاء lastLogin للمتخفين + إضافة distance: null + حذف stealthMode
             users = users.map(u => {
                 const userObj = u.toObject();
+                // 🟢 isOnline الحي من Socket (أدق من حقل DB الجامد)
+                userObj.isOnline = global.connectedUsers && global.connectedUsers.has(userObj._id.toString());
                 userObj.lastActive = userObj.stealthMode ? null : userObj.lastLogin;
                 delete userObj.lastLogin;
                 delete userObj.stealthMode;
@@ -261,6 +286,11 @@ router.get('/users/search', protect, async (req, res) => {
                 delete userObj.location;
                 return userObj;
             });
+        }
+
+        // فلترة نهائية: "متصل الآن فقط"
+        if (filterOnlineOnly) {
+            users = users.filter(u => u.isOnline === true);
         }
 
         res.status(200).json({
