@@ -34,6 +34,7 @@ const appleSignin = require('apple-signin-auth');
 // Device ban check + fingerprint
 const { isDeviceBanned, buildFingerprint } = require('../utils/deviceBan');
 const { trackUserIP } = require('../utils/trackUserIP');
+const { enforceRegistrationRateLimit } = require('../utils/registrationRateLimit');
 
 /**
  * Helper: تحديث بصمة جهاز المستخدم (تُحسب من deviceInfo + IP) + persistentDeviceId
@@ -145,6 +146,9 @@ router.post('/register', registerValidation, validate, async (req, res) => {
 
         // فحص حظر الجهاز
         if (await checkDeviceBanned(req, res)) return;
+
+        // فحص حد إنشاء الحسابات (rate limit)
+        if (await enforceRegistrationRateLimit(req, res)) return;
 
         // فحص الاسم ضد الكلمات المحظورة
         const nameCheck = await BannedWord.checkText(name, 'name');
@@ -971,6 +975,9 @@ router.post('/google', async (req, res) => {
                 user.profileImage = picture;
             }
         } else {
+            // فحص حد إنشاء الحسابات (rate limit) — فقط عند إنشاء حساب جديد
+            if (await enforceRegistrationRateLimit(req, res)) return;
+
             // إنشاء مستخدم جديد
             isNewUser = true;
             user = new User({
@@ -1110,6 +1117,9 @@ router.post('/apple', async (req, res) => {
                 user.name = appleName;
             }
         } else {
+            // فحص حد إنشاء الحسابات (rate limit) — فقط عند إنشاء حساب جديد
+            if (await enforceRegistrationRateLimit(req, res)) return;
+
             // إنشاء مستخدم جديد
             isNewUser = true;
 
