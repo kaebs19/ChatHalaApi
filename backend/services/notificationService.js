@@ -70,16 +70,16 @@ class NotificationService {
                     // ⚡ Headers ضرورية لتسليم فوري على iOS
                     headers: {
                         'apns-priority': '10',        // أعلى أولوية (immediate delivery)
-                        'apns-push-type': 'alert',    // مطلوب iOS 13+
+                        'apns-push-type': 'alert',    // alert = يعرض banner (ليس silent)
                         'apns-expiration': '0'         // أرسل الآن أو أسقط (لا تخزن)
                     },
                     payload: {
                         aps: {
-                            alert: { title, body },
+                            // alert تُضاف تلقائياً بواسطة FCM من notification.{title,body}
                             sound: 'default',
                             badge: 1,
-                            'mutable-content': 1,       // للـ NotificationServiceExtension
-                            'content-available': 1      // أيقظ التطبيق للـ background handling
+                            'mutable-content': 1        // للـ NotificationServiceExtension (صور/إلخ)
+                            // لا content-available — يجعل الإشعار صامت (صوت بلا banner)
                         }
                     }
                 },
