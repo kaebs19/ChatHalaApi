@@ -44,9 +44,11 @@ const submitHandler = async (req, res) => {
         }
         const message = text;
 
-        // لا يُقبل إلا من المعلّقين/المحظورين
+        // لا يُقبل إلا من المعلّقين/المحظورين/المقيّدين
         const isSuspended = !req.user.isActive || req.user.suspendedUntil;
-        if (!isSuspended && !req.user.deviceBanned && !req.user.nameBanned) {
+        const isRestricted = req.user.restrictions
+            && (req.user.restrictions.cannotStartChat || req.user.restrictions.cannotReply);
+        if (!isSuspended && !isRestricted && !req.user.deviceBanned && !req.user.nameBanned) {
             return res.status(400).json({
                 success: false,
                 message: 'حسابك نشط، لا حاجة لتقديم استئناف'
@@ -71,6 +73,7 @@ const submitHandler = async (req, res) => {
             const days = (new Date(req.user.suspendedUntil) - new Date()) / (1000 * 60 * 60 * 24);
             suspensionType = days > 365 ? 'permanent' : 'temporary';
         } else if (req.user.nameBanned) suspensionType = 'name';
+        else if (isRestricted) suspensionType = 'restriction';
 
         const appeal = await Appeal.create({
             user: req.user._id,
