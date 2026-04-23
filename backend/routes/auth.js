@@ -287,10 +287,9 @@ router.post('/login', loginValidation, validate, async (req, res) => {
             });
         }
 
-        // فحص حظر الجهاز
-        if (await checkDeviceBanned(req, res)) return;
-
-        // البحث عن المستخدم (مع كلمة المرور)
+        // البحث عن المستخدم (مع كلمة المرور) — نتحقق من كلمة المرور أولاً
+        // ثم نفحص حظر الجهاز. الهدف: السماح لصاحب الحساب الأصلي بالحصول على
+        // token للاستئناف حتى لو الجهاز محظور.
         const user = await User.findOne({ email }).select('+password +loginAttempts +lockUntil');
 
         if (!user) {
@@ -320,6 +319,57 @@ router.post('/login', loginValidation, validate, async (req, res) => {
                 message: 'البريد الإلكتروني أو كلمة المرور خاطئة'
             });
         }
+
+        // ✅ كلمة المرور صحيحة — الآن نفحص الجهاز
+        // إذا الجهاز محظور: نسمح فقط إذا هذا هو الحساب الأصلي (المرتبط بالحظر)
+        try {
+            const ip = req.ip || req.connection?.remoteAddress;
+            const bannedDevice = await isDeviceBanned({
+                deviceToken: req.body?.deviceToken,
+                fcmToken: req.body?.fcmToken,
+                persistentDeviceId: req.body?.persistentDeviceId,
+                deviceInfo: req.body?.deviceInfo,
+                ip
+            });
+            if (bannedDevice) {
+                const isOriginalAccount = bannedDevice.originalUserId &&
+                    bannedDevice.originalUserId.toString() === user._id.toString();
+
+                if (!isOriginalAccount) {
+                    // حساب مختلف يحاول الدخول من جهاز محظور — رفض كامل
+                    return res.status(403).json({
+                        success: false,
+                        message: 'تم حظر هذا الجهاز من استخدام التطبيق',
+                        code: 'DEVICE_BANNED'
+                    });
+                }
+                // صاحب الحساب الأصلي → نعطيه token للاستئناف فقط
+                return res.status(403).json({
+                    success: false,
+                    message: 'جهاز محظور نهائياً',
+                    code: 'DEVICE_BANNED',
+                    data: {
+                        suspended: true,
+                        permanent: true,
+                        deviceBanned: true,
+                        reason: user.suspendReason || bannedDevice.reason || 'مخالفات متكررة',
+                        suspendedUntil: user.suspendedUntil,
+                        level: user.suspensionCount || 0,
+                        // توكن للاستئناف
+                        token: generateToken(user._id),
+                        refreshToken: generateRefreshToken(user._id),
+                        user: {
+                            id: user._id,
+                            name: user.name,
+                            email: user.email,
+                            profileImage: user.profileImage,
+                            role: user.role,
+                            uniqueTag: user.uniqueTag
+                        }
+                    }
+                });
+            }
+        } catch (e) { /* لا يوقف التسجيل بسبب خطأ فحص */ }
 
         // التحقق من أن الحساب مفعل
         if (user.isActive === false) {
