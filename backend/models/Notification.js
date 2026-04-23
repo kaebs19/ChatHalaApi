@@ -110,6 +110,12 @@ const notificationSchema = new mongoose.Schema({
         }
     }],
 
+    // المستخدمين الذين أخفوا الإشعار (soft delete شخصي)
+    hiddenBy: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    }],
+
     // وقت الجدولة (إذا كان مجدولاً)
     scheduledAt: {
         type: Date,

@@ -21,13 +21,14 @@ router.get('/notifications', protect, async (req, res) => {
         const { page = 1, limit = 20 } = req.query;
         const userId = req.user._id;
 
-        // جلب الإشعارات الموجهة للمستخدم أو للجميع
+        // جلب الإشعارات الموجهة للمستخدم أو للجميع (مع استبعاد المخفية شخصياً)
         const query = {
             $or: [
                 { targetUsers: userId },
                 { recipients: 'all' }
             ],
-            isActive: true
+            isActive: true,
+            hiddenBy: { $ne: userId }
         };
 
         // 🔕 الأدمن لا يستقبل تنبيهات البلاغات والكلمات المحجوبة في التطبيق
@@ -172,6 +173,37 @@ router.put('/notifications/read-all', protect, async (req, res) => {
             success: false,
             message: 'خطأ في السيرفر'
         });
+    }
+});
+
+// @route   DELETE /api/mobile/notifications/clear-all
+// @desc    إخفاء جميع الإشعارات عن المستخدم (soft delete — لا نحذف من DB)
+// @access  Private
+router.delete('/notifications/clear-all', protect, async (req, res) => {
+    try {
+        const userId = req.user._id;
+
+        // نضيف المستخدم إلى hiddenBy لكل إشعاراته (ليختفي عنه فقط دون التأثير على الآخرين)
+        const result = await Notification.updateMany(
+            {
+                $or: [
+                    { targetUsers: userId },
+                    { recipients: 'all' }
+                ],
+                isActive: true,
+                hiddenBy: { $ne: userId }
+            },
+            { $addToSet: { hiddenBy: userId } }
+        );
+
+        res.status(200).json({
+            success: true,
+            message: `تم حذف ${result.modifiedCount || 0} إشعار`,
+            data: { count: result.modifiedCount || 0 }
+        });
+    } catch (error) {
+        logger.error('خطأ في حذف جميع الإشعارات:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
 
