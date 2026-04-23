@@ -20,7 +20,7 @@ const appealSchema = new mongoose.Schema({
     // نوع الحظر وقت تقديم الطلب (للمرجع)
     suspensionType: {
         type: String,
-        enum: ['temporary', 'permanent', 'device', 'name'],
+        enum: ['temporary', 'permanent', 'device', 'name', 'restriction'],
         default: 'temporary'
     },
     suspendReasonSnapshot: { type: String, default: null },
