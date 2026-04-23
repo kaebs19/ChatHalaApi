@@ -67,14 +67,30 @@ class NotificationService {
                     Object.entries(data).map(([k, v]) => [k, String(v)])
                 ),
                 apns: {
+                    // ⚡ Headers ضرورية لتسليم فوري على iOS
+                    headers: {
+                        'apns-priority': '10',        // أعلى أولوية (immediate delivery)
+                        'apns-push-type': 'alert',    // مطلوب iOS 13+
+                        'apns-expiration': '0'         // أرسل الآن أو أسقط (لا تخزن)
+                    },
                     payload: {
-                        aps: { sound: 'default', badge: 1 }
+                        aps: {
+                            alert: { title, body },
+                            sound: 'default',
+                            badge: 1,
+                            'mutable-content': 1,       // للـ NotificationServiceExtension
+                            'content-available': 1      // أيقظ التطبيق للـ background handling
+                        }
                     }
                 },
                 android: {
                     priority: 'high',
                     notification: {
-                        sound: 'default'
+                        sound: 'default',
+                        channelId: 'messages',
+                        priority: 'high',
+                        defaultSound: true,
+                        defaultVibrateTimings: true
                     }
                 }
             };
