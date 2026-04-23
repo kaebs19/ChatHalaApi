@@ -82,6 +82,20 @@ const submitHandler = async (req, res) => {
             suspendReasonSnapshot: req.user.suspendReason || null
         });
 
+        // Socket event للأدمن (badge + notification)
+        try {
+            if (global.io) {
+                global.io.emit('appeal-submitted', {
+                    appealId: String(appeal._id),
+                    userId: String(req.user._id),
+                    userName: req.user.name,
+                    suspensionType,
+                    preview: message.trim().substring(0, 80),
+                    createdAt: appeal.createdAt
+                });
+            }
+        } catch (e) {}
+
         res.status(201).json({
             success: true,
             message: 'تم تقديم طلب الاستئناف بنجاح. سيتم الرد خلال 24-48 ساعة.',
@@ -268,7 +282,17 @@ router.put('/:id/approve', protect, adminOnly, async (req, res) => {
             });
             await pushNotificationService.sendNotificationToUser(user._id,
                 { title: '✅ تم قبول الاستئناف', body: note ? `ملاحظة: ${note.substring(0,100)}` : 'تم فك الحظر عن حسابك' },
-                { type: 'system' }, false);
+                { type: 'appeal_decided', appealId: String(appeal._id), decision: 'approved' }, false);
+
+            // Socket event فوري للمستخدم (إذا التطبيق مفتوح)
+            if (global.io) {
+                global.io.to(`user:${user._id}`).emit('appeal-decided', {
+                    appealId: String(appeal._id),
+                    decision: 'approved',
+                    note: note || '',
+                    decidedAt: new Date()
+                });
+            }
         } catch (e) {}
 
         res.json({ success: true, message: 'تم قبول الطلب وفك الحظر', data: { appeal } });
@@ -319,7 +343,17 @@ router.put('/:id/reject', protect, adminOnly, async (req, res) => {
             });
             await pushNotificationService.sendNotificationToUser(appeal.user._id,
                 { title: '❌ تم رفض الاستئناف', body: note ? `سبب الرفض: ${note.substring(0,100)}` : 'لم يتم قبول الطلب' },
-                { type: 'system' }, false);
+                { type: 'appeal_decided', appealId: String(appeal._id), decision: 'rejected' }, false);
+
+            // Socket event فوري للمستخدم
+            if (global.io) {
+                global.io.to(`user:${appeal.user._id}`).emit('appeal-decided', {
+                    appealId: String(appeal._id),
+                    decision: 'rejected',
+                    note: note || '',
+                    decidedAt: new Date()
+                });
+            }
         } catch (e) {}
 
         res.json({ success: true, message: 'تم رفض الطلب' });
