@@ -19,7 +19,8 @@ import Appeals from '../pages/Appeals';
 import BannedDevices from '../pages/BannedDevices';
 import BannedIPs from '../pages/BannedIPs';
 import AdminActivity from '../pages/AdminActivity';
-import { getReportsStats, getNotifications } from '../services/api';
+import { getReportsStats, getNotifications, getAppeals } from '../services/api';
+import socketService from '../services/socket';
 import { useToast } from '../components/Toast';
 import config from '../config';
 import './MainLayout.css';
@@ -30,6 +31,7 @@ function MainLayout({ onLogout, user: initialUser }) {
     const [previousPage, setPreviousPage] = useState('users');
     const [viewingConversationFromReport, setViewingConversationFromReport] = useState(null);
     const [pendingReportsCount, setPendingReportsCount] = useState(0);
+    const [pendingAppealsCount, setPendingAppealsCount] = useState(0);
     const [unreadNotifications, setUnreadNotifications] = useState(0);
     const [user, setUser] = useState(initialUser);
     const [showNotificationModal, setShowNotificationModal] = useState(false);
@@ -47,13 +49,52 @@ function MainLayout({ onLogout, user: initialUser }) {
         if (user?.role === 'admin') {
             fetchReportsCount();
             fetchNotificationsCount();
+            fetchAppealsCount();
             const interval = setInterval(() => {
                 fetchReportsCount();
                 fetchNotificationsCount();
+                fetchAppealsCount();
             }, 60000); // Update every minute
             return () => clearInterval(interval);
         }
     }, [user]);
+
+    // Socket listener لاستئناف جديد أو رسالة — زيادة فورية للـ badge
+    useEffect(() => {
+        if (user?.role !== 'admin') return;
+        // انتظر حتى يتصل الـ socket
+        const attach = () => {
+            const sock = socketService.socket;
+            if (!sock) return false;
+            sock.on('appeal-submitted', (data) => {
+                console.log('📝 استئناف جديد', data);
+                setPendingAppealsCount((c) => c + 1);
+                if (showToast) {
+                    showToast(`📝 استئناف جديد من ${data.userName || 'مستخدم'}`, 'info');
+                }
+            });
+            sock.on('appeal-message', (data) => {
+                console.log('💬 رسالة استئناف جديدة', data);
+                if (showToast) {
+                    showToast(`💬 رد جديد من ${data.senderName || 'مستخدم'} على استئناف`, 'info');
+                }
+            });
+            return true;
+        };
+
+        if (!attach()) {
+            const t = setInterval(() => { if (attach()) clearInterval(t); }, 500);
+            setTimeout(() => clearInterval(t), 10000);
+        }
+
+        return () => {
+            const sock = socketService.socket;
+            if (sock) {
+                sock.off('appeal-submitted');
+                sock.off('appeal-message');
+            }
+        };
+    }, [user, showToast]);
 
     const fetchReportsCount = async () => {
         try {
@@ -63,6 +104,17 @@ function MainLayout({ onLogout, user: initialUser }) {
             }
         } catch (error) {
             console.error('خطأ في جلب عدد البلاغات:', error);
+        }
+    };
+
+    const fetchAppealsCount = async () => {
+        try {
+            const response = await getAppeals({ status: 'pending', limit: 1 });
+            if (response.success) {
+                setPendingAppealsCount(response.count || 0);
+            }
+        } catch (error) {
+            console.error('خطأ في جلب عدد الاستئنافات:', error);
         }
     };
 
@@ -203,9 +255,18 @@ function MainLayout({ onLogout, user: initialUser }) {
         <div className="main-layout">
             <Sidebar
                 currentPage={currentPage}
-                onPageChange={setCurrentPage}
+                onPageChange={(page) => {
+                    setCurrentPage(page);
+                    // صفر العدّاد عند فتح صفحة الاستئنافات
+                    if (page === 'appeals') {
+                        setPendingAppealsCount(0);
+                        // إعادة جلب بعد ثانية للتأكد من المزامنة مع السيرفر
+                        setTimeout(() => fetchAppealsCount(), 3000);
+                    }
+                }}
                 user={user}
                 onProfileClick={() => setCurrentPage('profile')}
+                badges={{ appeals: pendingAppealsCount, reports: pendingReportsCount }}
             />
             
             <div className="main-content">

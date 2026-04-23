@@ -2,7 +2,7 @@ import React from 'react';
 import { getImageUrl, getDefaultAvatar } from '../config';
 import './Sidebar.css';
 
-function Sidebar({ currentPage, onPageChange, user, onProfileClick }) {
+function Sidebar({ currentPage, onPageChange, user, onProfileClick, badges = {} }) {
     const menuItems = [
         {
             id: 'dashboard',
@@ -118,6 +118,7 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick }) {
                         return null;
                     }
 
+                    const badgeCount = badges[item.id] || 0;
                     return (
                         <button
                             key={item.id}
@@ -127,6 +128,28 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick }) {
                         >
                             <span className="nav-icon">{item.icon}</span>
                             <span className="nav-name">{item.name}</span>
+                            {badgeCount > 0 && (
+                                <span
+                                    style={{
+                                        background: '#ef4444',
+                                        color: '#fff',
+                                        fontSize: '11px',
+                                        fontWeight: '700',
+                                        minWidth: '20px',
+                                        height: '20px',
+                                        borderRadius: '10px',
+                                        padding: '0 6px',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        marginInlineStart: 'auto',
+                                        boxShadow: '0 0 0 2px #ffffff20'
+                                    }}
+                                    title={`${badgeCount} عنصر في الانتظار`}
+                                >
+                                    {badgeCount > 99 ? '99+' : badgeCount}
+                                </span>
+                            )}
                             {item.disabled && <span className="coming-soon">قريباً</span>}
                         </button>
                     );
