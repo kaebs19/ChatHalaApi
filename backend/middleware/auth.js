@@ -53,15 +53,29 @@ const protect = async (req, res, next) => {
                         : 0;
                     const isPermanent = remaining > 365;
                     const isDeviceBanned = req.user.deviceBanned === true;
+                    const isTempSuspended = !isPermanent && !isDeviceBanned && remaining > 0;
+
+                    // ✅ تعليق مؤقت "ناعم": يُمرَّر الطلب للـ GET (قراءة)
+                    // فقط routes الكتابة تُطبّق blockWriteIfRestricted لرفض الكتابة
+                    if (isTempSuspended) {
+                        req.user.isSoftSuspended = true;
+                        req.user.softSuspensionInfo = {
+                            reason: req.user.suspendReason,
+                            suspendedUntil: req.user.suspendedUntil,
+                            remaining,
+                            level: req.user.suspensionCount || 0
+                        };
+                        return next();
+                    }
+
+                    // تعليق دائم أو حظر جهاز → حجب كامل
                     return res.status(403).json({
                         success: false,
                         message: isDeviceBanned
                             ? 'جهاز محظور نهائياً'
                             : isPermanent
                                 ? 'تم حظر حسابك نهائياً'
-                                : remaining > 0
-                                    ? `الحساب معلّق. متبقي ${remaining} يوم.`
-                                    : 'الحساب غير مفعل',
+                                : 'الحساب غير مفعل',
                         code: isDeviceBanned
                             ? 'DEVICE_BANNED'
                             : isPermanent

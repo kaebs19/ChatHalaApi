@@ -80,4 +80,32 @@ const checkCanReply = async (req, res, next) => {
     } catch (e) { next(); /* fail open */ }
 };
 
-module.exports = { checkCanStartChat, checkCanReply, autoExpireRestriction };
+/**
+ * middleware: يمنع الكتابة إذا المستخدم معلّق مؤقتاً (soft suspension)
+ * auth.js يمرّر التعليق المؤقت ويضع req.user.isSoftSuspended=true
+ * هذا الـ middleware يُطبَّق على routes الكتابة لرفض الإجراء
+ */
+const blockIfSoftSuspended = (req, res, next) => {
+    if (req.user?.isSoftSuspended) {
+        const info = req.user.softSuspensionInfo || {};
+        return res.status(403).json({
+            success: false,
+            message: info.remaining > 0
+                ? `حسابك معلّق مؤقتاً. متبقي ${info.remaining} يوم`
+                : 'حسابك معلّق مؤقتاً',
+            code: 'ACCOUNT_SUSPENDED',
+            data: {
+                suspended: true,
+                permanent: false,
+                deviceBanned: false,
+                reason: info.reason || 'مخالفة سياسة الاستخدام',
+                suspendedUntil: info.suspendedUntil,
+                remaining: info.remaining || 0,
+                level: info.level || 0
+            }
+        });
+    }
+    next();
+};
+
+module.exports = { checkCanStartChat, checkCanReply, autoExpireRestriction, blockIfSoftSuspended };

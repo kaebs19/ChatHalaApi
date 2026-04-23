@@ -8,12 +8,13 @@ const User = require('../models/User');
 const Conversation = require('../models/Conversation');
 const Notification = require('../models/Notification');
 const { protect } = require('../middleware/auth');
+const { blockIfSoftSuspended } = require('../middleware/checkRestriction');
 const pushNotificationService = require('../services/pushNotificationService');
 
 // @route   POST /api/swipes
 // @desc    تسجيل إعجاب/عدم إعجاب/إعجاب مميز
 // @access  Private
-router.post('/', protect, async (req, res) => {
+router.post('/', protect, blockIfSoftSuspended, async (req, res) => {
     try {
         const { userId, type } = req.body;
 

@@ -10,7 +10,7 @@ const Conversation = require('../../models/Conversation');
 const SuperLike = require('../../models/SuperLike');
 const { protect } = require('../../middleware/auth');
 const { validate } = require('../../middleware/validation');
-const { checkCanStartChat, checkCanReply } = require('../../middleware/checkRestriction');
+const { checkCanStartChat, checkCanReply, blockIfSoftSuspended } = require('../../middleware/checkRestriction');
 const { conversationRequestValidation, mongoIdParam } = require('../../validators/mobile.validator');
 const pushNotificationService = require('../../services/pushNotificationService');
 const { getFullUrl } = require('./helpers');
@@ -22,7 +22,7 @@ const { getFullUrl } = require('./helpers');
 // @route   POST /api/mobile/conversations/request
 // @desc    طلب بدء محادثة مع مستخدم
 // @access  Private
-router.post('/conversations/request', protect, checkCanStartChat, conversationRequestValidation, validate, async (req, res) => {
+router.post('/conversations/request', protect, blockIfSoftSuspended, checkCanStartChat, conversationRequestValidation, validate, async (req, res) => {
     try {
         // Rate limit: 50 requests per 24 hours
         const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -211,7 +211,7 @@ router.post('/conversations/request', protect, checkCanStartChat, conversationRe
 // @route   PUT /api/mobile/conversations/:id/accept
 // @desc    قبول طلب محادثة
 // @access  Private
-router.put('/conversations/:id/accept', protect, checkCanReply, mongoIdParam, validate, async (req, res) => {
+router.put('/conversations/:id/accept', protect, blockIfSoftSuspended, checkCanReply, mongoIdParam, validate, async (req, res) => {
     try {
         const conversation = await Conversation.findById(req.params.id)
             .populate('participants', 'name email deviceToken fcmToken');

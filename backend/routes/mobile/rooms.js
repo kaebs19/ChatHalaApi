@@ -10,6 +10,7 @@ const ChatRoom = require('../../models/ChatRoom');
 const Report = require('../../models/Report');
 const BannedWord = require('../../models/BannedWord');
 const { protect } = require('../../middleware/auth');
+const { blockIfSoftSuspended } = require('../../middleware/checkRestriction');
 const { getFullUrl, uploadMessageImage } = require('./helpers');
 const { get: cacheGet, set: cacheSet, CACHE_TTL } = require('../../utils/cache');
 
@@ -346,7 +347,7 @@ router.put('/rooms/:id/mute', protect, async (req, res) => {
 // @route   POST /api/mobile/rooms/:id/messages
 // @desc    إرسال رسالة نصية في الغرفة
 // @access  Protected
-router.post('/rooms/:id/messages', protect, async (req, res) => {
+router.post('/rooms/:id/messages', protect, blockIfSoftSuspended, async (req, res) => {
     try {
         const { id: roomId } = req.params;
         const { content, type = 'text' } = req.body;
@@ -486,7 +487,7 @@ router.post('/rooms/:id/messages', protect, async (req, res) => {
 // @route   POST /api/mobile/rooms/:id/messages/image
 // @desc    إرسال صورة في الغرفة
 // @access  Protected
-router.post('/rooms/:id/messages/image', protect, uploadMessageImage.single('image'), async (req, res) => {
+router.post('/rooms/:id/messages/image', protect, blockIfSoftSuspended, uploadMessageImage.single('image'), async (req, res) => {
     try {
         const { id: roomId } = req.params;
         const senderId = req.user._id;
