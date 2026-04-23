@@ -48,6 +48,15 @@ const submitHandler = async (req, res) => {
         const isSuspended = !req.user.isActive || req.user.suspendedUntil;
         const isRestricted = req.user.restrictions
             && (req.user.restrictions.cannotStartChat || req.user.restrictions.cannotReply);
+        console.log('[APPEAL-SUBMIT]', {
+            userId: req.user._id?.toString(),
+            isActive: req.user.isActive,
+            suspendedUntil: req.user.suspendedUntil,
+            restrictions: req.user.restrictions,
+            deviceBanned: req.user.deviceBanned,
+            nameBanned: req.user.nameBanned,
+            isSuspended, isRestricted
+        });
         if (!isSuspended && !isRestricted && !req.user.deviceBanned && !req.user.nameBanned) {
             return res.status(400).json({
                 success: false,
