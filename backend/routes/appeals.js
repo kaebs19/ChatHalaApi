@@ -236,7 +236,7 @@ router.put('/:id/approve', protect, adminOnly, async (req, res) => {
         const user = await User.findById(appeal.user);
         if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
 
-        // فك الحظر/التعليق حسب النوع
+        // فك الحظر/التعليق/التقييد حسب النوع
         user.isActive = true;
         user.suspendedUntil = null;
         user.suspendReason = null;
@@ -247,6 +247,18 @@ router.put('/:id/approve', protect, adminOnly, async (req, res) => {
             user.deviceBannedAt = null;
             // حذف الجهاز من قائمة المحظورين
             await BannedDevice.deleteMany({ originalUserId: user._id });
+        }
+
+        // رفع التقييد الجزائي (إذا كان استئناف restriction أو المستخدم مقيّد)
+        const wasRestricted = user.restrictions
+            && (user.restrictions.cannotStartChat || user.restrictions.cannotReply);
+        if (wasRestricted) {
+            user.restrictions = {
+                cannotStartChat: false,
+                cannotReply: false,
+                until: null,
+                reason: null
+            };
         }
 
         const appealSnippet = (appeal.message || '').substring(0, 100);
@@ -284,14 +296,30 @@ router.put('/:id/approve', protect, adminOnly, async (req, res) => {
                 { title: '✅ تم قبول الاستئناف', body: note ? `ملاحظة: ${note.substring(0,100)}` : 'تم فك الحظر عن حسابك' },
                 { type: 'appeal_decided', appealId: String(appeal._id), decision: 'approved' }, false);
 
-            // Socket event فوري للمستخدم (إذا التطبيق مفتوح)
+            // Socket events فورية للمستخدم (إذا التطبيق مفتوح)
             if (global.io) {
-                global.io.to(`user:${user._id}`).emit('appeal-decided', {
+                const room = `user:${user._id}`;
+                global.io.to(room).emit('appeal-decided', {
                     appealId: String(appeal._id),
                     decision: 'approved',
                     note: note || '',
                     decidedAt: new Date()
                 });
+                // رفع التعليق → banner التعليق المؤقت يختفي
+                global.io.to(room).emit('account-unsuspended', {
+                    message: 'تم رفع التعليق بعد قبول استئنافك'
+                });
+                // رفع التقييد → banner التقييد الجزائي يختفي
+                if (wasRestricted) {
+                    global.io.to(room).emit('restriction-updated', {
+                        restrictions: {
+                            cannotStartChat: false,
+                            cannotReply: false,
+                            until: null,
+                            reason: null
+                        }
+                    });
+                }
             }
         } catch (e) {}
 
