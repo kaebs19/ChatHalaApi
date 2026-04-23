@@ -56,8 +56,8 @@ const io = new Server(server, {
         },
         credentials: true
     },
-    pingTimeout: 60000,      // 60 ثانية قبل اعتبار الاتصال مقطوع
-    pingInterval: 25000,     // فحص كل 25 ثانية
+    pingTimeout: 20000,      // 20 ثانية (من 60) — اكتشاف أسرع للانقطاع
+    pingInterval: 10000,     // فحص كل 10 ثواني (من 25) — heartbeat أكثر تواتراً
     maxHttpBufferSize: 1e6,  // 1MB حد أقصى للرسالة
     // السماح بدون origin فقط لتطبيقات الموبايل (يمررون التوكن في auth)
     allowRequest: (req, callback) => {
