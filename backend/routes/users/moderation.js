@@ -64,6 +64,17 @@ router.put('/:id/suspend', protect, adminOnly, async (req, res) => {
         });
         await pushNotificationService.sendNotificationToUser(user._id, { title: notifTitle, body: notifBody }, { type: 'system' }, false);
 
+        // إرسال socket event قبل disconnect ليحدّث التطبيق فوراً
+        try {
+            global.io?.to(`user:${user._id}`).emit('account-suspended', {
+                reason: reason || 'مخالفة سياسة الاستخدام',
+                suspendedUntil: user.suspendedUntil,
+                days,
+                level: user.violationCount || 0,
+                message: notifBody
+            });
+        } catch (e) {}
+
         disconnectUserSocket(user._id);
         invalidateUsers();
 
@@ -160,6 +171,13 @@ router.put('/:id/unban', protect, adminOnly, async (req, res) => {
             await pushNotificationService.sendNotificationToUser(user._id,
                 { title: '✅ تم رفع التعليق عن حسابك', body: 'مرحباً بعودتك!' },
                 { type: 'system' }, false);
+        } catch (e) {}
+
+        // إرسال socket event ليحدّث التطبيق فوراً ويخفي شاشة التعليق
+        try {
+            global.io?.to(`user:${user._id}`).emit('account-unsuspended', {
+                message: 'مرحباً بعودتك! تم رفع التعليق عن حسابك.'
+            });
         } catch (e) {}
 
         invalidateUsers();
