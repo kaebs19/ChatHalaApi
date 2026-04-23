@@ -82,6 +82,21 @@ function UserDetail({ userId, onBack }) {
     };
 
     const handleSuspend = async () => {
+        const u = userData?.user || userData;
+        const isTempSuspended = u?.suspendedUntil &&
+            new Date(u.suspendedUntil) > new Date() &&
+            (new Date(u.suspendedUntil) - new Date()) / (1000 * 60 * 60 * 24) <= 365;
+
+        if (isTempSuspended) {
+            if (!window.confirm('إلغاء التعليق المؤقت عن هذا المستخدم؟')) return;
+            try {
+                await unbanUser(userId);
+                showToast('تم إلغاء التعليق المؤقت', 'success');
+                fetchUserActivity();
+            } catch (error) { showToast('فشل إلغاء التعليق', 'error'); }
+            return;
+        }
+
         const days = window.prompt('عدد أيام التعليق:', '7');
         if (!days) return;
         const reason = window.prompt(
@@ -1020,10 +1035,26 @@ function UserDetail({ userId, onBack }) {
                                 ✏️ حظر الاسم
                                 <div style={{ fontSize: '11px', color: '#be185d', marginTop: '4px' }}>يظهر ***مستخدم محظور***</div>
                             </button>
-                            <button onClick={handleSuspend} style={{ padding: '16px', borderRadius: '12px', border: '2px solid #f97316', background: '#fff7ed', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>
-                                ⏸️ تعليق مؤقت
-                                <div style={{ fontSize: '11px', color: '#c2410c', marginTop: '4px' }}>تعليق لفترة محددة</div>
-                            </button>
+                            {(() => {
+                                const u = userData?.user || userData;
+                                const isTempSuspended = u?.suspendedUntil &&
+                                    new Date(u.suspendedUntil) > new Date() &&
+                                    (new Date(u.suspendedUntil) - new Date()) / (1000 * 60 * 60 * 24) <= 365;
+                                return (
+                                    <button onClick={handleSuspend} style={{
+                                        padding: '16px', borderRadius: '12px',
+                                        border: isTempSuspended ? '2px solid #10b981' : '2px solid #f97316',
+                                        background: isTempSuspended ? '#ecfdf5' : '#fff7ed',
+                                        cursor: 'pointer', fontSize: '14px', fontWeight: '600',
+                                        color: isTempSuspended ? '#059669' : 'inherit'
+                                    }}>
+                                        {isTempSuspended ? '✅ إلغاء التعليق المؤقت' : '⏸️ تعليق مؤقت'}
+                                        <div style={{ fontSize: '11px', color: isTempSuspended ? '#065f46' : '#c2410c', marginTop: '4px' }}>
+                                            {isTempSuspended ? 'رفع التعليق وإعادة تفعيل الحساب' : 'تعليق لفترة محددة'}
+                                        </div>
+                                    </button>
+                                );
+                            })()}
                             {(() => {
                                 const u = userData?.user || userData;
                                 const isRestricted = u?.restrictions && (u.restrictions.cannotStartChat || u.restrictions.cannotReply);
