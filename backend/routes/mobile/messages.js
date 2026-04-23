@@ -632,6 +632,64 @@ router.post('/conversations/:conversationId/messages', protect, blockIfSoftSuspe
 // @route   GET /api/mobile/messages/:conversationId
 // @desc    الحصول على رسائل محادثة
 // @access  Private
+// @route   GET /api/mobile/messages/:conversationId/since
+// @desc    catch-up: الرسائل الجديدة منذ timestamp محدد (للمزامنة عند reconnect)
+// @access  Private
+router.get('/messages/:conversationId/since', protect, async (req, res) => {
+    try {
+        const { conversationId } = req.params;
+        const { timestamp, limit = 100 } = req.query;
+
+        if (!timestamp) {
+            return res.status(400).json({ success: false, message: 'timestamp مطلوب' });
+        }
+
+        const sinceDate = new Date(timestamp);
+        if (isNaN(sinceDate.getTime())) {
+            return res.status(400).json({ success: false, message: 'timestamp غير صالح' });
+        }
+
+        // التحقق من صلاحية المستخدم
+        const conversation = await Conversation.findById(conversationId);
+        if (!conversation) {
+            return res.status(404).json({ success: false, message: 'المحادثة غير موجودة' });
+        }
+        const isParticipant = conversation.participants.some(
+            p => p.toString() === req.user._id.toString()
+        );
+        if (!isParticipant) {
+            return res.status(403).json({ success: false, message: 'ليس لديك صلاحية' });
+        }
+
+        const messages = await Message.find({
+            conversation: conversationId,
+            isDeleted: false,
+            createdAt: { $gt: sinceDate }
+        })
+            .populate('sender', 'name email profileImage isPremium verification.isVerified isActive deviceBanned suspendedUntil')
+            .populate({
+                path: 'replyTo',
+                select: 'content type sender mediaUrl createdAt',
+                populate: { path: 'sender', select: 'name' }
+            })
+            .populate('reactions.user', 'name')
+            .sort({ createdAt: 1 })
+            .limit(Number(limit));
+
+        res.status(200).json({
+            success: true,
+            data: {
+                messages,
+                count: messages.length,
+                serverTime: new Date().toISOString()
+            }
+        });
+    } catch (error) {
+        logger.error('خطأ في catch-up messages:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 router.get('/messages/:conversationId', protect, async (req, res) => {
     try {
         const { page = 1, limit = 50 } = req.query;
