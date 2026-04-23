@@ -75,10 +75,38 @@ const checkDeviceBanned = async (req, res) => {
             ip
         });
         if (bannedDevice) {
+            // جلب بيانات الحساب الأصلي المرتبط بهذا الجهاز (للعرض الشفاف للمستخدم)
+            let originalAccount = null;
+            try {
+                if (bannedDevice.originalUserId) {
+                    const origUser = await User.findById(bannedDevice.originalUserId)
+                        .select('name email profileImage uniqueTag createdAt');
+                    if (origUser) {
+                        // إخفاء جزء من الإيميل للخصوصية: a****@example.com
+                        const masked = (email) => {
+                            if (!email || !email.includes('@')) return email;
+                            const [local, domain] = email.split('@');
+                            const visible = local.substring(0, Math.min(2, local.length));
+                            return `${visible}${'•'.repeat(Math.max(3, local.length - 2))}@${domain}`;
+                        };
+                        originalAccount = {
+                            name: origUser.name,
+                            emailMasked: masked(origUser.email),
+                            uniqueTag: origUser.uniqueTag,
+                            profileImage: origUser.profileImage,
+                            joinedAt: origUser.createdAt,
+                            bannedAt: bannedDevice.createdAt,
+                            banReason: bannedDevice.reason || null
+                        };
+                    }
+                }
+            } catch (e) { /* لا يوقف */ }
+
             res.status(403).json({
                 success: false,
                 message: 'تم حظر هذا الجهاز من استخدام التطبيق',
-                code: 'DEVICE_BANNED'
+                code: 'DEVICE_BANNED',
+                data: { originalAccount }
             });
             return true;
         }
