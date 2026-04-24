@@ -256,15 +256,20 @@ const sendNewMessageNotification = async (recipientId, senderName, messagePrevie
             }
         }
 
+        const trimmedBody = messagePreview.length > 100
+            ? messagePreview.substring(0, 100) + '...'
+            : messagePreview;
+
         const notification = {
             title: senderName,
-            body: messagePreview.length > 100 ? messagePreview.substring(0, 100) + '...' : messagePreview
+            body: trimmedBody
         };
 
         const data = {
-            type: 'message',  // يجب أن يكون 'message' حسب الـ enum في Notification model
+            type: 'message',
             conversationId: conversationId.toString(),
-            senderName
+            senderName,
+            subtitle: 'رسالة جديدة'   // يظهر تحت الاسم مباشرة في iOS
         };
 
         return sendNotificationToUser(recipientId, notification, data, true);

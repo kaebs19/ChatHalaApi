@@ -14,6 +14,31 @@ try {
     console.log('⚠️ Firebase Admin غير مثبت - npm install firebase-admin');
 }
 
+// iOS notification categories (يطابق iOS registerNotificationCategories)
+function getCategoryForType(type) {
+    switch (type) {
+        case 'message':               return 'MESSAGE_CATEGORY';       // مع Quick Reply
+        case 'conversation_request':  return 'CONV_REQUEST_CATEGORY';  // قبول/رفض
+        case 'appeal_decided':
+        case 'appeal_message':        return 'APPEAL_CATEGORY';
+        default:                      return null;
+    }
+}
+
+// Android channel per notification type (أولوية + صوت مختلف لكل نوع)
+function getChannelIdForType(type) {
+    switch (type) {
+        case 'message':               return 'messages';
+        case 'conversation_request':
+        case 'like':
+        case 'super_like':            return 'social';
+        case 'system':
+        case 'warning':
+        case 'appeal_decided':        return 'system';
+        default:                      return 'default';
+    }
+}
+
 class NotificationService {
     constructor() {
         this.apnsProvider = null;
@@ -60,6 +85,16 @@ class NotificationService {
         }
 
         try {
+            // استخراج معلومات إضافية من data لتحسين شكل الإشعار
+            const notifType = data.type || 'general';
+            const threadId = data.conversationId || data.appealId || data.type;
+            const subtitle = data.subtitle || undefined;
+            const category = getCategoryForType(notifType);
+
+            // بناء aps.alert يدوياً (أفضل من الاعتماد على FCM auto-generation)
+            const apsAlert = { title, body };
+            if (subtitle) apsAlert.subtitle = subtitle;
+
             const message = {
                 token: deviceToken,
                 notification: { title, body },
@@ -67,19 +102,21 @@ class NotificationService {
                     Object.entries(data).map(([k, v]) => [k, String(v)])
                 ),
                 apns: {
-                    // ⚡ Headers ضرورية لتسليم فوري على iOS
                     headers: {
-                        'apns-priority': '10',        // أعلى أولوية (immediate delivery)
-                        'apns-push-type': 'alert',    // alert = يعرض banner (ليس silent)
-                        'apns-expiration': '0'         // أرسل الآن أو أسقط (لا تخزن)
+                        'apns-priority': '10',
+                        'apns-push-type': 'alert',
+                        'apns-expiration': '0',
+                        // 🧵 تجميع الإشعارات (رسائل نفس المحادثة → bundle واحد)
+                        ...(threadId ? { 'apns-collapse-id': String(threadId).substring(0, 64) } : {})
                     },
                     payload: {
                         aps: {
-                            // alert تُضاف تلقائياً بواسطة FCM من notification.{title,body}
+                            alert: apsAlert,
                             sound: 'default',
                             badge: 1,
-                            'mutable-content': 1        // للـ NotificationServiceExtension (صور/إلخ)
-                            // لا content-available — يجعل الإشعار صامت (صوت بلا banner)
+                            'mutable-content': 1,
+                            'thread-id': String(threadId || 'default'),  // تجميع iOS
+                            ...(category ? { category } : {})              // quick actions
                         }
                     }
                 },
@@ -87,10 +124,11 @@ class NotificationService {
                     priority: 'high',
                     notification: {
                         sound: 'default',
-                        channelId: 'messages',
+                        channelId: getChannelIdForType(notifType),
                         priority: 'high',
                         defaultSound: true,
-                        defaultVibrateTimings: true
+                        defaultVibrateTimings: true,
+                        ...(threadId ? { tag: String(threadId) } : {})  // تجميع Android
                     }
                 }
             };
