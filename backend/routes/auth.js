@@ -603,7 +603,45 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
         if (birthDate !== undefined) user.birthDate = birthDate;
         if (gender !== undefined) user.gender = gender;
         if (country !== undefined) user.country = country;
-        if (bio !== undefined) user.bio = bio;
+
+        // فحص النبذة ضد الكلمات المحظورة (فقط إذا ليست فارغة)
+        if (bio !== undefined) {
+            const trimmedBio = (bio || '').trim();
+            if (trimmedBio && trimmedBio !== (user.bio || '').trim()) {
+                const bioCheck = await BannedWord.checkText(trimmedBio, 'both');
+                if (!bioCheck.isClean) {
+                    try {
+                        const { recordViolation } = require('../utils/violationHelper');
+                        const result = await recordViolation({
+                            user,
+                            type: 'banned_bio',
+                            reason: `محاولة استخدام نبذة مخالفة - تحتوي: ${(bioCheck.foundWords || []).map(w => w.word || w).join(', ')}`
+                        });
+                        return res.status(400).json({
+                            success: false,
+                            message: result.autoSuspended
+                                ? (result.suspendDays >= 36500 ? 'تم حظر حسابك نهائياً بسبب تكرار المخالفات' : `تم تعليق حسابك لمدة ${result.suspendDays} يوم`)
+                                : 'النبذة تحتوي على كلمات غير مسموحة',
+                            code: 'BANNED_BIO',
+                            data: {
+                                violationCount: result.totalViolations,
+                                dailyViolationCount: result.dailyViolationCount,
+                                dailyRemaining: result.dailyRemaining,
+                                autoSuspended: result.autoSuspended,
+                                suspendDays: result.suspendDays
+                            }
+                        });
+                    } catch (e) {
+                        console.error('recordViolation failed for banned bio:', e);
+                        return res.status(400).json({
+                            success: false,
+                            message: 'النبذة تحتوي على كلمات غير مسموحة'
+                        });
+                    }
+                }
+            }
+            user.bio = bio;
+        }
 
         // دعم الصور الافتراضية (avatar_1 إلى avatar_14)
         if (defaultAvatar) {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getUserActivity, getUserViolations, warnUser, resetUserAvatar, banUserName, suspendUser, toggleUserActive, banUserPermanent, unbanUser, banUserDevice, unbanUserDevice, getUserLinkedAccounts, sendUserNotification, adjustUserViolations, clearUserViolations, getAccountsByIP, banIP, restrictUser, unrestrictUser } from '../services/api';
+import { getUserActivity, getUserViolations, warnUser, resetUserAvatar, resetUserBio, banUserName, suspendUser, toggleUserActive, banUserPermanent, unbanUser, banUserDevice, unbanUserDevice, getUserLinkedAccounts, sendUserNotification, adjustUserViolations, clearUserViolations, getAccountsByIP, banIP, restrictUser, unrestrictUser } from '../services/api';
 import { useToast } from '../components/Toast';
 import { getImageUrl, getDefaultAvatar } from '../config';
 import { formatDateTimeLong, formatDateLong } from '../utils/formatters';
@@ -70,6 +70,23 @@ function UserDetail({ userId, onBack }) {
             showToast('تم حذف الصورة', 'success');
             fetchUserActivity();
         } catch (error) { showToast('فشل', 'error'); }
+    };
+
+    const handleResetBio = async () => {
+        const u = userData?.user || userData;
+        const currentBio = (u?.bio || '').trim();
+        if (!currentBio) {
+            showToast('لا توجد نبذة لحذفها', 'warning');
+            return;
+        }
+        if (!window.confirm(`حذف نبذة المستخدم؟\n\nالنبذة الحالية:\n"${currentBio.substring(0, 150)}${currentBio.length > 150 ? '...' : ''}"`)) return;
+        try {
+            await resetUserBio(userId);
+            showToast('تم حذف النبذة وإشعار المستخدم', 'success');
+            fetchUserActivity();
+        } catch (error) {
+            showToast(error.response?.data?.message || 'فشل الحذف', 'error');
+        }
     };
 
     const handleBanName = async () => {
@@ -1031,6 +1048,29 @@ function UserDetail({ userId, onBack }) {
                                 🖼️ حذف الصورة
                                 <div style={{ fontSize: '11px', color: '#4338ca', marginTop: '4px' }}>إزالة صورة الملف الشخصي</div>
                             </button>
+                            {(() => {
+                                const u = userData?.user || userData;
+                                const hasBio = !!(u?.bio || '').trim();
+                                return (
+                                    <button
+                                        onClick={handleResetBio}
+                                        disabled={!hasBio}
+                                        style={{
+                                            padding: '16px', borderRadius: '12px',
+                                            border: hasBio ? '2px solid #0891b2' : '2px solid #d1d5db',
+                                            background: hasBio ? '#ecfeff' : '#f9fafb',
+                                            cursor: hasBio ? 'pointer' : 'not-allowed',
+                                            fontSize: '14px', fontWeight: '600',
+                                            opacity: hasBio ? 1 : 0.5
+                                        }}
+                                    >
+                                        📝 حذف النبذة
+                                        <div style={{ fontSize: '11px', color: hasBio ? '#0e7490' : '#6b7280', marginTop: '4px' }}>
+                                            {hasBio ? 'حذف نبذة المستخدم مع إشعار' : 'لا توجد نبذة'}
+                                        </div>
+                                    </button>
+                                );
+                            })()}
                             <button onClick={handleBanName} style={{ padding: '16px', borderRadius: '12px', border: '2px solid #ec4899', background: '#fdf2f8', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>
                                 ✏️ حظر الاسم
                                 <div style={{ fontSize: '11px', color: '#be185d', marginTop: '4px' }}>يظهر ***مستخدم محظور***</div>

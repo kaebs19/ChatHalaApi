@@ -226,6 +226,57 @@ router.put('/:id/reset-avatar', protect, adminOnly, async (req, res) => {
     }
 });
 
+// @route   PUT /api/users/:id/reset-bio
+// @desc    حذف نبذة المستخدم من قبل الإدارة
+router.put('/:id/reset-bio', protect, adminOnly, async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+
+        const oldBio = user.bio || '';
+        if (!oldBio.trim()) {
+            return res.status(400).json({ success: false, message: 'لا توجد نبذة لحذفها' });
+        }
+
+        user.bio = '';
+        user.violationCount = (user.violationCount || 0) + 1;
+        user.warnings.push({
+            reason: `حذف النبذة من قبل الإدارة — المحتوى: "${oldBio.substring(0, 100)}"`,
+            action: 'bio_reset',
+            adminId: req.user._id
+        });
+        await user.save();
+
+        const notifTitle = 'تنبيه من الإدارة';
+        const notifBody = 'تم حذف النبذة من حسابك لمخالفتها سياسة الاستخدام';
+        try {
+            await Notification.create({
+                title: notifTitle, body: notifBody, type: 'system',
+                sender: req.user._id, targetUsers: [user._id], recipients: 'specific'
+            });
+            await pushNotificationService.sendNotificationToUser(user._id,
+                { title: notifTitle, body: notifBody }, { type: 'system' }, false);
+            if (global.io) {
+                global.io.to(`user:${user._id}`).emit('notification', { title: notifTitle, body: notifBody });
+            }
+        } catch (e) {}
+
+        await logAdminAction(req, {
+            action: 'admin_user_bio_reset',
+            description: `حذف نبذة ${user.name}`,
+            targetUser: user,
+            additionalInfo: { oldBio: oldBio.substring(0, 200) },
+            severity: 'medium'
+        });
+
+        invalidateUsers();
+        res.json({ success: true, message: 'تم حذف النبذة وإشعار المستخدم' });
+    } catch (error) {
+        console.error('خطأ في حذف النبذة:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 // @route   PUT /api/users/:id/ban-name
 router.put('/:id/ban-name', protect, adminOnly, async (req, res) => {
     try {

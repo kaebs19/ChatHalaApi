@@ -284,6 +284,12 @@ export const resetUserAvatar = async (userId) => {
     return response.data;
 };
 
+// حذف نبذة المستخدم (Admin فقط)
+export const resetUserBio = async (userId) => {
+    const response = await api.put(`/users/${userId}/reset-bio`);
+    return response.data;
+};
+
 // حظر اسم المستخدم (Admin فقط)
 export const banUserName = async (userId) => {
     const response = await api.put(`/users/${userId}/ban-name`);
