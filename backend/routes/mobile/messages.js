@@ -191,18 +191,14 @@ router.post('/messages/send', protect, blockIfSoftSuspended, checkCanReply, asyn
         }
 
         // إرسال عبر Socket.IO
-        logger.debug('About to emit new-message to room:', `conversation-${conversationId}`);
-        logger.debug('global.io exists:', !!global.io);
+        logger.debug('About to emit new-message to participants');
         if (global.io) {
             const socketMessage = { ...messageObj };
             if (filteredContent) {
                 socketMessage.content = filteredContent;
             }
-            // 1) للموجودين داخل غرفة المحادثة (ChatRoomView)
-            global.io.to(`conversation-${conversationId}`).emit('new-message', {
-                message: socketMessage
-            });
-            // 2) لكل مشارك في غرفة user:{id} — لتحديث قائمة المحادثات فوراً
+            // ✅ إرسال مرة واحدة فقط لكل مشارك عبر user:{id}
+            // (لا نستخدم conversation-{id} لتجنب التكرار: المستخدم في كلا الغرفتين)
             conversation.participants.forEach(p => {
                 const pid = p._id.toString();
                 if (pid !== req.user._id.toString()) {
@@ -354,12 +350,8 @@ router.post('/conversations/:conversationId/messages/image', protect, blockIfSof
         if (imgMsgObj.sender && !imgMsgObj.sender.isSuspended) imgMsgObj.sender.profileImage = getFullUrl(imgMsgObj.sender.profileImage);
         if (imgMsgObj.mediaUrl) imgMsgObj.mediaUrl = getFullUrl(imgMsgObj.mediaUrl);
 
-        // إرسال عبر Socket.IO
+        // إرسال عبر Socket.IO — مرة واحدة فقط لكل مشارك
         if (global.io) {
-            global.io.to(`conversation-${conversationId}`).emit('new-message', {
-                message: imgMsgObj
-            });
-            // لتحديث قائمة المحادثات عند كل مشارك
             conversation.participants.forEach(p => {
                 const pid = p._id.toString();
                 if (pid !== senderId.toString()) {
@@ -562,10 +554,7 @@ router.post('/conversations/:conversationId/messages', protect, blockIfSoftSuspe
             if (filteredContent) {
                 socketMessage.content = filteredContent;
             }
-            global.io.to(`conversation-${conversationId}`).emit('new-message', {
-                message: socketMessage
-            });
-            // لتحديث قائمة محادثات كل المشاركين
+            // ✅ إرسال مرة واحدة لكل مشارك (لا تكرار)
             conversation.participants.forEach(p => {
                 const pid = p._id.toString();
                 if (pid !== req.user._id.toString()) {
