@@ -218,34 +218,79 @@ router.put('/:id/ban-device', protect, adminOnly, async (req, res) => {
             await existing.save();
         }
 
+        const banUntil = new Date(Date.now() + 36500 * 24 * 60 * 60 * 1000);
+
         user.deviceBanned = true;
         user.deviceBannedAt = new Date();
         user.isActive = false;
-        user.suspendedUntil = new Date(Date.now() + 36500 * 24 * 60 * 60 * 1000);
+        user.suspendedUntil = banUntil;
         user.suspendReason = reason;
         user.warnings.push({ reason, action: 'device_ban', adminId: req.user._id });
         await user.save();
 
-        if (global.connectedUsers && global.connectedUsers.has(user._id.toString())) {
-            const info = global.connectedUsers.get(user._id.toString());
-            const sock = global.io?.sockets?.sockets?.get(info.socketId);
-            if (sock) sock.disconnect(true);
+        // قطع الجلسة الحية للحساب الأصلي
+        const disconnectUser = (uid) => {
+            if (global.connectedUsers && global.connectedUsers.has(uid)) {
+                const info = global.connectedUsers.get(uid);
+                const sock = global.io?.sockets?.sockets?.get(info.socketId);
+                if (sock) sock.disconnect(true);
+            }
+        };
+        disconnectUser(user._id.toString());
+
+        // 🔒 حظر كل الحسابات الشقيقة على نفس الجهاز
+        // (نفس persistentDeviceId / deviceToken / fcmToken / deviceFingerprint)
+        const linkedFilters = [];
+        if (user.persistentDeviceId) linkedFilters.push({ persistentDeviceId: user.persistentDeviceId });
+        if (user.deviceToken) linkedFilters.push({ deviceToken: user.deviceToken });
+        if (user.fcmToken) linkedFilters.push({ fcmToken: user.fcmToken });
+        if (fingerprint) linkedFilters.push({ deviceFingerprint: fingerprint });
+
+        let linkedBannedCount = 0;
+        if (linkedFilters.length > 0) {
+            const linked = await User.find({
+                $or: linkedFilters,
+                _id: { $ne: user._id },
+                role: { $ne: 'admin' }
+            }).select('_id name');
+
+            for (const linkedUser of linked) {
+                await User.updateOne(
+                    { _id: linkedUser._id },
+                    {
+                        $set: {
+                            deviceBanned: true,
+                            deviceBannedAt: new Date(),
+                            isActive: false,
+                            suspendedUntil: banUntil,
+                            suspendReason: `${reason} (حساب مرتبط بـ ${user.name})`
+                        },
+                        $push: {
+                            warnings: { reason: `حساب شقيق محظور (الأصلي: ${user.name})`, action: 'device_ban', adminId: req.user._id }
+                        }
+                    }
+                );
+                disconnectUser(linkedUser._id.toString());
+                linkedBannedCount++;
+            }
         }
 
         invalidateUsers();
 
         await logAdminAction(req, {
             action: 'admin_device_ban',
-            description: `حظر جهاز ${user.name} نهائياً`,
+            description: `حظر جهاز ${user.name} نهائياً + ${linkedBannedCount} حساب شقيق`,
             targetUser: user,
-            additionalInfo: { reason, persistentDeviceId: user.persistentDeviceId },
+            additionalInfo: { reason, persistentDeviceId: user.persistentDeviceId, linkedBannedCount },
             severity: 'high'
         });
 
         res.json({
             success: true,
-            message: `تم حظر جهاز ${user.name} نهائياً`,
-            data: { deviceBanned: true }
+            message: linkedBannedCount > 0
+                ? `تم حظر جهاز ${user.name} + ${linkedBannedCount} حساب آخر على نفس الجهاز`
+                : `تم حظر جهاز ${user.name} نهائياً`,
+            data: { deviceBanned: true, linkedBannedCount }
         });
     } catch (error) {
         console.error('خطأ في حظر الجهاز:', error);

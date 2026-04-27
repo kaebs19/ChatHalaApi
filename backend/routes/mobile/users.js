@@ -134,11 +134,11 @@ router.get('/users/search', protect, async (req, res) => {
             filter.country = country.toUpperCase();
         }
 
+        // "completeOnly" = ملف فيه صورة بروفايل فقط (لا نفرض gender/country
+        // لأن المستخدمون قد يتركونها فارغة عمداً — كانت هذه الفلترة تخفي 30-50% من الحسابات)
         const wantsCompleteOnly = (completeOnly === 'true' || completeOnly === true);
         if (wantsCompleteOnly) {
-            filter.profileImage = { $nin: [null, ''], $exists: true };
-            if (!filter.gender) filter.gender = { $in: ['male', 'female'] };
-            if (!filter.country) filter.country = { $nin: [null, ''], $exists: true };
+            filter.profileImage = { $nin: [null, ''] };
         }
 
         // فلتر "موثّقين فقط"
@@ -146,24 +146,56 @@ router.get('/users/search', protect, async (req, res) => {
             filter['verification.isVerified'] = true;
         }
 
-        // فلتر "متصل الآن فقط" — يُطبّق بعد الاستعلام (يعتمد على global.connectedUsers)
+        // فلتر "متصل الآن فقط"
         const filterOnlineOnly = (onlineOnly === 'true' || onlineOnly === true);
+        if (filterOnlineOnly && global.connectedUsers && global.connectedUsers.size > 0) {
+            // نُطبّق الفلتر داخل الـ query قبل pagination حتى لا تأتي صفحات فارغة
+            const onlineIds = Array.from(global.connectedUsers.keys())
+                .filter(id => id !== req.user._id.toString());
+            if (onlineIds.length === 0) {
+                // لا أحد متصل → نُرجع نتيجة فارغة بدلاً من query بـ $in فارغ
+                return res.status(200).json({
+                    success: true,
+                    data: { users: [], page: parseInt(page) || 1, limit: parseInt(limit) || 20, total: 0 }
+                });
+            }
+            filter._id = filter._id || {};
+            // ندمج مع $ne و $nin السابقة بدون كسرها
+            const existing = filter._id;
+            filter._id = {
+                ...existing,
+                $in: onlineIds
+            };
+        }
 
-        // فلتر العمر (من birthDate)
+        // فلتر العمر (من birthDate) — نسمح بالمستخدمين بدون birthDate (legacy accounts)
         if (minAge || maxAge) {
-            filter.birthDate = {};
+            const birthRange = {};
             if (maxAge) {
                 const minDate = new Date();
                 minDate.setFullYear(minDate.getFullYear() - parseInt(maxAge) - 1);
-                filter.birthDate.$gte = minDate;
+                birthRange.$gte = minDate;
             }
             if (minAge) {
                 const maxDate = new Date();
                 maxDate.setFullYear(maxDate.getFullYear() - parseInt(minAge));
-                filter.birthDate.$lte = maxDate;
+                birthRange.$lte = maxDate;
             }
-        } else if (wantsCompleteOnly) {
-            filter.birthDate = { $ne: null, $exists: true };
+            // ندمج العمر مع شرط existing في filter._id بدون كسر $or
+            // نستخدم $and: [العمر-في-المدى أو بدون-تاريخ-ميلاد] إذا لم يكن هناك minAge صريح
+            if (minAge) {
+                // إذا حدد المستخدم عمر أدنى، يجب أن يكون birthDate موجوداً
+                filter.birthDate = birthRange;
+            } else {
+                // فقط maxAge: اسمح بالـ null (مستخدمون قدامى)
+                filter.$and = (filter.$and || []).concat([{
+                    $or: [
+                        { birthDate: birthRange },
+                        { birthDate: null },
+                        { birthDate: { $exists: false } }
+                    ]
+                }]);
+            }
         }
 
         const pageNum = Math.max(1, parseInt(page) || 1);

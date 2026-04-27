@@ -1061,7 +1061,7 @@ router.delete('/delete-account', protect, async (req, res) => {
 // @access  Public
 router.post('/google', async (req, res) => {
     try {
-        const { idToken, deviceToken, deviceInfo } = req.body;
+        const { idToken, deviceToken, deviceInfo, persistentDeviceId, fcmToken } = req.body;
 
         if (!idToken) {
             return res.status(400).json({
@@ -1132,7 +1132,9 @@ router.post('/google', async (req, res) => {
 
         // تحديث Device Token و معلومات الجهاز + backfill uniqueTag
         if (deviceToken) user.deviceToken = deviceToken;
+        if (fcmToken) user.fcmToken = fcmToken;
         if (deviceInfo) user.deviceInfo = deviceInfo;
+        if (persistentDeviceId) user.persistentDeviceId = persistentDeviceId;
         updateUserFingerprint(user, req);
         user.lastLogin = new Date();
         if (!user.uniqueTag) {
@@ -1194,7 +1196,7 @@ router.post('/google', async (req, res) => {
 // @access  Public
 router.post('/apple', async (req, res) => {
     try {
-        const { identityToken, authorizationCode, fullName, email: appleEmail, deviceToken, deviceInfo } = req.body;
+        const { identityToken, authorizationCode, fullName, email: appleEmail, deviceToken, deviceInfo, persistentDeviceId, fcmToken } = req.body;
 
         if (!identityToken) {
             return res.status(400).json({
@@ -1274,7 +1276,9 @@ router.post('/apple', async (req, res) => {
 
         // تحديث Device Token و معلومات الجهاز + backfill uniqueTag
         if (deviceToken) user.deviceToken = deviceToken;
+        if (fcmToken) user.fcmToken = fcmToken;
         if (deviceInfo) user.deviceInfo = deviceInfo;
+        if (persistentDeviceId) user.persistentDeviceId = persistentDeviceId;
         updateUserFingerprint(user, req);
         user.lastLogin = new Date();
         if (!user.uniqueTag) {
@@ -1408,12 +1412,41 @@ router.post('/refresh-token', async (req, res) => {
 
         // التحقق من المستخدم
         const user = await User.findById(decoded.id);
-        if (!user || !user.isActive) {
+        if (!user) {
             return res.status(401).json({
                 success: false,
-                message: 'المستخدم غير موجود أو غير مفعل'
+                message: 'المستخدم غير موجود'
             });
         }
+
+        // فحص حظر الحساب (deviceBanned أو suspended)
+        if (!user.isActive || user.deviceBanned === true) {
+            return res.status(403).json({
+                success: false,
+                message: user.deviceBanned ? 'جهاز محظور نهائياً' : 'الحساب غير مفعل',
+                code: user.deviceBanned ? 'DEVICE_BANNED' : 'ACCOUNT_SUSPENDED'
+            });
+        }
+
+        // فحص حظر الجهاز عبر BannedDevice (يكتشف الحظر عبر معرّفات أخرى)
+        // مفيد إذا كان حساب آخر على نفس الجهاز محظوراً ولم تُحظر هذه الحساب يدوياً
+        try {
+            const ip = req.ip || req.connection?.remoteAddress;
+            const bannedDevice = await isDeviceBanned({
+                deviceToken: req.body?.deviceToken || user.deviceToken,
+                fcmToken: req.body?.fcmToken || user.fcmToken,
+                persistentDeviceId: req.body?.persistentDeviceId || user.persistentDeviceId,
+                deviceInfo: req.body?.deviceInfo || user.deviceInfo,
+                ip
+            });
+            if (bannedDevice) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'تم حظر هذا الجهاز من استخدام التطبيق',
+                    code: 'DEVICE_BANNED'
+                });
+            }
+        } catch (e) { /* لا نوقف الـ refresh بسبب خطأ فحص */ }
 
         // توليد توكنات جديدة
         res.status(200).json({
