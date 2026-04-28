@@ -11,6 +11,7 @@ const ActivityLog = require('../models/ActivityLog');
 const generateToken = require('../utils/generateToken');
 const { generateRefreshToken, verifyRefreshToken } = require('../utils/generateToken');
 const sendEmail = require('../utils/sendEmail');
+const { hasValidMX, isValidEmailFormat } = require('../utils/emailValidator');
 const { protect } = require('../middleware/auth');
 const { validate } = require('../middleware/validation');
 const { generateUniqueTag } = require('../utils/generateTag');
@@ -186,6 +187,22 @@ router.post('/register', registerValidation, validate, async (req, res) => {
             return res.status(400).json({
                 success: false,
                 message: 'جميع الحقول مطلوبة'
+            });
+        }
+
+        // فحص شكل البريد + MX (يمنع الـ typos مثل "gmial.com" و الـ domains الوهمية)
+        if (!isValidEmailFormat(email)) {
+            return res.status(400).json({
+                success: false,
+                message: 'البريد الإلكتروني غير صالح'
+            });
+        }
+        const mxOk = await hasValidMX(email);
+        if (!mxOk) {
+            return res.status(400).json({
+                success: false,
+                code: 'EMAIL_DOMAIN_INVALID',
+                message: 'نطاق البريد الإلكتروني غير موجود أو لا يستقبل بريداً. يرجى التحقق من العنوان'
             });
         }
 
@@ -746,11 +763,21 @@ router.put('/change-password', protect, async (req, res) => {
 // @route   POST /api/auth/forgot-password
 // @desc    طلب إعادة تعيين كلمة المرور (إرسال رمز التحقق)
 // @access  Public
+//
+// ملاحظات أمنية:
+// - Silent success: لا نكشف هل البريد مسجل (يمنع enumeration)
+// - Cooldown 5 دقائق لكل بريد (يمنع spam على bounces)
+// - MX check قبل الإرسال (يمنع domain typos)
+// - علم emailInvalid: لا نُرسل لبريد ثبت أنه غير موجود
 router.post('/forgot-password', async (req, res) => {
+    // رد موحّد — لا يكشف معلومة عن وجود البريد
+    const silentSuccess = () => res.status(200).json({
+        success: true,
+        message: 'إذا كان البريد مسجلاً، ستصلك رسالة إعادة التعيين خلال دقائق'
+    });
+
     try {
         const { email } = req.body;
-
-        // التحقق من البيانات
         if (!email) {
             return res.status(400).json({
                 success: false,
@@ -758,18 +785,47 @@ router.post('/forgot-password', async (req, res) => {
             });
         }
 
-        // البحث عن المستخدم
-        const user = await User.findOne({ email });
-
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'لا يوجد مستخدم بهذا البريد الإلكتروني'
-            });
+        // 1) فحص شكل البريد
+        if (!isValidEmailFormat(email)) {
+            return silentSuccess();
         }
 
-        // توليد رمز إعادة التعيين
+        // 2) فحص MX (هل الـ domain يستقبل بريد أصلاً؟)
+        const mxOk = await hasValidMX(email);
+        if (!mxOk) {
+            console.warn(`📧 forgot-password: domain بدون MX لـ ${email}`);
+            return silentSuccess();
+        }
+
+        // 3) البحث عن المستخدم
+        const user = await User.findOne({ email });
+        if (!user) {
+            return silentSuccess(); // لا نكشف عدم الوجود
+        }
+
+        // 4) لو البريد سبق ثبت أنه غير موجود (bounce متكرر) → لا نُرسل
+        if (user.emailInvalid) {
+            console.warn(`📧 forgot-password: تخطّي بريد محظور (emailInvalid) ${email}`);
+            return silentSuccess();
+        }
+
+        // 5) Cooldown 5 دقائق لكل بريد
+        if (user.lastForgotPasswordAt) {
+            const elapsedMs = Date.now() - new Date(user.lastForgotPasswordAt).getTime();
+            const cooldownMs = 5 * 60 * 1000;
+            if (elapsedMs < cooldownMs) {
+                const waitSec = Math.ceil((cooldownMs - elapsedMs) / 1000);
+                return res.status(429).json({
+                    success: false,
+                    code: 'RATE_LIMITED',
+                    message: `تم إرسال طلب مؤخراً. حاول مرة أخرى بعد ${Math.ceil(waitSec / 60)} دقيقة`
+                });
+            }
+        }
+
+        // 6) توليد رمز إعادة التعيين + ختم وقت الطلب
         const resetToken = user.generateResetToken();
+        user.lastForgotPasswordAt = new Date();
         await user.save();
 
         // إرسال البريد الإلكتروني
@@ -789,25 +845,41 @@ router.post('/forgot-password', async (req, res) => {
             </div>
         `;
 
-        await sendEmail({
-            email: user.email,
-            subject: 'إعادة تعيين كلمة المرور - HalaChat',
-            message: `رمز إعادة تعيين كلمة المرور الخاص بك هو: ${resetToken}\n\nهذا الرمز صالح لمدة 10 دقائق.`,
-            html: message
-        });
+        try {
+            await sendEmail({
+                email: user.email,
+                subject: 'إعادة تعيين كلمة المرور - HalaChat',
+                message: `رمز إعادة تعيين كلمة المرور الخاص بك هو: ${resetToken}\n\nهذا الرمز صالح لمدة 10 دقائق.`,
+                html: message
+            });
 
-        res.status(200).json({
-            success: true,
-            message: 'تم إرسال رمز إعادة تعيين كلمة المرور إلى بريدك الإلكتروني'
-        });
+            // إعادة تصفير عدّاد الـ bounces عند نجاح الإرسال
+            if (user.emailBounceCount > 0) {
+                user.emailBounceCount = 0;
+                await user.save();
+            }
+        } catch (emailErr) {
+            // فشل الإرسال — قد يكون SMTP error أو bounce محتمل
+            console.error('فشل إرسال bريد إعادة التعيين:', emailErr.message);
+
+            // حدّث عدّاد الفشل — بعد 3 فشل متتالي علّم البريد كـ invalid
+            user.emailBounceCount = (user.emailBounceCount || 0) + 1;
+            if (user.emailBounceCount >= 3) {
+                user.emailInvalid = true;
+                console.warn(`🚫 علّم البريد كـ invalid بعد ${user.emailBounceCount} فشل: ${user.email}`);
+            }
+            await user.save();
+
+            // مع ذلك نرد silent success (لا نكشف عن المشكلة للمتصل)
+            return silentSuccess();
+        }
+
+        return silentSuccess();
 
     } catch (error) {
         console.error('خطأ في طلب إعادة تعيين كلمة المرور:', error);
-        res.status(500).json({
-            success: false,
-            message: 'خطأ في إرسال البريد الإلكتروني',
-            ...(process.env.NODE_ENV === 'development' && { error: error.message })
-        });
+        // حتى عند الخطأ الداخلي — silent success (لا نكشف معلومات)
+        return silentSuccess();
     }
 });
 

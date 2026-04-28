@@ -240,8 +240,22 @@ const authLimiter = rateLimit({
     legacyHeaders: false,
 });
 app.use('/api/auth/login', authLimiter);
-app.use('/api/auth/forgot-password', authLimiter);
 app.use('/api/auth/reset-password', authLimiter);
+
+// rate limit صارم لـ forgot-password — يمنع spam على bounces
+// 3 طلبات / ساعة لكل IP (cooldown 5 دقائق لكل بريد منفصل في الـ route)
+const forgotPasswordLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // ساعة
+    max: 3,
+    message: {
+        success: false,
+        code: 'RATE_LIMITED',
+        message: 'محاولات كثيرة. حاول مرة أخرى بعد ساعة'
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+app.use('/api/auth/forgot-password', forgotPasswordLimiter);
 
 // 5. Body parser
 app.use(express.json({ limit: '10mb' })); // تحديد حجم الطلبات

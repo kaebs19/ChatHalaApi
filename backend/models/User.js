@@ -287,6 +287,11 @@ const userSchema = new mongoose.Schema({
     // حماية من هجمات القوة الغاشمة
     loginAttempts: { type: Number, default: 0 },
     lockUntil: { type: Date, default: null },
+
+    // حماية البريد: لو bounce متكرر → علّمه كـ invalid ولا تُرسل له شيء
+    emailInvalid: { type: Boolean, default: false },
+    emailBounceCount: { type: Number, default: 0 },
+    lastForgotPasswordAt: { type: Date, default: null },
 }, {
     timestamps: true // يضيف createdAt و updatedAt تلقائياً
 });
