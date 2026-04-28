@@ -152,6 +152,12 @@ export const getDeviceLinkedAccounts = async (deviceId) => {
     return response.data;
 };
 
+// حظر كل الحسابات النشطة المرتبطة بجهاز محظور (التهرب)
+export const banActiveLinkedAccounts = async (deviceId) => {
+    const response = await api.put(`/users/banned-devices/${deviceId}/ban-active-linked`);
+    return response.data;
+};
+
 // الحسابات المرتبطة بمستخدم (نفس الجهاز)
 export const getUserLinkedAccounts = async (userId) => {
     const response = await api.get(`/users/${userId}/linked-accounts`);

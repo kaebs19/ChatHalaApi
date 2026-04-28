@@ -3,7 +3,6 @@ import Sidebar from '../components/Sidebar';
 import Dashboard from '../pages/Dashboard';
 import UsersManagement from '../pages/UsersManagement';
 import Conversations from '../pages/Conversations';
-import ChatRoomsManagement from '../pages/ChatRoomsManagement';
 import UserDetail from '../pages/UserDetail';
 import ReportsManagement from '../pages/ReportsManagement';
 import ConversationMessages from '../pages/ConversationMessages';
@@ -12,9 +11,6 @@ import Settings from '../pages/Settings';
 import Profile from '../pages/Profile';
 import Notifications from '../pages/Notifications';
 
-import VerificationRequests from '../pages/VerificationRequests';
-import SuperLikes from '../pages/SuperLikes';
-import UsersMap from '../pages/UsersMap';
 import Appeals from '../pages/Appeals';
 import BannedDevices from '../pages/BannedDevices';
 import BannedIPs from '../pages/BannedIPs';
@@ -208,10 +204,6 @@ function MainLayout({ onLogout, user: initialUser }) {
                 return <UsersManagement onViewDetail={handleViewUserDetail} initialTab="premium" />;
             case 'conversations':
                 return <Conversations onViewUserDetail={handleViewUserDetail} />;
-            case 'chat-rooms':
-                return <ChatRoomsManagement initialTab="rooms" />;
-            case 'categories':
-                return <ChatRoomsManagement initialTab="categories" />;
             case 'reports':
                 return <ReportsManagement initialTab="reports" onViewUserDetail={handleViewUserDetail} onViewConversation={handleViewConversation} />;
             case 'flagged-messages':
@@ -230,12 +222,6 @@ function MainLayout({ onLogout, user: initialUser }) {
                 return <ReportsManagement initialTab="banned-words" onViewUserDetail={handleViewUserDetail} onViewConversation={handleViewConversation} />;
             case 'name-blocking':
                 return <ReportsManagement initialTab="name-blocking" onViewUserDetail={handleViewUserDetail} onViewConversation={handleViewConversation} />;
-            case 'verification-requests':
-                return <VerificationRequests />;
-            case 'super-likes':
-                return <SuperLikes />;
-            case 'users-map':
-                return <UsersMap onViewDetail={handleViewUserDetail} />;
             case 'appeals':
                 return <Appeals onViewDetail={handleViewUserDetail} />;
             case 'banned-devices':
@@ -275,15 +261,11 @@ function MainLayout({ onLogout, user: initialUser }) {
                         {currentPage === 'dashboard' && '📊 لوحة التحكم'}
                         {(currentPage === 'users' || currentPage === 'premium-users') && '👥 إدارة المستخدمين'}
                         {currentPage === 'conversations' && '💬 المحادثات'}
-                        {(currentPage === 'chat-rooms' || currentPage === 'categories') && '🏠 غرف المحادثة'}
                         {(currentPage === 'reports' || currentPage === 'flagged-messages' || currentPage === 'banned-words' || currentPage === 'name-blocking') && '🛡️ الإشراف والمخالفات'}
                         {currentPage === 'stats' && '📈 الإحصائيات'}
                         {currentPage === 'settings' && '⚙️ الإعدادات'}
                         {currentPage === 'profile' && '👤 الملف الشخصي'}
                         {currentPage === 'notifications' && '🔔 الإشعارات'}
-                        {currentPage === 'verification-requests' && '✅ طلبات التوثيق'}
-                        {currentPage === 'super-likes' && '⚡ Super Likes'}
-                        {currentPage === 'users-map' && '🗺️ خريطة المستخدمين'}
                         {currentPage === 'appeals' && '📝 طلبات الاستئناف'}
                         {currentPage === 'banned-devices' && '📵 الأجهزة المحظورة'}
                         {currentPage === 'banned-ips' && '🌐 IPs المحظورة'}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { getDashboardStats, getConversationsStats, getReportsStats, getAllChatRooms } from '../services/api';
+import { getDashboardStats, getConversationsStats, getReportsStats } from '../services/api';
 import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import StatCard from '../components/StatCard';
@@ -30,20 +30,12 @@ function Dashboard({ user, onPageChange }) {
         reviewed: 0,
         resolved: 0
     });
-    const [roomsStats, setRoomsStats] = useState({
-        total: 0,
-        active: 0
-    });
     const [premiumStats, setPremiumStats] = useState({
         total: 0,
         active: 0,
         expired: 0,
         byPlan: { weekly: 0, monthly: 0, quarterly: 0 },
         estimatedMonthlyRevenue: 0
-    });
-    const [superLikeStats, setSuperLikeStats] = useState({
-        total: 0,
-        last7Days: 0
     });
     const [stealthStats, setStealthStats] = useState({ activeUsers: 0 });
     const [flaggedStats, setFlaggedStats] = useState({
@@ -105,7 +97,6 @@ function Dashboard({ user, onPageChange }) {
                 setStats(userStatsResponse.data.stats);
                 setLatestUsers(userStatsResponse.data.latestUsers);
                 if (userStatsResponse.data.premium) setPremiumStats(userStatsResponse.data.premium);
-                if (userStatsResponse.data.superLikes) setSuperLikeStats(userStatsResponse.data.superLikes);
                 if (userStatsResponse.data.stealthMode) setStealthStats(userStatsResponse.data.stealthMode);
                 if (userStatsResponse.data.flaggedMessages) setFlaggedStats(userStatsResponse.data.flaggedMessages);
                 if (userStatsResponse.data.conversations) {
@@ -138,18 +129,6 @@ function Dashboard({ user, onPageChange }) {
                 console.log('تخطي إحصائيات البلاغات');
             }
 
-            // جلب إحصائيات الغرف
-            try {
-                const roomsResponse = await getAllChatRooms(1, 1);
-                if (roomsResponse.success) {
-                    setRoomsStats({
-                        total: roomsResponse.data.pagination?.total || 0,
-                        active: roomsResponse.data.rooms?.filter(r => r.isActive).length || 0
-                    });
-                }
-            } catch (roomsErr) {
-                console.log('تخطي إحصائيات الغرف');
-            }
         } catch (err) {
             console.error('خطأ في جلب البيانات:', err);
             setError('فشل تحميل البيانات');
@@ -232,10 +211,6 @@ function Dashboard({ user, onPageChange }) {
                             <span className="action-icon">💬</span>
                             <span className="action-text">المحادثات</span>
                         </button>
-                        <button className="quick-action-btn rooms" onClick={() => onPageChange && onPageChange('chat-rooms')}>
-                            <span className="action-icon">🏠</span>
-                            <span className="action-text">غرف المحادثة</span>
-                        </button>
                         <button className="quick-action-btn reports" onClick={() => onPageChange && onPageChange('reports')}>
                             <span className="action-icon">⚠️</span>
                             <span className="action-text">البلاغات</span>
@@ -277,7 +252,6 @@ function Dashboard({ user, onPageChange }) {
                                 <StatCard icon="🆕" value={stats.newUsers} label="مستخدمين جدد (7 أيام)" color="green" onClick={() => onPageChange && onPageChange('users')} />
                                 <StatCard icon="🟢" value={stats.recentLogins} label="دخول مؤخراً (24 ساعة)" color="orange" onClick={() => onPageChange && onPageChange('users')} />
                                 <StatCard icon="👑" value={premiumStats.active} label="مشتركين مميزين نشطين" color="gold" onClick={() => onPageChange && onPageChange('premium-users')} />
-                                <StatCard icon="⚡" value={superLikeStats.total} label="Super Likes" color="violet" onClick={() => onPageChange && onPageChange('super-likes')} />
                             </div>
                         </div>
                     )}
@@ -296,7 +270,6 @@ function Dashboard({ user, onPageChange }) {
                                     color={flaggedStats.last24h > 0 ? 'danger' : 'light-green'}
                                     onClick={() => onPageChange && onPageChange('flagged-messages')}
                                 />
-                                <StatCard icon="🏠" value={roomsStats.total || 0} label="غرف المحادثة" color="deep-purple" onClick={() => onPageChange && onPageChange('chat-rooms')} />
                             </div>
                         </div>
                     )}

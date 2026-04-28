@@ -34,10 +34,21 @@ router.get('/banned-devices/list', protect, adminOnly, async (req, res) => {
             if (pid) filters.push({ persistentDeviceId: pid });
             if (d.deviceToken) filters.push({ deviceToken: d.deviceToken });
             if (d.fcmToken) filters.push({ fcmToken: d.fcmToken });
+            if (d.deviceFingerprint) filters.push({ deviceFingerprint: d.deviceFingerprint });
 
-            d.linkedAccountsCount = filters.length > 0
-                ? await User.countDocuments({ $or: filters })
-                : 0;
+            if (filters.length > 0) {
+                d.linkedAccountsCount = await User.countDocuments({ $or: filters });
+                // حسابات تتخطّى الحظر: نشطة (isActive=true) ولم تُحظر بعد
+                d.activeLinkedCount = await User.countDocuments({
+                    $or: filters,
+                    isActive: true,
+                    deviceBanned: { $ne: true },
+                    role: { $ne: 'admin' }
+                });
+            } else {
+                d.linkedAccountsCount = 0;
+                d.activeLinkedCount = 0;
+            }
             d.persistentDeviceId = pid;
         }
 
@@ -294,6 +305,84 @@ router.put('/:id/ban-device', protect, adminOnly, async (req, res) => {
         });
     } catch (error) {
         console.error('خطأ في حظر الجهاز:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   PUT /api/users/banned-devices/:id/ban-active-linked
+// @desc    حظر كل الحسابات النشطة المرتبطة بجهاز محظور (التهرب)
+router.put('/banned-devices/:id/ban-active-linked', protect, adminOnly, async (req, res) => {
+    try {
+        const device = await BannedDevice.findById(req.params.id).lean();
+        if (!device) return res.status(404).json({ success: false, message: 'الجهاز غير موجود' });
+
+        let pid = device.persistentDeviceId || null;
+        if (!pid && device.originalUserId) {
+            const orig = await User.findById(device.originalUserId).select('persistentDeviceId').lean();
+            pid = orig?.persistentDeviceId || null;
+        }
+
+        const filters = [];
+        if (pid) filters.push({ persistentDeviceId: pid });
+        if (device.deviceToken) filters.push({ deviceToken: device.deviceToken });
+        if (device.fcmToken) filters.push({ fcmToken: device.fcmToken });
+        if (device.deviceFingerprint) filters.push({ deviceFingerprint: device.deviceFingerprint });
+
+        if (filters.length === 0) {
+            return res.json({ success: true, message: 'لا توجد معرّفات للجهاز', count: 0 });
+        }
+
+        const activeLinked = await User.find({
+            $or: filters,
+            isActive: true,
+            deviceBanned: { $ne: true },
+            role: { $ne: 'admin' }
+        }).select('_id name');
+
+        const banUntil = new Date(Date.now() + 36500 * 24 * 60 * 60 * 1000);
+        const reason = `حساب مرتبط بجهاز محظور (${device.originalUserName || 'غير معروف'})`;
+
+        for (const u of activeLinked) {
+            await User.updateOne(
+                { _id: u._id },
+                {
+                    $set: {
+                        deviceBanned: true,
+                        deviceBannedAt: new Date(),
+                        isActive: false,
+                        suspendedUntil: banUntil,
+                        suspendReason: reason
+                    },
+                    $push: {
+                        warnings: { reason: 'تم حظره من صفحة الأجهزة المحظورة', action: 'device_ban', adminId: req.user._id }
+                    }
+                }
+            );
+            // قطع الجلسة الحية
+            if (global.connectedUsers && global.connectedUsers.has(u._id.toString())) {
+                const info = global.connectedUsers.get(u._id.toString());
+                const sock = global.io?.sockets?.sockets?.get(info.socketId);
+                if (sock) sock.disconnect(true);
+            }
+        }
+
+        invalidateUsers();
+
+        await logAdminAction(req, {
+            action: 'admin_ban_active_linked',
+            description: `حظر ${activeLinked.length} حساب نشط مرتبط بجهاز ${device.originalUserName}`,
+            additionalInfo: { deviceId: device._id, count: activeLinked.length, names: activeLinked.map(u => u.name) },
+            severity: 'high'
+        });
+
+        res.json({
+            success: true,
+            message: `تم حظر ${activeLinked.length} حساب`,
+            count: activeLinked.length,
+            accounts: activeLinked.map(u => ({ id: u._id, name: u.name }))
+        });
+    } catch (error) {
+        console.error('خطأ في حظر الحسابات النشطة:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });

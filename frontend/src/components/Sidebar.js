@@ -23,12 +23,6 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick, badges = {} 
             adminOnly: true
         },
         {
-            id: 'chat-rooms',
-            name: 'غرف المحادثة',
-            icon: '🏠',
-            adminOnly: true
-        },
-        {
             id: 'reports',
             name: 'الإشراف والمخالفات',
             icon: '🛡️',
@@ -59,24 +53,6 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick, badges = {} 
             adminOnly: true
         },
         {
-            id: 'users-map',
-            name: 'خريطة المستخدمين',
-            icon: '🗺️',
-            adminOnly: true
-        },
-        {
-            id: 'super-likes',
-            name: 'Super Likes',
-            icon: '⚡',
-            adminOnly: true
-        },
-        {
-            id: 'verification-requests',
-            name: 'طلبات التوثيق',
-            icon: '✅',
-            adminOnly: true
-        },
-        {
             id: 'stats',
             name: 'الإحصائيات',
             icon: '📈',
@@ -96,7 +72,6 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick, badges = {} 
     const isActive = (itemId) => {
         if (currentPage === itemId) return true;
         if (itemId === 'users' && currentPage === 'premium-users') return true;
-        if (itemId === 'chat-rooms' && currentPage === 'categories') return true;
         if (itemId === 'reports' && currentPage === 'flagged-messages') return true;
         if (itemId === 'reports' && currentPage === 'banned-words') return true;
         if (itemId === 'reports' && currentPage === 'name-blocking') return true;
