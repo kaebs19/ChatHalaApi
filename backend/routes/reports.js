@@ -9,6 +9,58 @@ const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const { protect, adminOnly } = require('../middleware/auth');
 
+// Helper: شكر المُبلِّغ بعد اتخاذ إجراء على بلاغه
+async function notifyReporterOfResolution(report, action) {
+    try {
+        if (!report.reportedBy) return;
+        const Notification = require('../models/Notification');
+        const pushNotificationService = require('../services/pushNotificationService');
+
+        const actionMessages = {
+            'warning_sent': 'تم إرسال تحذير للمستخدم بناءً على بلاغك',
+            'user_warned': 'تم إرسال تحذير للمستخدم بناءً على بلاغك',
+            'message_deleted': 'تم حذف الرسالة المُبلَّغ عنها',
+            'user_suspended': 'تم تعليق المستخدم المُبلَّغ عنه',
+            'user_banned': 'تم حظر المستخدم نهائياً',
+            'conversation_locked': 'تم قفل المحادثة المُبلَّغ عنها'
+        };
+
+        const actionText = actionMessages[action] || 'تمت مراجعة بلاغك واتخاذ الإجراء المناسب';
+
+        const title = '✅ تم التعامل مع بلاغك';
+        const body = `${actionText}.\n\nشكراً لمساعدتنا في الحفاظ على بيئة آمنة وممتعة للجميع 💙`;
+
+        await Notification.create({
+            title,
+            body,
+            type: 'system',
+            sender: null,
+            targetUsers: [report.reportedBy],
+            recipients: 'specific',
+            status: 'sent',
+            sentAt: new Date(),
+            sentCount: 1,
+            data: {
+                type: 'report_resolved',
+                reportId: report._id.toString(),
+                action: action || 'reviewed'
+            }
+        });
+
+        // Push للمُبلِّغ
+        try {
+            await pushNotificationService.sendNotificationToUser(
+                report.reportedBy,
+                { title, body },
+                { type: 'report_resolved', reportId: report._id.toString() },
+                false
+            );
+        } catch (pushErr) { /* لا نوقف على فشل push */ }
+    } catch (e) {
+        console.error('خطأ في إشعار المُبلِّغ:', e);
+    }
+}
+
 // @route   GET /api/reports
 // @desc    الحصول على جميع البلاغات
 // @access  Private/Admin
@@ -176,12 +228,18 @@ router.put('/:id/status', protect, adminOnly, async (req, res) => {
             report.assignedTo = req.user._id;
         }
 
+        const wasNotResolved = report.status !== 'resolved';
         if (status === 'resolved' || status === 'rejected') {
             report.resolvedBy = req.user._id;
             report.resolvedAt = Date.now();
         }
 
         await report.save();
+
+        // إشعار شكر للمُبلِّغ عند الحسم (resolved فقط، ليس rejected)
+        if (status === 'resolved' && wasNotResolved) {
+            await notifyReporterOfResolution(report, report.action || 'reviewed');
+        }
 
         res.status(200).json({
             success: true,
@@ -352,6 +410,9 @@ router.put('/:id/action', protect, adminOnly, async (req, res) => {
         }
 
         await report.save();
+
+        // إشعار شكر للمُبلِّغ بعد اتخاذ الإجراء
+        await notifyReporterOfResolution(report, action);
 
         res.status(200).json({
             success: true,

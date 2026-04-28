@@ -59,6 +59,26 @@ router.post('/reports', protect, async (req, res) => {
             });
         }
 
+        // منع التكرار: بلاغ سابق من نفس المُبلِّغ على نفس المستخدم لم يُحسم بعد
+        const existingOpenReport = await Report.findOne({
+            reportedBy: req.user._id,
+            reportedUser: reportedUser,
+            status: { $in: ['pending', 'reviewing'] }
+        }).select('_id status createdAt').lean();
+
+        if (existingOpenReport) {
+            return res.status(409).json({
+                success: false,
+                code: 'ALREADY_REPORTED',
+                message: 'لقد أبلغت عن هذا المستخدم سابقاً، البلاغ قيد المراجعة',
+                data: {
+                    reportId: existingOpenReport._id,
+                    status: existingOpenReport.status,
+                    submittedAt: existingOpenReport.createdAt
+                }
+            });
+        }
+
         // تحديد الأولوية بناء على السبب
         const highPriorityReasons = ['harassment', 'inappropriate'];
         const priority = highPriorityReasons.includes(reason) ? 'high' : 'medium';
