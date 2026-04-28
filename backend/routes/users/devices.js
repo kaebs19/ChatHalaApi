@@ -16,6 +16,7 @@ router.get('/banned-devices/list', protect, adminOnly, async (req, res) => {
     try {
         const devices = await BannedDevice.find()
             .populate('bannedBy', 'name')
+            .populate('originalUserId', 'name email profileImage uniqueTag isActive deviceBanned createdAt suspendedUntil')
             .sort('-bannedAt')
             .limit(200)
             .lean();
@@ -23,9 +24,15 @@ router.get('/banned-devices/list', protect, adminOnly, async (req, res) => {
         // أولوية المطابقة: persistentDeviceId (الأدق من iOS Keychain)
         // ثم tokens الفريدة (deviceToken/fcmToken)
         for (const d of devices) {
+            // نقل بيانات المستخدم لحقل أوضح + إعادة originalUserId كـ string
+            d.originalUser = d.originalUserId && typeof d.originalUserId === 'object' ? d.originalUserId : null;
+            d.originalUserId = d.originalUser ? d.originalUser._id : (d.originalUserId || null);
+
             // fallback: جلب persistentDeviceId من المستخدم لو السجل قديم ما يحفظه
             let pid = d.persistentDeviceId || null;
-            if (!pid && d.originalUserId) {
+            if (!pid && d.originalUser?.persistentDeviceId) {
+                pid = d.originalUser.persistentDeviceId;
+            } else if (!pid && d.originalUserId) {
                 const originalUser = await User.findById(d.originalUserId).select('persistentDeviceId').lean();
                 pid = originalUser?.persistentDeviceId || null;
             }
