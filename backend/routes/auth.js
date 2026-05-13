@@ -621,25 +621,33 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
         if (gender !== undefined) user.gender = gender;
         if (country !== undefined) user.country = country;
 
-        // فحص النبذة ضد الكلمات المحظورة (فقط إذا ليست فارغة)
+        // فحص النبذة ضد الكلمات المحظورة + الحسابات الخارجية
         if (bio !== undefined) {
             const trimmedBio = (bio || '').trim();
             if (trimmedBio && trimmedBio !== (user.bio || '').trim()) {
                 const bioCheck = await BannedWord.checkText(trimmedBio, 'both');
-                if (!bioCheck.isClean) {
+                const bioExternalCheck = BannedWord.checkExternalAccounts(trimmedBio);
+                const bioBadContent = !bioCheck.isClean || bioExternalCheck.hasExternalAccount;
+                if (bioBadContent) {
+                    const bioViolType = bioExternalCheck.hasExternalAccount ? 'external_account' : 'banned_bio';
+                    const bioViolReason = bioExternalCheck.hasExternalAccount
+                        ? bioExternalCheck.reason
+                        : `محاولة استخدام نبذة مخالفة - تحتوي: ${(bioCheck.foundWords || []).map(w => w.word || w).join(', ')}`;
                     try {
                         const { recordViolation } = require('../utils/violationHelper');
                         const result = await recordViolation({
                             user,
-                            type: 'banned_bio',
-                            reason: `محاولة استخدام نبذة مخالفة - تحتوي: ${(bioCheck.foundWords || []).map(w => w.word || w).join(', ')}`
+                            type: bioViolType,
+                            reason: bioViolReason
                         });
                         return res.status(400).json({
                             success: false,
                             message: result.autoSuspended
                                 ? (result.suspendDays >= 36500 ? 'تم حظر حسابك نهائياً بسبب تكرار المخالفات' : `تم تعليق حسابك لمدة ${result.suspendDays} يوم`)
-                                : 'النبذة تحتوي على كلمات غير مسموحة',
-                            code: 'BANNED_BIO',
+                                : (bioExternalCheck.hasExternalAccount
+                                    ? 'لا يُسمح بمشاركة حسابات خارجية في النبذة'
+                                    : 'النبذة تحتوي على كلمات غير مسموحة'),
+                            code: bioExternalCheck.hasExternalAccount ? 'EXTERNAL_ACCOUNT_IN_BIO' : 'BANNED_BIO',
                             data: {
                                 violationCount: result.totalViolations,
                                 dailyViolationCount: result.dailyViolationCount,
@@ -649,10 +657,12 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
                             }
                         });
                     } catch (e) {
-                        console.error('recordViolation failed for banned bio:', e);
+                        console.error('recordViolation failed for bio:', e);
                         return res.status(400).json({
                             success: false,
-                            message: 'النبذة تحتوي على كلمات غير مسموحة'
+                            message: bioExternalCheck.hasExternalAccount
+                                ? 'لا يُسمح بمشاركة حسابات خارجية في النبذة'
+                                : 'النبذة تحتوي على كلمات غير مسموحة'
                         });
                     }
                 }

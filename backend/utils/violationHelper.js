@@ -46,7 +46,8 @@ async function recordViolation(opts) {
         banned_word: 'warn',
         banned_name: 'warn',
         banned_image: 'warn',
-        report: 'warn'
+        report: 'warn',
+        external_account: 'warn'
     };
 
     const warning = {
@@ -68,9 +69,12 @@ async function recordViolation(opts) {
 
         user.isActive = false;
         user.suspendedUntil = new Date(Date.now() + suspendDays * 24 * 60 * 60 * 1000);
+        const isExternalAccount = type === 'external_account';
         user.suspendReason = suspendDays >= modConfig.PERMANENT_BAN_DAYS
-            ? 'حظر دائم - تكرار المخالفات'
-            : `تعليق تلقائي ${suspendDays} يوم - تجاوز ${modConfig.MAX_DAILY_VIOLATIONS} مخالفات يومية`;
+            ? (isExternalAccount ? 'حظر دائم - مشاركة حسابات خارجية متكررة' : 'حظر دائم - تكرار المخالفات')
+            : (isExternalAccount
+                ? `تعليق ${suspendDays} يوم - مشاركة حسابات خارجية`
+                : `تعليق تلقائي ${suspendDays} يوم - تجاوز ${modConfig.MAX_DAILY_VIOLATIONS} مخالفات يومية`);
         user.warnings.push({
             reason: user.suspendReason,
             action: 'auto_suspend',
@@ -98,7 +102,8 @@ async function recordViolation(opts) {
             banned_word: 'استخدام كلمات محظورة',
             banned_name: 'اسم مخالف لسياسة الاستخدام',
             banned_image: 'صورة مخالفة',
-            report: 'بلاغ تم قبوله ضدك'
+            report: 'بلاغ تم قبوله ضدك',
+            external_account: 'مشاركة حسابات خارجية'
         }[type] || 'مخالفة سياسة الاستخدام';
 
         let notifTitle, notifBody;
@@ -106,10 +111,12 @@ async function recordViolation(opts) {
             notifTitle = suspendDays >= modConfig.PERMANENT_BAN_DAYS ? '🚫 تم حظر حسابك نهائياً' : '⏸️ تم تعليق حسابك';
             notifBody = suspendDays >= modConfig.PERMANENT_BAN_DAYS
                 ? 'تم حظر حسابك نهائياً بسبب تكرار المخالفات.'
-                : `تم تعليق حسابك لمدة ${suspendDays} يوم بسبب تجاوز ${modConfig.MAX_DAILY_VIOLATIONS} مخالفات يومية.`;
+                : `${type === "external_account" ? "تم تقييد حسابك بشكل تلقائي بسبب نشر وطلب حسابات خارجية." : `تم تعليق حسابك لمدة ${suspendDays} يوم بسبب تجاوز ${modConfig.MAX_DAILY_VIOLATIONS} مخالفات يومية.`}`;
         } else {
-            notifTitle = '⚠️ مخالفة مسجّلة';
-            notifBody = `تم تسجيل مخالفة: ${reasonLabel}. عدد المخالفات اليوم: ${user.dailyViolationCount}/${modConfig.MAX_DAILY_VIOLATIONS}${dailyRemaining > 0 ? `، متبقي ${dailyRemaining} قبل التعليق التلقائي.` : '.'}`;
+            notifTitle = type === 'external_account' ? '🔗 تنبيه: حسابات خارجية' : '⚠️ مخالفة مسجّلة';
+            notifBody = type === 'external_account'
+                ? `إذا تم إرسال مزيد من حسابات خارجية سوف يتم تقييد حسابك بشكل تلقائي. المخالفات: ${user.dailyViolationCount}/${modConfig.MAX_DAILY_VIOLATIONS}${dailyRemaining > 0 ? `، متبقي ${dailyRemaining}.` : ' ⚠️'}`
+                : `تم تسجيل مخالفة: ${reasonLabel}. عدد المخالفات اليوم: ${user.dailyViolationCount}/${modConfig.MAX_DAILY_VIOLATIONS}${dailyRemaining > 0 ? `، متبقي ${dailyRemaining} قبل التعليق التلقائي.` : '.'}`;
         }
 
         try {
