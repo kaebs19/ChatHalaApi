@@ -1,0 +1,518 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { getAllUsers, deleteUser, toggleUserActive, updateUser, suspendUser, getUsersOverview } from '../services/api';
+import { useToast } from '../components/Toast';
+import EditUserModal from '../components/EditUserModal';
+import Pagination from '../components/Pagination';
+import { TableRowSkeleton } from '../components/Skeleton';
+import { getImageUrl, getDefaultAvatar } from '../config';
+import { formatDate } from '../utils/formatters';
+import ConfirmModal from '../components/ConfirmModal';
+import './Users.css';
+
+function Users({ onViewDetail }) {
+    const [users, setUsers] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
+    const [searchInput, setSearchInput] = useState('');
+    const [filterStatus, setFilterStatus] = useState('all');
+    const [filterRole, setFilterRole] = useState('all');
+    const [filterProvider, setFilterProvider] = useState('');
+    const [filterGender, setFilterGender] = useState('');
+    const [filterMinAge, setFilterMinAge] = useState('');
+    const [filterMaxAge, setFilterMaxAge] = useState('');
+    const [showAdvanced, setShowAdvanced] = useState(false);
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [userToDelete, setUserToDelete] = useState(null);
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [userToEdit, setUserToEdit] = useState(null);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage, setItemsPerPage] = useState(20);
+    const [totalUsers, setTotalUsers] = useState(0);
+    const [totalPages, setTotalPages] = useState(1);
+    const [sortField, setSortField] = useState('createdAt');
+    const [sortOrder, setSortOrder] = useState('desc');
+    const [stats, setStats] = useState(null);
+    const toast = useToast();
+
+    const fetchStats = useCallback(async () => {
+        try {
+            const res = await getUsersOverview();
+            if (res.success) setStats(res.data);
+        } catch {}
+    }, []);
+
+    useEffect(() => { fetchStats(); }, [fetchStats]);
+
+    const fetchUsers = useCallback(async () => {
+        try {
+            setLoading(true);
+            const response = await getAllUsers({
+                page: currentPage,
+                limit: itemsPerPage,
+                search: searchTerm || undefined,
+                status: filterStatus,
+                role: filterRole,
+                ...(filterProvider && { provider: filterProvider }),
+                ...(filterGender && { gender: filterGender }),
+                ...(filterMinAge && { minAge: filterMinAge }),
+                ...(filterMaxAge && { maxAge: filterMaxAge }),
+                sort: sortField,
+                order: sortOrder
+            });
+
+            if (response.success) {
+                setUsers(response.data.users);
+                setTotalUsers(response.data.total || response.data.users.length);
+                setTotalPages(response.data.totalPages || 1);
+            }
+        } catch (err) {
+            console.error('Error:', err);
+            setError(err.response?.data?.message || 'فشل تحميل المستخدمين');
+        } finally {
+            setLoading(false);
+        }
+    }, [currentPage, itemsPerPage, searchTerm, filterStatus, filterRole, filterProvider, filterGender, filterMinAge, filterMaxAge, sortField, sortOrder]);
+
+    useEffect(() => {
+        fetchUsers();
+    }, [fetchUsers]);
+
+    // Debounce search
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setSearchTerm(searchInput);
+            setCurrentPage(1);
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [searchInput]);
+
+    const handleSort = (field) => {
+        if (sortField === field) {
+            setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+        } else {
+            setSortField(field);
+            setSortOrder('asc');
+        }
+        setCurrentPage(1);
+    };
+
+    const getSortIcon = (field) => {
+        if (sortField !== field) return '\u21C5';
+        return sortOrder === 'asc' ? '\u2191' : '\u2193';
+    };
+
+    const handleToggleActive = async (userId) => {
+        try {
+            const user = users.find(u => u._id === userId);
+            const response = await toggleUserActive(userId);
+            if (response.success) {
+                setUsers(users.map(u => u._id === userId ? { ...u, isActive: !u.isActive } : u));
+                toast.success(user.isActive ? 'تم إلغاء تفعيل المستخدم' : 'تم تفعيل المستخدم');
+            }
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'فشل تحديث المستخدم');
+        }
+    };
+
+    const openEditModal = (user) => { setUserToEdit(user); setShowEditModal(true); };
+
+    const handleEditUser = async (userData) => {
+        try {
+            const response = await updateUser(userToEdit._id, userData);
+            if (response.success) {
+                setUsers(users.map(u => u._id === userToEdit._id ? { ...u, ...userData } : u));
+                setShowEditModal(false);
+                setUserToEdit(null);
+                toast.success('تم تحديث بيانات المستخدم');
+            }
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'فشل تحديث المستخدم');
+            throw err;
+        }
+    };
+
+    const handleSuspend = async (user) => {
+        const days = window.prompt(`تعليق "${user.name}" - كم يوم؟ (1-365)`, '7');
+        if (!days) return;
+        const numDays = parseInt(days);
+        if (isNaN(numDays) || numDays < 1 || numDays > 365) {
+            toast.error('أدخل عدد أيام صحيح (1-365)');
+            return;
+        }
+        const reason = window.prompt(
+            `سبب تعليق "${user.name}"؟\n(سيظهر للمستخدم في إشعار)`,
+            'مخالفة سياسة الاستخدام'
+        );
+        if (reason === null) return;
+        try {
+            await suspendUser(user._id, numDays, reason.trim() || 'مخالفة سياسة الاستخدام');
+            toast.success(`تم تعليق ${user.name} لمدة ${numDays} يوم`);
+            fetchUsers();
+        } catch (error) {
+            toast.error('فشل في تعليق المستخدم');
+        }
+    };
+
+    const confirmDelete = (user) => { setUserToDelete(user); setShowDeleteModal(true); };
+
+    const handleDelete = async () => {
+        if (!userToDelete) return;
+        try {
+            const response = await deleteUser(userToDelete._id);
+            if (response.success) {
+                toast.success(`تم حذف ${userToDelete.name}`);
+                setShowDeleteModal(false);
+                setUserToDelete(null);
+                fetchUsers();
+            }
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'فشل حذف المستخدم');
+        }
+    };
+
+    const getStatusBadge = (user) => {
+        // دعم استدعاء قديم يمرر isActive فقط
+        const u = typeof user === 'object' ? user : { isActive: user };
+        if (u.deviceBanned) {
+            return <span className="badge" style={{ background: '#111827', color: '#fca5a5' }}>📵 جهاز محظور</span>;
+        }
+        if (u.suspendedUntil) {
+            const daysLeft = (new Date(u.suspendedUntil) - new Date()) / (1000 * 60 * 60 * 24);
+            if (daysLeft > 365) {
+                return <span className="badge" style={{ background: '#dc2626', color: '#fff' }}>🚫 محظور نهائياً</span>;
+            }
+            if (daysLeft > 0) {
+                return <span className="badge" style={{ background: '#f59e0b', color: '#fff' }}>⏸️ معلّق {Math.ceil(daysLeft)} يوم</span>;
+            }
+        }
+        return u.isActive
+            ? <span className="badge badge-success">نشط</span>
+            : <span className="badge badge-inactive">غير نشط</span>;
+    };
+
+    const getRoleBadge = (role) => role === 'admin'
+        ? <span className="badge badge-admin">مدير</span>
+        : <span className="badge badge-user">مستخدم</span>;
+
+    const getAuthProviderBadge = (provider) => {
+        switch (provider) {
+            case 'google': return <span className="badge badge-google"><img src="/google.png" alt="" className="provider-icon" /> Google</span>;
+            case 'apple': return <span className="badge badge-apple"><img src="/apple-logo.png" alt="" className="provider-icon" /> Apple</span>;
+            default: return <span className="badge badge-app">التطبيق</span>;
+        }
+    };
+
+    // chip quick filter
+    const QuickChip = ({ value, label, icon, count, color }) => {
+        const active = filterStatus === value;
+        return (
+            <button onClick={() => { setFilterStatus(value); setCurrentPage(1); }}
+                style={{
+                    padding: '8px 14px', borderRadius: '20px',
+                    border: active ? `2px solid ${color}` : '1px solid #e5e7eb',
+                    background: active ? color + '15' : '#fff',
+                    color: active ? color : '#374151',
+                    fontWeight: active ? '700' : '500',
+                    fontSize: '13px', cursor: 'pointer',
+                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                    transition: 'all 0.15s'
+                }}>
+                <span>{icon}</span>
+                <span>{label}</span>
+                {typeof count === 'number' && (
+                    <span style={{
+                        padding: '1px 8px', borderRadius: '10px',
+                        background: active ? color : '#f3f4f6',
+                        color: active ? '#fff' : '#6b7280',
+                        fontSize: '11px', fontWeight: '700'
+                    }}>{count}</span>
+                )}
+            </button>
+        );
+    };
+
+    const StatCard = ({ label, value, color, icon, sub }) => (
+        <div style={{
+            padding: '14px 16px', borderRadius: '12px',
+            background: '#fff', border: '1px solid #e5e7eb',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+            minWidth: 0
+        }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                <span style={{ fontSize: '18px' }}>{icon}</span>
+                <span style={{ fontSize: '11px', color: '#6b7280', fontWeight: '600' }}>{label}</span>
+            </div>
+            <div style={{ fontSize: '22px', fontWeight: '800', color }}>{typeof value === 'number' ? value.toLocaleString('ar-SA') : value}</div>
+            {sub && <div style={{ fontSize: '10px', color: '#9ca3af', marginTop: '2px' }}>{sub}</div>}
+        </div>
+    );
+
+    return (
+        <div className="users-page">
+            <div className="users-header">
+                <div>
+                    <h1>إدارة المستخدمين</h1>
+                    <p>إجمالي: {totalUsers.toLocaleString('ar-SA')} مستخدم</p>
+                </div>
+                <button className="refresh-btn" onClick={() => { fetchUsers(); fetchStats(); }}>تحديث</button>
+            </div>
+
+            {/* بطاقات إحصائيات */}
+            {stats && (
+                <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                    gap: '10px',
+                    marginBottom: '16px'
+                }}>
+                    <StatCard icon="👥" label="إجمالي" value={stats.total} color="#3b82f6" sub={`${stats.active} نشط`} />
+                    <StatCard icon="🆕" label="جدد اليوم" value={stats.newUsers?.today || 0} color="#10b981" sub={`${stats.newUsers?.last7Days || 0} خلال أسبوع`} />
+                    <StatCard icon="🟢" label="متصلون الآن" value={stats.engagement?.onlineNow || 0} color="#059669" />
+                    <StatCard icon="⏸️" label="معلّقون مؤقتاً" value={stats.moderation?.suspended || 0} color="#f59e0b" />
+                    <StatCard icon="🚫" label="محظورون نهائياً" value={stats.moderation?.permanentBanned || 0} color="#dc2626" />
+                    <StatCard icon="📵" label="أجهزة محظورة" value={stats.moderation?.deviceBanned || 0} color="#111827" />
+                    <StatCard icon="⚠️" label="لديهم مخالفات" value={stats.moderation?.violators || 0} color="#ef4444" />
+                    <StatCard icon="💎" label="مميّزون" value={stats.engagement?.premium || 0} color="#8b5cf6" />
+                </div>
+            )}
+
+            {/* Quick filter chips */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '14px', paddingBottom: '14px', borderBottom: '1px solid #f3f4f6' }}>
+                <QuickChip value="all" label="الكل" icon="👥" count={stats?.total} color="#3b82f6" />
+                <QuickChip value="new_today" label="جدد اليوم" icon="🆕" count={stats?.newUsers?.today} color="#10b981" />
+                <QuickChip value="new_week" label="أسبوع" icon="📅" count={stats?.newUsers?.last7Days} color="#0ea5e9" />
+                <QuickChip value="online" label="متصلون" icon="🟢" count={stats?.engagement?.onlineNow} color="#059669" />
+                <QuickChip value="suspended" label="معلّقون" icon="⏸️" count={stats?.moderation?.suspended} color="#f59e0b" />
+                <QuickChip value="banned" label="محظورون" icon="🚫" count={stats?.moderation?.permanentBanned} color="#dc2626" />
+                <QuickChip value="device_banned" label="جهاز محظور" icon="📵" count={stats?.moderation?.deviceBanned} color="#111827" />
+                <QuickChip value="violators" label="لديهم مخالفات" icon="⚠️" count={stats?.moderation?.violators} color="#ef4444" />
+                <QuickChip value="premium" label="مميّزون" icon="💎" count={stats?.engagement?.premium} color="#8b5cf6" />
+            </div>
+
+            {error && <div className="error-banner">{error}</div>}
+
+            <div className="filters-section">
+                <div className="search-box">
+                    <input
+                        type="text"
+                        placeholder="ابحث بالاسم أو البريد..."
+                        value={searchInput}
+                        onChange={(e) => setSearchInput(e.target.value)}
+                    />
+                    <span className="search-icon">🔍</span>
+                </div>
+                <div className="filter-group">
+                    <select value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); setCurrentPage(1); }}>
+                        <option value="all">جميع الحالات</option>
+                        <option value="active">نشط</option>
+                        <option value="suspended">معلّق مؤقتاً</option>
+                        <option value="banned">محظور نهائياً</option>
+                        <option value="violators">لديه مخالفات</option>
+                        <option value="inactive">غير نشط</option>
+                    </select>
+                    <select value={filterRole} onChange={(e) => { setFilterRole(e.target.value); setCurrentPage(1); }}>
+                        <option value="all">جميع الأدوار</option>
+                        <option value="admin">مدير</option>
+                        <option value="user">مستخدم</option>
+                    </select>
+                    <button
+                        onClick={() => setShowAdvanced(!showAdvanced)}
+                        style={{
+                            padding: '6px 12px', borderRadius: '6px', border: '1px solid #d1d5db',
+                            background: showAdvanced ? '#dbeafe' : '#fff', color: showAdvanced ? '#1e40af' : '#374151',
+                            cursor: 'pointer', fontSize: '13px'
+                        }}
+                    >
+                        {showAdvanced ? '▲' : '▼'} فلاتر متقدمة
+                    </button>
+                </div>
+            </div>
+
+            {showAdvanced && (
+                <div style={{
+                    display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                    gap: '10px', padding: '12px', background: '#f9fafb', borderRadius: '8px',
+                    marginBottom: '1rem', border: '1px solid #e5e7eb'
+                }}>
+                    <select value={filterProvider} onChange={(e) => { setFilterProvider(e.target.value); setCurrentPage(1); }} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #d1d5db' }}>
+                        <option value="">كل مزوّدي الحساب</option>
+                        <option value="email">✉️ بريد إلكتروني</option>
+                        <option value="google">🟢 Google</option>
+                        <option value="apple">🍎 Apple</option>
+                    </select>
+                    <select value={filterGender} onChange={(e) => { setFilterGender(e.target.value); setCurrentPage(1); }} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #d1d5db' }}>
+                        <option value="">كل الأجناس</option>
+                        <option value="male">ذكر</option>
+                        <option value="female">أنثى</option>
+                    </select>
+                    <input
+                        type="number"
+                        placeholder="الحد الأدنى للعمر"
+                        value={filterMinAge}
+                        onChange={(e) => { setFilterMinAge(e.target.value); setCurrentPage(1); }}
+                        style={{ padding: '8px', borderRadius: '6px', border: '1px solid #d1d5db' }}
+                        min="16" max="100"
+                    />
+                    <input
+                        type="number"
+                        placeholder="الحد الأقصى للعمر"
+                        value={filterMaxAge}
+                        onChange={(e) => { setFilterMaxAge(e.target.value); setCurrentPage(1); }}
+                        style={{ padding: '8px', borderRadius: '6px', border: '1px solid #d1d5db' }}
+                        min="16" max="100"
+                    />
+                    {(filterProvider || filterGender || filterMinAge || filterMaxAge) && (
+                        <button
+                            onClick={() => {
+                                setFilterProvider(''); setFilterGender('');
+                                setFilterMinAge(''); setFilterMaxAge('');
+                                setCurrentPage(1);
+                            }}
+                            style={{ padding: '8px', background: '#f87171', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
+                        >✕ مسح</button>
+                    )}
+                </div>
+            )}
+
+            <div className="table-controls">
+                <div className="results-info">عرض {users.length} من {totalUsers}</div>
+                <div className="items-per-page">
+                    <label>عدد العناصر:</label>
+                    <select value={itemsPerPage} onChange={(e) => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }}>
+                        <option value={10}>10</option>
+                        <option value={20}>20</option>
+                        <option value={50}>50</option>
+                    </select>
+                </div>
+            </div>
+
+            <div className="table-container">
+                <table className="users-table">
+                    <thead>
+                        <tr>
+                            <th onClick={() => handleSort('name')} className="sortable">الاسم {getSortIcon('name')}</th>
+                            <th onClick={() => handleSort('email')} className="sortable">البريد {getSortIcon('email')}</th>
+                            <th>الدور</th>
+                            <th>نوع التسجيل</th>
+                            <th>الحالة</th>
+                            <th onClick={() => handleSort('violationCount')} className="sortable">المخالفات {getSortIcon('violationCount')}</th>
+                            <th onClick={() => handleSort('createdAt')} className="sortable">التسجيل {getSortIcon('createdAt')}</th>
+                            <th onClick={() => handleSort('lastLogin')} className="sortable">آخر دخول {getSortIcon('lastLogin')}</th>
+                            <th>الإجراءات</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {loading ? (
+                            Array.from({ length: 5 }).map((_, i) => <TableRowSkeleton key={i} columns={9} />)
+                        ) : users.length === 0 ? (
+                            <tr><td colSpan="9" style={{ textAlign: 'center', padding: '40px' }}>لا توجد نتائج</td></tr>
+                        ) : (
+                            users.map((user) => (
+                                <tr key={user._id}>
+                                    <td>
+                                        <div className="user-cell" onClick={() => onViewDetail && onViewDetail(user._id)} style={{ cursor: 'pointer' }}>
+                                            <div style={{ position: 'relative', display: 'inline-block' }}>
+                                                <img
+                                                    src={user.profileImage ? getImageUrl(user.profileImage) : getDefaultAvatar(user.name)}
+                                                    alt={user.name}
+                                                    className="user-avatar-small"
+                                                    onError={(e) => { e.target.onerror = null; e.target.src = getDefaultAvatar(user.name); }}
+                                                />
+                                                {user.isOnline && (
+                                                    <span style={{
+                                                        position: 'absolute', bottom: 0, right: 0,
+                                                        width: '10px', height: '10px', borderRadius: '50%',
+                                                        background: '#10b981', border: '2px solid #fff'
+                                                    }} />
+                                                )}
+                                            </div>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                    <span className="user-name-link">{user.name}</span>
+                                                    {/* شارة: جديد اليوم */}
+                                                    {(() => {
+                                                        const hoursSinceCreated = (Date.now() - new Date(user.createdAt).getTime()) / (1000 * 60 * 60);
+                                                        if (hoursSinceCreated < 24) return <span style={{ padding: '1px 6px', borderRadius: '8px', background: '#10b981', color: '#fff', fontSize: '9px', fontWeight: '700' }}>🆕 جديد</span>;
+                                                        return null;
+                                                    })()}
+                                                    {user.isPremium && <span style={{ padding: '1px 6px', borderRadius: '8px', background: '#8b5cf6', color: '#fff', fontSize: '9px', fontWeight: '700' }}>💎</span>}
+                                                    {user.verification?.isVerified && <span style={{ fontSize: '11px' }} title="موثق">✓</span>}
+                                                </div>
+                                                {user.uniqueTag && <span style={{ fontSize: '10px', color: '#9ca3af', direction: 'ltr' }}>{user.uniqueTag}</span>}
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td dir="ltr" className="email-cell">{user.email}</td>
+                                    <td>{getRoleBadge(user.role)}</td>
+                                    <td>{getAuthProviderBadge(user.authProvider)}</td>
+                                    <td>{getStatusBadge(user)}</td>
+                                    <td style={{ textAlign: 'center' }}>
+                                        {user.violationCount > 0 ? (
+                                            <span style={{
+                                                display: 'inline-block',
+                                                padding: '4px 10px',
+                                                borderRadius: '12px',
+                                                background: user.violationCount >= 5 ? '#fecaca' : user.violationCount >= 3 ? '#fde68a' : '#e0e7ff',
+                                                color: user.violationCount >= 5 ? '#991b1b' : user.violationCount >= 3 ? '#92400e' : '#3730a3',
+                                                fontWeight: '700',
+                                                fontSize: '13px'
+                                            }}>
+                                                ⚠️ {user.violationCount}
+                                            </span>
+                                        ) : <span style={{ color: '#9ca3af' }}>—</span>}
+                                    </td>
+                                    <td>{formatDate(user.createdAt)}</td>
+                                    <td>{user.lastLogin ? formatDate(user.lastLogin) : <span className="no-login">-</span>}</td>
+                                    <td>
+                                        <div className="actions-cell">
+                                            <button className="action-btn btn-primary" onClick={() => onViewDetail && onViewDetail(user._id)} title="تفاصيل">👁️</button>
+                                            <button className="action-btn btn-info" onClick={() => openEditModal(user)} title="تعديل">✏️</button>
+                                            <button className={`action-btn ${user.isActive ? 'btn-warning' : 'btn-success'}`} onClick={() => handleToggleActive(user._id)} title={user.isActive ? 'إلغاء' : 'تفعيل'}>{user.isActive ? '🔒' : '✅'}</button>
+                                            <button className="action-btn btn-warning" onClick={() => handleSuspend(user)} title="تعليق">⏸️</button>
+                                            <button className="action-btn btn-danger" onClick={() => confirmDelete(user)} title="حذف">🗑️</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))
+                        )}
+                    </tbody>
+                </table>
+            </div>
+
+            <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
+                itemsPerPage={itemsPerPage}
+                totalItems={totalUsers}
+            />
+
+            {showEditModal && (
+                <EditUserModal
+                    user={userToEdit}
+                    onClose={() => { setShowEditModal(false); setUserToEdit(null); }}
+                    onSave={handleEditUser}
+                />
+            )}
+
+            <ConfirmModal
+                isOpen={showDeleteModal}
+                onClose={() => { setShowDeleteModal(false); setUserToDelete(null); }}
+                onConfirm={handleDelete}
+                title="تأكيد الحذف"
+                message="هل أنت متأكد من حذف المستخدم؟"
+                confirmText="حذف"
+                cancelText="إلغاء"
+                variant="danger"
+            >
+                <div className="user-to-delete">
+                    <strong>{userToDelete?.name}</strong>
+                    <span>{userToDelete?.email}</span>
+                </div>
+            </ConfirmModal>
+        </div>
+    );
+}
+
+export default Users;

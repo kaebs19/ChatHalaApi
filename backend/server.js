@@ -242,20 +242,6 @@ const authLimiter = rateLimit({
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/reset-password', authLimiter);
 
-// Rate limit لـ refresh-token — يمنع loops من العميل (interceptor bugs)
-// نسمح بمعدّل معقول لأن التوكن العادي يحتاج تجديد كل ~ساعة، لكن نقطع الـ floods.
-const refreshTokenLimiter = rateLimit({
-    windowMs: 60 * 1000, // دقيقة واحدة
-    max: 30, // 30 طلب/دقيقة لكل IP (سخي للأجهزة المتعددة خلف NAT)
-    message: {
-        success: false,
-        message: 'عدد كبير من طلبات تجديد الجلسة. حاول بعد دقيقة'
-    },
-    standardHeaders: true,
-    legacyHeaders: false,
-});
-app.use('/api/auth/refresh-token', refreshTokenLimiter);
-
 // rate limit صارم لـ forgot-password — يمنع spam على bounces
 // 3 طلبات / ساعة لكل IP (cooldown 5 دقائق لكل بريد منفصل في الـ route)
 const forgotPasswordLimiter = rateLimit({
@@ -554,26 +540,20 @@ io.on('connection', async (socket) => {
                 return socket.emit('error', { message: 'الغرفة مقفلة' });
             }
 
-            // فحص الكلمات المحظورة + الحسابات الخارجية
+            // فحص الكلمات المحظورة
             let bannedWordResult = { isClean: true, foundWords: [] };
-            let externalAccountResult = { hasExternalAccount: false, platforms: [] };
             if (type === 'text' && content) {
                 try {
                     bannedWordResult = await BannedWord.checkText(content, 'word');
-                    externalAccountResult = BannedWord.checkExternalAccounts(content);
                 } catch (bwError) {
                     logger.error('خطأ في فحص الكلمات المحظورة:', bwError);
                 }
             }
 
-            const socketHasViolation = !bannedWordResult.isClean || externalAccountResult.hasExternalAccount;
-
             // تنظيف النص من الكلمات المحظورة
             let filteredContent = null;
             if (!bannedWordResult.isClean) {
                 filteredContent = await BannedWord.cleanText(content, '*****');
-            } else if (externalAccountResult.hasExternalAccount) {
-                filteredContent = content.replace(/@[a-zA-Z0-9_.]+|(?:\+|00)[1-9]\d{9,14}/g, '*****');
             }
 
             // إنشاء الرسالة
@@ -584,24 +564,19 @@ io.on('connection', async (socket) => {
                 content: content,
                 type: type,
                 filteredContent: filteredContent,
-                reviewStatus: socketHasViolation ? 'pending' : 'none',
-                hasBannedWords: socketHasViolation,
+                reviewStatus: !bannedWordResult.isClean ? 'pending' : 'none',
+                hasBannedWords: !bannedWordResult.isClean,
                 bannedWordsFound: bannedWordResult.foundWords.map(w => ({
                     word: w.word,
                     severity: w.severity,
                     action: w.action
                 })),
-                bannedWordSeverity: bannedWordResult.highestSeverity || (externalAccountResult.hasExternalAccount ? 'high' : null)
+                bannedWordSeverity: bannedWordResult.highestSeverity || null
             });
             await message.save();
 
             // تنبيه الأدمن + تحذير المرسل + نظام مخالفات يومي تصاعدي
-            if (socketHasViolation) {
-                const socketViolType = externalAccountResult.hasExternalAccount ? 'external_account' : 'banned_word';
-                const socketViolReason = externalAccountResult.hasExternalAccount
-                    ? externalAccountResult.reason
-                    : `كلمات محظورة: ${bannedWordResult.foundWords.map(w => w.word).join(', ')}`;
-
+            if (!bannedWordResult.isClean) {
                 const today = new Date().toISOString().split('T')[0];
                 const roomUser = await User.findById(socket.userId);
                 if (roomUser.dailyViolationDate !== today) {
@@ -625,11 +600,10 @@ io.on('connection', async (socket) => {
 
                     roomUser.isActive = false;
                     roomUser.suspendedUntil = new Date(Date.now() + roomSuspendDays * 24 * 60 * 60 * 1000);
-                    const isExternal = externalAccountResult.hasExternalAccount;
                     roomUser.suspendReason = roomSuspendDays >= 36500
-                        ? (isExternal ? 'حظر دائم - مشاركة حسابات خارجية متكررة' : 'حظر دائم - تكرار المخالفات')
-                        : (isExternal ? `تعليق ${roomSuspendDays} يوم - مشاركة حسابات خارجية` : `تعليق تلقائي ${roomSuspendDays} يوم`);
-                    roomUser.warnings.push({ reason: socketViolReason, action: 'auto_suspend', date: new Date() });
+                        ? 'حظر دائم - تكرار المخالفات'
+                        : `تعليق تلقائي ${roomSuspendDays} يوم`;
+                    roomUser.warnings.push({ reason: roomUser.suspendReason, action: 'auto_suspend', date: new Date() });
                     roomUser.dailyViolationCount = 0;
                 }
                 await roomUser.save();
@@ -638,20 +612,15 @@ io.on('connection', async (socket) => {
                     messageId: message._id, roomId, roomName: chatRoom.name,
                     senderId: socket.userId, senderName: socket.user.name,
                     content: content.substring(0, 100),
-                    wordsFound: externalAccountResult.hasExternalAccount
-                        ? externalAccountResult.platforms
-                        : bannedWordResult.foundWords.map(w => w.word),
-                    severity: externalAccountResult.hasExternalAccount ? 'high' : bannedWordResult.highestSeverity,
-                    violationType: socketViolType,
+                    wordsFound: bannedWordResult.foundWords.map(w => w.word),
+                    severity: bannedWordResult.highestSeverity,
                     chatType: 'room', timestamp: new Date()
                 });
                 io.to(`user:${socket.userId}`).emit('banned-word-warning', {
-                    title: roomAutoSuspended ? '🚫 تم تعليق حسابك' : (externalAccountResult.hasExternalAccount ? '🔗 تنبيه: حسابات خارجية' : '⚠️ تنبيه'),
+                    title: roomAutoSuspended ? '🚫 تم تعليق حسابك' : '⚠️ تنبيه',
                     body: roomAutoSuspended
-                        ? (roomSuspendDays >= 36500 ? 'تم حظر حسابك نهائياً.' : (externalAccountResult.hasExternalAccount ? 'تم تقييد حسابك بشكل تلقائي بسبب نشر وطلب حسابات خارجية.' : `تم تعليق حسابك لمدة ${roomSuspendDays} يوم.`))
-                        : (externalAccountResult.hasExternalAccount
-                            ? `إذا تم إرسال مزيد من حسابات خارجية سوف يتم تقييد حسابك بشكل تلقائي. متبقي ${dailyRemaining} تحذير.`
-                            : `رسالتك تحتوي على كلمات محظورة! متبقي ${dailyRemaining} مخالفات اليوم.`),
+                        ? (roomSuspendDays >= 36500 ? 'تم حظر حسابك نهائياً.' : `تم تعليق حسابك لمدة ${roomSuspendDays} يوم.`)
+                        : `رسالتك تحتوي على كلمات محظورة! متبقي ${dailyRemaining} مخالفات اليوم.`,
                     violationCount: roomUser.dailyViolationCount, remaining: dailyRemaining, suspended: roomAutoSuspended
                 });
 

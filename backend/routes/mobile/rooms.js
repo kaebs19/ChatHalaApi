@@ -383,23 +383,17 @@ router.post('/rooms/:id/messages', protect, blockIfSoftSuspended, async (req, re
             });
         }
 
-        // فحص الكلمات المحظورة + الحسابات الخارجية
+        // فحص الكلمات المحظورة
         let bannedWordResult = { isClean: true, foundWords: [] };
-        let externalAccountResult = { hasExternalAccount: false, platforms: [] };
         if (type === 'text' && content) {
             bannedWordResult = await BannedWord.checkText(content.trim(), 'word');
-            externalAccountResult = BannedWord.checkExternalAccounts(content.trim());
         }
 
         // تنظيف النص من الكلمات المحظورة
         let filteredContent = null;
         if (!bannedWordResult.isClean) {
             filteredContent = await BannedWord.cleanText(content.trim(), '*****');
-        } else if (externalAccountResult.hasExternalAccount) {
-            filteredContent = content.trim().replace(/@[a-zA-Z0-9_.]+|(?:\+|00)[1-9]\d{9,14}/g, '*****');
         }
-
-        const hasRoomViolation = !bannedWordResult.isClean || externalAccountResult.hasExternalAccount;
 
         // إنشاء الرسالة
         const message = new Message({
@@ -409,55 +403,28 @@ router.post('/rooms/:id/messages', protect, blockIfSoftSuspended, async (req, re
             type: type,
             content: content.trim(),
             filteredContent: filteredContent,
-            reviewStatus: hasRoomViolation ? 'pending' : 'none',
-            hasBannedWords: hasRoomViolation,
+            reviewStatus: !bannedWordResult.isClean ? 'pending' : 'none',
+            hasBannedWords: !bannedWordResult.isClean,
             bannedWordsFound: bannedWordResult.foundWords.map(w => ({
                 word: w.word, severity: w.severity, action: w.action
             })),
-            bannedWordSeverity: bannedWordResult.highestSeverity || (externalAccountResult.hasExternalAccount ? 'high' : null)
+            bannedWordSeverity: bannedWordResult.highestSeverity || null
         });
         await message.save();
 
-        // تنبيه الأدمن إذا وُجدت مخالفة
-        if (hasRoomViolation && global.io) {
-            const violType = externalAccountResult.hasExternalAccount ? 'external_account' : 'banned_word';
+        // تنبيه الأدمن إذا وُجدت كلمات محظورة
+        if (!bannedWordResult.isClean && global.io) {
             global.io.emit('banned-word-alert', {
                 messageId: message._id,
                 roomId,
                 senderId,
                 senderName: req.user.name,
                 content: content.substring(0, 100),
-                wordsFound: externalAccountResult.hasExternalAccount
-                    ? externalAccountResult.platforms.map(p => ({ word: p, severity: 'high', action: 'block' }))
-                    : bannedWordResult.foundWords,
-                severity: externalAccountResult.hasExternalAccount ? 'high' : bannedWordResult.highestSeverity,
-                violationType: violType,
+                wordsFound: bannedWordResult.foundWords,
+                severity: bannedWordResult.highestSeverity,
                 chatType: 'room',
                 timestamp: new Date()
             });
-
-            // تسجيل مخالفة للمرسل
-            try {
-                const User = require('../../models/User');
-                const { recordViolation } = require('../../utils/violationHelper');
-                const sender = await User.findById(senderId);
-                if (sender) {
-                    await recordViolation({
-                        user: sender,
-                        type: violType,
-                        reason: externalAccountResult.hasExternalAccount
-                            ? externalAccountResult.reason
-                            : `كلمات محظورة: ${bannedWordResult.foundWords.map(w => w.word).join(', ')}`,
-                        evidence: {
-                            messageId: message._id,
-                            messageContent: content.substring(0, 200),
-                            messageType: type
-                        }
-                    });
-                }
-            } catch (ve) {
-                console.error('recordViolation failed in rooms:', ve.message);
-            }
         }
 
         // تحديث آخر رسالة في الغرفة

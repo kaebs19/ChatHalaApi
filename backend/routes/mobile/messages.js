@@ -32,20 +32,16 @@ router.post('/messages/send', protect, blockIfSoftSuspended, checkCanReply, asyn
             });
         }
 
-        // فحص الكلمات المحظورة + الحسابات الخارجية
+        // فحص الكلمات المحظورة
         let bannedWordResult = { isClean: true, foundWords: [] };
-        let externalAccountResult = { hasExternalAccount: false, platforms: [] };
         if (type === 'text' && content) {
             bannedWordResult = await BannedWord.checkText(content, 'word');
-            externalAccountResult = BannedWord.checkExternalAccounts(content);
         }
 
         // تنظيف المحتوى من الكلمات المحظورة
         let filteredContent = null;
         if (!bannedWordResult.isClean) {
             filteredContent = await BannedWord.cleanText(content, '*****');
-        } else if (externalAccountResult.hasExternalAccount) {
-            filteredContent = content.replace(/@[a-zA-Z0-9_.]+|(?:\+|00)[1-9]\d{9,14}/g, '*****');
         }
 
         // التحقق من المحادثة
@@ -124,20 +120,15 @@ router.post('/messages/send', protect, blockIfSoftSuspended, checkCanReply, asyn
         });
 
         // تسجيل مخالفة + إشعار + تعليق تلقائي (عبر helper مركزي)
-        const hasViolation = !bannedWordResult.isClean || externalAccountResult.hasExternalAccount;
-        if (hasViolation) {
+        if (!bannedWordResult.isClean) {
             const User = require('../../models/User');
             const { recordViolation } = require('../../utils/violationHelper');
             const user = await User.findById(req.user._id);
-            const violationType = externalAccountResult.hasExternalAccount ? 'external_account' : 'banned_word';
-            const violationReason = externalAccountResult.hasExternalAccount
-                ? externalAccountResult.reason
-                : `كلمات محظورة: ${(bannedWordResult.foundWords || []).map(w => w.word || w).join(', ')}`;
             try {
                 const result = await recordViolation({
                     user,
-                    type: violationType,
-                    reason: violationReason,
+                    type: 'banned_word',
+                    reason: `كلمات محظورة: ${(bannedWordResult.foundWords || []).map(w => w.word || w).join(', ')}`,
                     evidence: {
                         messageId: message._id,
                         messageContent: content,
@@ -159,10 +150,10 @@ router.post('/messages/send', protect, blockIfSoftSuspended, checkCanReply, asyn
                         timestamp: new Date()
                     });
                     global.io.to(`user:${req.user._id}`).emit('banned-word-warning', {
-                        title: result.autoSuspended ? '🚫 تم تعليق حسابك' : (violationType === 'external_account' ? '🔗 تنبيه: حسابات خارجية' : '⚠️ تنبيه'),
+                        title: result.autoSuspended ? '🚫 تم تعليق حسابك' : '⚠️ تنبيه',
                         body: result.autoSuspended
-                            ? (result.suspendDays >= 36500 ? 'تم حظر حسابك نهائياً.' : (violationType === 'external_account' ? 'تم تقييد حسابك بشكل تلقائي بسبب نشر وطلب حسابات خارجية.' : `تم تعليق حسابك ${result.suspendDays} يوم.`))
-                            : (violationType === 'external_account' ? `إذا تم إرسال مزيد من حسابات خارجية سوف يتم تقييد حسابك بشكل تلقائي. متبقي ${result.dailyRemaining} تحذير.` : `رسالتك تحتوي على كلمات محظورة! متبقي ${result.dailyRemaining} قبل التعليق.`),
+                            ? (result.suspendDays >= 36500 ? 'تم حظر حسابك نهائياً.' : `تم تعليق حسابك ${result.suspendDays} يوم.`)
+                            : `رسالتك تحتوي على كلمات محظورة! متبقي ${result.dailyRemaining} قبل التعليق.`,
                         violationCount: result.dailyViolationCount,
                         remaining: result.dailyRemaining,
                         suspended: result.autoSuspended
@@ -435,20 +426,16 @@ router.post('/conversations/:conversationId/messages', protect, blockIfSoftSuspe
             });
         }
 
-        // فحص الكلمات المحظورة + الحسابات الخارجية
+        // فحص الكلمات المحظورة
         let bannedWordResult = { isClean: true, foundWords: [] };
-        let externalAccountResult = { hasExternalAccount: false, platforms: [] };
         if (type === 'text' && content) {
             bannedWordResult = await BannedWord.checkText(content, 'word');
-            externalAccountResult = BannedWord.checkExternalAccounts(content);
         }
 
         // تنظيف المحتوى من الكلمات المحظورة
         let filteredContent = null;
         if (!bannedWordResult.isClean) {
             filteredContent = await BannedWord.cleanText(content, '*****');
-        } else if (externalAccountResult.hasExternalAccount) {
-            filteredContent = content.replace(/@[a-zA-Z0-9_.]+|(?:\+|00)[1-9]\d{9,14}/g, '*****');
         }
 
         // التحقق من المحادثة
@@ -494,20 +481,15 @@ router.post('/conversations/:conversationId/messages', protect, blockIfSoftSuspe
         });
 
         // تسجيل مخالفة + إشعار + تعليق تلقائي (عبر helper مركزي)
-        const hasViolation2 = !bannedWordResult.isClean || externalAccountResult.hasExternalAccount;
-        if (hasViolation2) {
+        if (!bannedWordResult.isClean) {
             const User = require('../../models/User');
             const { recordViolation } = require('../../utils/violationHelper');
             const user = await User.findById(req.user._id);
-            const violationType2 = externalAccountResult.hasExternalAccount ? 'external_account' : 'banned_word';
-            const violationReason2 = externalAccountResult.hasExternalAccount
-                ? externalAccountResult.reason
-                : `كلمات محظورة: ${(bannedWordResult.foundWords || []).map(w => w.word || w).join(', ')}`;
             try {
                 const result = await recordViolation({
                     user,
-                    type: violationType2,
-                    reason: violationReason2,
+                    type: 'banned_word',
+                    reason: `كلمات محظورة: ${(bannedWordResult.foundWords || []).map(w => w.word || w).join(', ')}`,
                     evidence: {
                         messageId: message._id,
                         messageContent: content,
@@ -529,10 +511,10 @@ router.post('/conversations/:conversationId/messages', protect, blockIfSoftSuspe
                         timestamp: new Date()
                     });
                     global.io.to(`user:${req.user._id}`).emit('banned-word-warning', {
-                        title: result.autoSuspended ? '🚫 تم تعليق حسابك' : (violationType === 'external_account' ? '🔗 تنبيه: حسابات خارجية' : '⚠️ تنبيه'),
+                        title: result.autoSuspended ? '🚫 تم تعليق حسابك' : '⚠️ تنبيه',
                         body: result.autoSuspended
-                            ? (result.suspendDays >= 36500 ? 'تم حظر حسابك نهائياً.' : (violationType === 'external_account' ? 'تم تقييد حسابك بشكل تلقائي بسبب نشر وطلب حسابات خارجية.' : `تم تعليق حسابك ${result.suspendDays} يوم.`))
-                            : (violationType === 'external_account' ? `إذا تم إرسال مزيد من حسابات خارجية سوف يتم تقييد حسابك بشكل تلقائي. متبقي ${result.dailyRemaining} تحذير.` : `رسالتك تحتوي على كلمات محظورة! متبقي ${result.dailyRemaining} قبل التعليق.`),
+                            ? (result.suspendDays >= 36500 ? 'تم حظر حسابك نهائياً.' : `تم تعليق حسابك ${result.suspendDays} يوم.`)
+                            : `رسالتك تحتوي على كلمات محظورة! متبقي ${result.dailyRemaining} قبل التعليق.`,
                         violationCount: result.dailyViolationCount,
                         remaining: result.dailyRemaining,
                         suspended: result.autoSuspended
