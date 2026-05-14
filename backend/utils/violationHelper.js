@@ -46,6 +46,7 @@ async function recordViolation(opts) {
         banned_word: 'warn',
         banned_name: 'warn',
         banned_image: 'warn',
+        external_account: 'warn',
         report: 'warn'
     };
 
@@ -98,15 +99,25 @@ async function recordViolation(opts) {
             banned_word: 'استخدام كلمات محظورة',
             banned_name: 'اسم مخالف لسياسة الاستخدام',
             banned_image: 'صورة مخالفة',
+            external_account: 'نشر أو طلب حسابات خارجية',
             report: 'بلاغ تم قبوله ضدك'
         }[type] || 'مخالفة سياسة الاستخدام';
 
         let notifTitle, notifBody;
         if (autoSuspended) {
             notifTitle = suspendDays >= modConfig.PERMANENT_BAN_DAYS ? '🚫 تم حظر حسابك نهائياً' : '⏸️ تم تعليق حسابك';
-            notifBody = suspendDays >= modConfig.PERMANENT_BAN_DAYS
-                ? 'تم حظر حسابك نهائياً بسبب تكرار المخالفات.'
-                : `تم تعليق حسابك لمدة ${suspendDays} يوم بسبب تجاوز ${modConfig.MAX_DAILY_VIOLATIONS} مخالفات يومية.`;
+            if (type === 'external_account') {
+                notifBody = suspendDays >= modConfig.PERMANENT_BAN_DAYS
+                    ? 'تم حظر حسابك نهائياً بسبب نشر حسابات خارجية.'
+                    : `تم تقييد حسابك لمدة ${suspendDays} يوم بسبب نشر حسابات خارجية.`;
+            } else {
+                notifBody = suspendDays >= modConfig.PERMANENT_BAN_DAYS
+                    ? 'تم حظر حسابك نهائياً بسبب تكرار المخالفات.'
+                    : `تم تعليق حسابك لمدة ${suspendDays} يوم بسبب تجاوز ${modConfig.MAX_DAILY_VIOLATIONS} مخالفات يومية.`;
+            }
+        } else if (type === 'external_account') {
+            notifTitle = '⚠️ مخالفة — حسابات خارجية';
+            notifBody = `نشر أو طلب حسابات خارجية مخالف لسياسة المنصة، ويعرّض حسابك للتقييد والحظر. عدد المخالفات اليوم: ${user.dailyViolationCount}/${modConfig.MAX_DAILY_VIOLATIONS}${dailyRemaining > 0 ? `، متبقي ${dailyRemaining} قبل التعليق التلقائي.` : '.'}`;
         } else {
             notifTitle = '⚠️ مخالفة مسجّلة';
             notifBody = `تم تسجيل مخالفة: ${reasonLabel}. عدد المخالفات اليوم: ${user.dailyViolationCount}/${modConfig.MAX_DAILY_VIOLATIONS}${dailyRemaining > 0 ? `، متبقي ${dailyRemaining} قبل التعليق التلقائي.` : '.'}`;

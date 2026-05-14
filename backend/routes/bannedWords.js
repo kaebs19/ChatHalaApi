@@ -11,10 +11,11 @@ const { protect, adminOnly } = require('../middleware/auth');
 // @access  Admin
 router.get('/', protect, adminOnly, async (req, res) => {
     try {
-        const { type, isActive, page = 1, limit = 50 } = req.query;
+        const { type, category, isActive, page = 1, limit = 50 } = req.query;
 
         const query = {};
         if (type) query.type = type;
+        if (category) query.category = category;
         if (isActive !== undefined) query.isActive = isActive === 'true';
 
         const total = await BannedWord.countDocuments(query);
@@ -55,6 +56,9 @@ router.get('/stats', protect, adminOnly, async (req, res) => {
         const byType = await BannedWord.aggregate([
             { $group: { _id: '$type', count: { $sum: 1 } } }
         ]);
+        const byCategory = await BannedWord.aggregate([
+            { $group: { _id: '$category', count: { $sum: 1 } } }
+        ]);
         const bySeverity = await BannedWord.aggregate([
             { $group: { _id: '$severity', count: { $sum: 1 } } }
         ]);
@@ -71,6 +75,10 @@ router.get('/stats', protect, adminOnly, async (req, res) => {
                 inactive: total - active,
                 byType: byType.reduce((acc, item) => {
                     acc[item._id] = item.count;
+                    return acc;
+                }, {}),
+                byCategory: byCategory.reduce((acc, item) => {
+                    acc[item._id || 'other'] = item.count;
                     return acc;
                 }, {}),
                 bySeverity: bySeverity.reduce((acc, item) => {
@@ -95,7 +103,7 @@ router.get('/stats', protect, adminOnly, async (req, res) => {
 // @access  Admin
 router.post('/', protect, adminOnly, async (req, res) => {
     try {
-        const { word, type, severity, action } = req.body;
+        const { word, type, category, severity, action } = req.body;
 
         if (!word || word.trim().length === 0) {
             return res.status(400).json({
@@ -116,6 +124,7 @@ router.post('/', protect, adminOnly, async (req, res) => {
         const bannedWord = await BannedWord.create({
             word: word.toLowerCase().trim(),
             type: type || 'both',
+            category: category || 'other',
             severity: severity || 'medium',
             action: action || 'filter',
             addedBy: req.user._id
@@ -141,7 +150,7 @@ router.post('/', protect, adminOnly, async (req, res) => {
 // @access  Admin
 router.post('/bulk', protect, adminOnly, async (req, res) => {
     try {
-        const { words, type, severity, action } = req.body;
+        const { words, type, category, severity, action } = req.body;
 
         if (!words || !Array.isArray(words) || words.length === 0) {
             return res.status(400).json({
@@ -170,6 +179,7 @@ router.post('/bulk', protect, adminOnly, async (req, res) => {
                 await BannedWord.create({
                     word: normalizedWord,
                     type: type || 'both',
+                    category: category || 'other',
                     severity: severity || 'medium',
                     action: action || 'filter',
                     addedBy: req.user._id
@@ -262,7 +272,7 @@ router.put('/:id/toggle', protect, adminOnly, async (req, res) => {
 // @access  Admin
 router.put('/:id', protect, adminOnly, async (req, res) => {
     try {
-        const { word, type, severity, action, isActive } = req.body;
+        const { word, type, category, severity, action, isActive } = req.body;
 
         const bannedWord = await BannedWord.findById(req.params.id);
         if (!bannedWord) {
@@ -274,6 +284,7 @@ router.put('/:id', protect, adminOnly, async (req, res) => {
 
         if (word) bannedWord.word = word.toLowerCase().trim();
         if (type) bannedWord.type = type;
+        if (category) bannedWord.category = category;
         if (severity) bannedWord.severity = severity;
         if (action) bannedWord.action = action;
         if (isActive !== undefined) bannedWord.isActive = isActive;
