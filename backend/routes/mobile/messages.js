@@ -34,8 +34,10 @@ router.post('/messages/send', protect, blockIfSoftSuspended, checkCanReply, asyn
 
         // فحص الكلمات المحظورة
         let bannedWordResult = { isClean: true, foundWords: [] };
+        let externalCheck = { hasExternalAccount: false, platforms: [] };
         if (type === 'text' && content) {
             bannedWordResult = await BannedWord.checkText(content, 'word');
+            externalCheck = BannedWord.checkExternalAccounts(content);
         }
 
         // تنظيف المحتوى من الكلمات المحظورة
@@ -161,6 +163,44 @@ router.post('/messages/send', protect, blockIfSoftSuspended, checkCanReply, asyn
                 }
             } catch (e) {
                 console.error('recordViolation failed for banned word:', e.message);
+            }
+        }
+
+        // تسجيل مخالفة "حسابات خارجية" (مستقلة عن banned word لتفعيل رسائل مخصصة)
+        if (externalCheck.hasExternalAccount) {
+            const User = require('../../models/User');
+            const { recordViolation } = require('../../utils/violationHelper');
+            const user = await User.findById(req.user._id);
+            try {
+                const result = await recordViolation({
+                    user,
+                    type: 'external_account',
+                    reason: externalCheck.reason,
+                    evidence: {
+                        messageId: message._id,
+                        messageContent: content,
+                        messageType: type,
+                        conversationId,
+                        platforms: externalCheck.platforms
+                    }
+                });
+                if (global.io) {
+                    global.io.to(`user:${req.user._id}`).emit('banned-word-warning', {
+                        title: result.autoSuspended ? '🚫 تم تقييد حسابك' : '⚠️ مخالفة — حسابات خارجية',
+                        body: result.autoSuspended
+                            ? (result.suspendDays >= 36500
+                                ? 'تم حظر حسابك نهائياً بسبب نشر حسابات خارجية.'
+                                : `تم تقييد حسابك لمدة ${result.suspendDays} يوم بسبب نشر حسابات خارجية.`)
+                            : `نشر أو طلب حسابات خارجية مخالف لسياسة المنصة، ويعرّض حسابك للتقييد والحظر. متبقي ${result.dailyRemaining} قبل التعليق.`,
+                        violationCount: result.dailyViolationCount,
+                        remaining: result.dailyRemaining,
+                        suspended: result.autoSuspended,
+                        violationType: 'external_account',
+                        platforms: externalCheck.platforms
+                    });
+                }
+            } catch (e) {
+                console.error('recordViolation failed for external_account:', e.message);
             }
         }
 
@@ -428,8 +468,10 @@ router.post('/conversations/:conversationId/messages', protect, blockIfSoftSuspe
 
         // فحص الكلمات المحظورة
         let bannedWordResult = { isClean: true, foundWords: [] };
+        let externalCheck = { hasExternalAccount: false, platforms: [] };
         if (type === 'text' && content) {
             bannedWordResult = await BannedWord.checkText(content, 'word');
+            externalCheck = BannedWord.checkExternalAccounts(content);
         }
 
         // تنظيف المحتوى من الكلمات المحظورة
@@ -522,6 +564,44 @@ router.post('/conversations/:conversationId/messages', protect, blockIfSoftSuspe
                 }
             } catch (e) {
                 console.error('recordViolation failed for banned word:', e.message);
+            }
+        }
+
+        // تسجيل مخالفة "حسابات خارجية" (مستقلة عن banned word لتفعيل رسائل مخصصة)
+        if (externalCheck.hasExternalAccount) {
+            const User = require('../../models/User');
+            const { recordViolation } = require('../../utils/violationHelper');
+            const user = await User.findById(req.user._id);
+            try {
+                const result = await recordViolation({
+                    user,
+                    type: 'external_account',
+                    reason: externalCheck.reason,
+                    evidence: {
+                        messageId: message._id,
+                        messageContent: content,
+                        messageType: type,
+                        conversationId,
+                        platforms: externalCheck.platforms
+                    }
+                });
+                if (global.io) {
+                    global.io.to(`user:${req.user._id}`).emit('banned-word-warning', {
+                        title: result.autoSuspended ? '🚫 تم تقييد حسابك' : '⚠️ مخالفة — حسابات خارجية',
+                        body: result.autoSuspended
+                            ? (result.suspendDays >= 36500
+                                ? 'تم حظر حسابك نهائياً بسبب نشر حسابات خارجية.'
+                                : `تم تقييد حسابك لمدة ${result.suspendDays} يوم بسبب نشر حسابات خارجية.`)
+                            : `نشر أو طلب حسابات خارجية مخالف لسياسة المنصة، ويعرّض حسابك للتقييد والحظر. متبقي ${result.dailyRemaining} قبل التعليق.`,
+                        violationCount: result.dailyViolationCount,
+                        remaining: result.dailyRemaining,
+                        suspended: result.autoSuspended,
+                        violationType: 'external_account',
+                        platforms: externalCheck.platforms
+                    });
+                }
+            } catch (e) {
+                console.error('recordViolation failed for external_account:', e.message);
             }
         }
 

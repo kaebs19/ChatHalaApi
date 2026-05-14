@@ -656,6 +656,42 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
                         });
                     }
                 }
+
+                // فحص الحسابات الخارجية في النبذة
+                const bioExternal = BannedWord.checkExternalAccounts(trimmedBio);
+                if (bioExternal.hasExternalAccount) {
+                    try {
+                        const { recordViolation } = require('../utils/violationHelper');
+                        const result = await recordViolation({
+                            user,
+                            type: 'external_account',
+                            reason: `نبذة تحتوي حسابات خارجية: ${bioExternal.platforms.join(', ')}`
+                        });
+                        return res.status(400).json({
+                            success: false,
+                            message: result.autoSuspended
+                                ? (result.suspendDays >= 36500
+                                    ? 'تم حظر حسابك نهائياً بسبب نشر حسابات خارجية'
+                                    : `تم تقييد حسابك لمدة ${result.suspendDays} يوم بسبب نشر حسابات خارجية`)
+                                : 'نشر أو طلب حسابات خارجية مخالف لسياسة المنصة، ويعرّض حسابك للتقييد والحظر',
+                            code: 'EXTERNAL_ACCOUNT',
+                            data: {
+                                platforms: bioExternal.platforms,
+                                violationCount: result.totalViolations,
+                                dailyViolationCount: result.dailyViolationCount,
+                                dailyRemaining: result.dailyRemaining,
+                                autoSuspended: result.autoSuspended,
+                                suspendDays: result.suspendDays
+                            }
+                        });
+                    } catch (e) {
+                        console.error('recordViolation failed for external_account (bio):', e);
+                        return res.status(400).json({
+                            success: false,
+                            message: 'نشر أو طلب حسابات خارجية مخالف لسياسة المنصة'
+                        });
+                    }
+                }
             }
             user.bio = bio;
         }

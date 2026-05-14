@@ -385,8 +385,10 @@ router.post('/rooms/:id/messages', protect, blockIfSoftSuspended, async (req, re
 
         // فحص الكلمات المحظورة
         let bannedWordResult = { isClean: true, foundWords: [] };
+        let externalCheck = { hasExternalAccount: false, platforms: [] };
         if (type === 'text' && content) {
             bannedWordResult = await BannedWord.checkText(content.trim(), 'word');
+            externalCheck = BannedWord.checkExternalAccounts(content.trim());
         }
 
         // تنظيف النص من الكلمات المحظورة
@@ -425,6 +427,44 @@ router.post('/rooms/:id/messages', protect, blockIfSoftSuspended, async (req, re
                 chatType: 'room',
                 timestamp: new Date()
             });
+        }
+
+        // تسجيل مخالفة "حسابات خارجية"
+        if (externalCheck.hasExternalAccount) {
+            const User = require('../../models/User');
+            const { recordViolation } = require('../../utils/violationHelper');
+            const user = await User.findById(senderId);
+            try {
+                const result = await recordViolation({
+                    user,
+                    type: 'external_account',
+                    reason: externalCheck.reason,
+                    evidence: {
+                        messageId: message._id,
+                        messageContent: content,
+                        messageType: type,
+                        roomId,
+                        platforms: externalCheck.platforms
+                    }
+                });
+                if (global.io) {
+                    global.io.to(`user:${senderId}`).emit('banned-word-warning', {
+                        title: result.autoSuspended ? '🚫 تم تقييد حسابك' : '⚠️ مخالفة — حسابات خارجية',
+                        body: result.autoSuspended
+                            ? (result.suspendDays >= 36500
+                                ? 'تم حظر حسابك نهائياً بسبب نشر حسابات خارجية.'
+                                : `تم تقييد حسابك لمدة ${result.suspendDays} يوم بسبب نشر حسابات خارجية.`)
+                            : `نشر أو طلب حسابات خارجية مخالف لسياسة المنصة، ويعرّض حسابك للتقييد والحظر. متبقي ${result.dailyRemaining} قبل التعليق.`,
+                        violationCount: result.dailyViolationCount,
+                        remaining: result.dailyRemaining,
+                        suspended: result.autoSuspended,
+                        violationType: 'external_account',
+                        platforms: externalCheck.platforms
+                    });
+                }
+            } catch (e) {
+                console.error('recordViolation failed for external_account (room):', e.message);
+            }
         }
 
         // تحديث آخر رسالة في الغرفة
