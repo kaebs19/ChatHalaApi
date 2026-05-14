@@ -338,6 +338,22 @@
     color: #333;
 }
 
+/* Category badges */
+.category-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    background: #e9ecef;
+    color: #495057;
+}
+.category-badge.category-spam       { background: #fff3cd; color: #856404; }
+.category-badge.category-promotion  { background: #d1ecf1; color: #0c5460; }
+.category-badge.category-contact    { background: #f8d7da; color: #721c24; }
+.category-badge.category-name       { background: #d4edda; color: #155724; }
+.category-badge.category-other      { background: #e9ecef; color: #495057; }
+
 /* Responsive */
 @media (max-width: 768px) {
     .banned-words-page .page-header {

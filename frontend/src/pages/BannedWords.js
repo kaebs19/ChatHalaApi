@@ -10,7 +10,7 @@ function BannedWords() {
     const [words, setWords] = useState([]);
     const [loading, setLoading] = useState(true);
     const [stats, setStats] = useState({ total: 0, active: 0, inactive: 0 });
-    const [filter, setFilter] = useState({ type: '', isActive: '' });
+    const [filter, setFilter] = useState({ type: '', category: '', isActive: '' });
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [showAddModal, setShowAddModal] = useState(false);
@@ -20,6 +20,7 @@ function BannedWords() {
     const [formData, setFormData] = useState({
         word: '',
         type: 'both',
+        category: 'other',
         severity: 'medium',
         action: 'filter',
         isActive: true
@@ -35,6 +36,7 @@ function BannedWords() {
         try {
             const params = new URLSearchParams({ page, limit: 20 });
             if (filter.type) params.append('type', filter.type);
+            if (filter.category) params.append('category', filter.category);
             if (filter.isActive !== '') params.append('isActive', filter.isActive);
 
             const response = await api.get(`/banned-words?${params}`);
@@ -192,6 +194,7 @@ function BannedWords() {
         setFormData({
             word: word.word,
             type: word.type,
+            category: word.category || 'other',
             severity: word.severity,
             action: word.action,
             isActive: word.isActive
@@ -205,6 +208,7 @@ function BannedWords() {
         setFormData({
             word: '',
             type: 'both',
+            category: 'other',
             severity: 'medium',
             action: 'filter',
             isActive: true
@@ -220,6 +224,17 @@ function BannedWords() {
             both: 'الكل'
         };
         return types[type] || type;
+    };
+
+    const getCategoryBadge = (category) => {
+        const categories = {
+            spam: 'سبام',
+            promotion: 'ترويج',
+            contact: 'رقم تواصل',
+            name: 'اسم',
+            other: 'أخرى'
+        };
+        return categories[category] || 'أخرى';
     };
 
     const getActionBadge = (action) => {
@@ -275,6 +290,17 @@ function BannedWords() {
                     <option value="both">الكل</option>
                 </select>
                 <select
+                    value={filter.category}
+                    onChange={(e) => { setFilter(f => ({ ...f, category: e.target.value })); setPage(1); }}
+                >
+                    <option value="">جميع التصنيفات</option>
+                    <option value="spam">سبام</option>
+                    <option value="promotion">ترويج</option>
+                    <option value="contact">رقم تواصل</option>
+                    <option value="name">اسم</option>
+                    <option value="other">أخرى</option>
+                </select>
+                <select
                     value={filter.isActive}
                     onChange={(e) => { setFilter(f => ({ ...f, isActive: e.target.value })); setPage(1); }}
                 >
@@ -303,6 +329,7 @@ function BannedWords() {
                             <tr>
                                 <th>الكلمة</th>
                                 <th>النوع</th>
+                                <th>التصنيف</th>
                                 <th>الخطورة</th>
                                 <th>الإجراء</th>
                                 <th>الحالة</th>
@@ -318,6 +345,9 @@ function BannedWords() {
                                     </td>
                                     <td>
                                         <span className="type-badge">{getTypeBadge(word.type)}</span>
+                                    </td>
+                                    <td>
+                                        <span className={`category-badge category-${word.category || 'other'}`}>{getCategoryBadge(word.category)}</span>
                                     </td>
                                     <td>
                                         {getSeverityBadge(word.severity)}
@@ -395,6 +425,18 @@ function BannedWords() {
                                     </select>
                                 </div>
                                 <div className="form-group">
+                                    <label>التصنيف</label>
+                                    <select name="category" value={formData.category} onChange={handleInputChange}>
+                                        <option value="spam">سبام</option>
+                                        <option value="promotion">ترويج</option>
+                                        <option value="contact">رقم تواصل</option>
+                                        <option value="name">اسم</option>
+                                        <option value="other">أخرى</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="form-row">
+                                <div className="form-group">
                                     <label>الخطورة</label>
                                     <select name="severity" value={formData.severity} onChange={handleInputChange}>
                                         <option value="low">منخفضة</option>
@@ -403,8 +445,6 @@ function BannedWords() {
                                         <option value="critical">حرجة</option>
                                     </select>
                                 </div>
-                            </div>
-                            <div className="form-row">
                                 <div className="form-group">
                                     <label>الإجراء</label>
                                     <select name="action" value={formData.action} onChange={handleInputChange}>
@@ -414,17 +454,17 @@ function BannedWords() {
                                         <option value="ban">حظر المستخدم</option>
                                     </select>
                                 </div>
-                                <div className="form-group checkbox-group">
-                                    <label>
-                                        <input
-                                            type="checkbox"
-                                            name="isActive"
-                                            checked={formData.isActive}
-                                            onChange={handleInputChange}
-                                        />
-                                        نشطة
-                                    </label>
-                                </div>
+                            </div>
+                            <div className="form-group checkbox-group">
+                                <label>
+                                    <input
+                                        type="checkbox"
+                                        name="isActive"
+                                        checked={formData.isActive}
+                                        onChange={handleInputChange}
+                                    />
+                                    نشطة
+                                </label>
                             </div>
                             <div className="modal-actions">
                                 <button type="button" className="cancel-btn" onClick={closeModal}>إلغاء</button>
@@ -465,13 +505,23 @@ function BannedWords() {
                                     </select>
                                 </div>
                                 <div className="form-group">
-                                    <label>الخطورة</label>
-                                    <select name="severity" value={formData.severity} onChange={handleInputChange}>
-                                        <option value="low">منخفضة</option>
-                                        <option value="medium">متوسطة</option>
-                                        <option value="high">عالية</option>
+                                    <label>التصنيف</label>
+                                    <select name="category" value={formData.category} onChange={handleInputChange}>
+                                        <option value="spam">سبام</option>
+                                        <option value="promotion">ترويج</option>
+                                        <option value="contact">رقم تواصل</option>
+                                        <option value="name">اسم</option>
+                                        <option value="other">أخرى</option>
                                     </select>
                                 </div>
+                            </div>
+                            <div className="form-group">
+                                <label>الخطورة</label>
+                                <select name="severity" value={formData.severity} onChange={handleInputChange}>
+                                    <option value="low">منخفضة</option>
+                                    <option value="medium">متوسطة</option>
+                                    <option value="high">عالية</option>
+                                </select>
                             </div>
                             <div className="modal-actions">
                                 <button type="button" className="cancel-btn" onClick={() => setShowBulkModal(false)}>إلغاء</button>
