@@ -1,0 +1,45 @@
+name: نشر الخادم
+
+# كل دفعة إلى main تُنشر تلقائياً. مسارات iOS ليست في هذا المستودع،
+# ولوحة الأدمن تُبنى محلياً ويُلتزم مجلد build فالسحب يكفيها.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# دفعتان متتاليتان لا تتسابقان على السيرفر؛ والجارية لا تُلغى في منتصف
+# npm install — إلغاؤها سبق أن ترك node_modules ناقصاً فسقط الخادم.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: تجهيز مفتاح SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          # مفتاح المضيف مثبّت لا يُجلب وقت التشغيل — فلا مجال لوسيط يعترض
+          echo '31.97.158.25 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL/5K9PzwOiQUCgqb0BJ81t7hk7+QGz0oXxcwAQ2r48o' > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: النشر
+        run: |
+          # المفتاح مقيّد بـ forced command على السيرفر: أيّ أمر يُرسَل يُتجاهَل
+          # ويُشغَّل /usr/local/bin/halachat-deploy وحده. السكربت يسحب، ويثبّت
+          # الاعتماديات عند تغيّرها فقط، ويتحقّق قبل إعادة التشغيل، ويتراجع
+          # تلقائياً إن لم يستجب /api/health.
+          ssh -i ~/.ssh/id_ed25519 \
+              -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=yes \
+              -o ConnectTimeout=15 \
+              root@31.97.158.25 deploy
+
+      - name: مسح المفتاح
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519
