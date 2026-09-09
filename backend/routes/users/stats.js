@@ -3,6 +3,7 @@
 // ملاحظة: static routes قبل /:id لتجنب تعارض
 
 const express = require('express');
+const logger = require('../../utils/logger');
 const router = express.Router();
 const User = require('../../models/User');
 const { protect, adminOnly } = require('../../middleware/auth');
@@ -40,7 +41,7 @@ router.get('/premium', protect, adminOnly, async (req, res) => {
             data: { users, stats, page: pageNum, totalPages: Math.ceil(total / limitNum), total }
         });
     } catch (error) {
-        console.error('خطأ في جلب المستخدمين المميزين:', error);
+        logger.error('خطأ في جلب المستخدمين المميزين:', error);
         res.status(500).json({ success: false, message: 'فشل في جلب المستخدمين المميزين' });
     }
 });
@@ -54,7 +55,7 @@ router.get('/locations', protect, adminOnly, async (req, res) => {
         }).select('name email profileImage gender isActive isOnline lastLogin location createdAt');
         res.status(200).json({ success: true, count: users.length, data: { users } });
     } catch (error) {
-        console.error('خطأ في جلب مواقع المستخدمين:', error);
+        logger.error('خطأ في جلب مواقع المستخدمين:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -99,7 +100,7 @@ router.get('/stats/overview', protect, adminOnly, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في إحصائيات المستخدمين:', error);
+        logger.error('خطأ في إحصائيات المستخدمين:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });

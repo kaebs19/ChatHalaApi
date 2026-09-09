@@ -7,6 +7,15 @@ node_modules/
 .env.local
 .env.production
 .env.test
+# ⚠️ نسخ .env الاحتياطية (.env.save, .env.bak, .env.2026-01-01 …)
+# كانت خارج الحجب: أي `git add .` على السيرفر كان يرفع الأسرار للمستودع
+.env.*
+!.env.example
+# نسخ احتياطية لملفات المصدر (api.js.save …)
+*.save
+*.save.[0-9]
+*.bak
+*.orig
 
 # Firebase Service Account (SENSITIVE!)
 serviceAccount.json

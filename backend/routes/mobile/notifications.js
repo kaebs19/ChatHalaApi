@@ -8,6 +8,9 @@ const User = require('../../models/User');
 const Notification = require('../../models/Notification');
 const { protect } = require('../../middleware/auth');
 const { getFullUrl } = require('./helpers');
+const { getPagination } = require('../../utils/pagination');
+// سقف آمن للـ limit القادم من العميل (كان بلا حد: ?limit=100000)
+const safeLimit = (v) => getPagination({ limit: v }).limit;
 
 // ==========================================
 // نظام الإشعارات
@@ -40,7 +43,7 @@ router.get('/notifications', protect, async (req, res) => {
         const notifications = await Notification.find(query)
             .populate('sender', 'name profileImage isPremium verification.isVerified')
             .sort({ createdAt: -1 })
-            .limit(limit * 1)
+            .limit(safeLimit(limit))
             .skip((page - 1) * limit);
 
         const total = await Notification.countDocuments(query);

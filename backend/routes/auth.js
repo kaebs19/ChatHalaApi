@@ -2,6 +2,7 @@
 // المسارات الخاصة بالتسجيل وتسجيل الدخول
 
 const express = require('express');
+const logger = require('../utils/logger');
 const router = express.Router();
 const crypto = require('crypto');
 const path = require('path');
@@ -160,8 +161,8 @@ const checkAccountSuspended = (user, res) => {
             suspendedUntil: user.suspendedUntil,
             remaining,
             level: user.suspensionCount || 0,
-            token: generateToken(user._id),
-            refreshToken: generateRefreshToken(user._id),
+            token: generateToken(user._id, user.tokenVersion),
+            refreshToken: generateRefreshToken(user._id, user.tokenVersion),
             user: {
                 id: user._id,
                 name: user.name,
@@ -275,13 +276,13 @@ router.post('/register', registerValidation, validate, async (req, res) => {
                     profileImage: user.profileImage || null,
                     uniqueTag: user.uniqueTag
                 },
-                token: generateToken(user._id),
-                refreshToken: generateRefreshToken(user._id)
+                token: generateToken(user._id, user.tokenVersion),
+                refreshToken: generateRefreshToken(user._id, user.tokenVersion)
             }
         });
 
     } catch (error) {
-        console.error('خطأ في التسجيل:', error);
+        logger.error('خطأ في التسجيل:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر'
@@ -373,8 +374,8 @@ router.post('/login', loginValidation, validate, async (req, res) => {
                         suspendedUntil: user.suspendedUntil,
                         level: user.suspensionCount || 0,
                         // توكن للاستئناف
-                        token: generateToken(user._id),
-                        refreshToken: generateRefreshToken(user._id),
+                        token: generateToken(user._id, user.tokenVersion),
+                        refreshToken: generateRefreshToken(user._id, user.tokenVersion),
                         user: {
                             id: user._id,
                             name: user.name,
@@ -439,8 +440,8 @@ router.post('/login', loginValidation, validate, async (req, res) => {
                         remaining,
                         level: user.suspensionCount || 0,
                         // توكن + بيانات حتى يقدر المستخدم يقدم استئناف
-                        token: generateToken(user._id),
-                        refreshToken: generateRefreshToken(user._id),
+                        token: generateToken(user._id, user.tokenVersion),
+                        refreshToken: generateRefreshToken(user._id, user.tokenVersion),
                         user: {
                             id: user._id,
                             name: user.name,
@@ -503,13 +504,13 @@ router.post('/login', loginValidation, validate, async (req, res) => {
                     uniqueTag: user.uniqueTag,
                     restrictions: user.restrictions || null
                 },
-                token: generateToken(user._id),
-                refreshToken: generateRefreshToken(user._id)
+                token: generateToken(user._id, user.tokenVersion),
+                refreshToken: generateRefreshToken(user._id, user.tokenVersion)
             }
         });
 
     } catch (error) {
-        console.error('خطأ في تسجيل الدخول:', error);
+        logger.error('خطأ في تسجيل الدخول:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -539,7 +540,7 @@ router.get('/me', protect, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في جلب البيانات:', error);
+        logger.error('خطأ في جلب البيانات:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر'
@@ -602,7 +603,7 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
                         }
                     });
                 } catch (e) {
-                    console.error('recordViolation failed for banned name:', e);
+                    logger.error('recordViolation failed for banned name:', e);
                     return res.status(400).json({
                         success: false,
                         message: 'الاسم يحتوي على كلمات غير مسموحة'
@@ -649,7 +650,7 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
                             }
                         });
                     } catch (e) {
-                        console.error('recordViolation failed for banned bio:', e);
+                        logger.error('recordViolation failed for banned bio:', e);
                         return res.status(400).json({
                             success: false,
                             message: 'النبذة تحتوي على كلمات غير مسموحة'
@@ -685,7 +686,7 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
                             }
                         });
                     } catch (e) {
-                        console.error('recordViolation failed for external_account (bio):', e);
+                        logger.error('recordViolation failed for external_account (bio):', e);
                         return res.status(400).json({
                             success: false,
                             message: 'نشر أو طلب حسابات خارجية مخالف لسياسة المنصة'
@@ -734,7 +735,7 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
         });
 
     } catch (error) {
-        console.error('خطأ في التحديث:', error);
+        logger.error('خطأ في التحديث:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -777,17 +778,23 @@ router.put('/change-password', protect, async (req, res) => {
             });
         }
 
-        // تحديث كلمة المرور
+        // تحديث كلمة المرور + إبطال كل الجلسات القديمة
         user.password = newPassword;
+        user.tokenVersion = (user.tokenVersion || 0) + 1;
         await user.save();
 
+        // الجهاز الحالي يحصل على توكنات جديدة كي لا يُطرَد صاحب الحساب نفسه
         res.status(200).json({
             success: true,
-            message: 'تم تغيير كلمة المرور بنجاح'
+            message: 'تم تغيير كلمة المرور بنجاح',
+            data: {
+                token: generateToken(user._id, user.tokenVersion),
+                refreshToken: generateRefreshToken(user._id, user.tokenVersion)
+            }
         });
 
     } catch (error) {
-        console.error('خطأ في تغيير كلمة المرور:', error);
+        logger.error('خطأ في تغيير كلمة المرور:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -829,7 +836,7 @@ router.post('/forgot-password', async (req, res) => {
         // 2) فحص MX (هل الـ domain يستقبل بريد أصلاً؟)
         const mxOk = await hasValidMX(email);
         if (!mxOk) {
-            console.warn(`📧 forgot-password: domain بدون MX لـ ${email}`);
+            logger.warn(`📧 forgot-password: domain بدون MX لـ ${email}`);
             return silentSuccess();
         }
 
@@ -841,7 +848,7 @@ router.post('/forgot-password', async (req, res) => {
 
         // 4) لو البريد سبق ثبت أنه غير موجود (bounce متكرر) → لا نُرسل
         if (user.emailInvalid) {
-            console.warn(`📧 forgot-password: تخطّي بريد محظور (emailInvalid) ${email}`);
+            logger.warn(`📧 forgot-password: تخطّي بريد محظور (emailInvalid) ${email}`);
             return silentSuccess();
         }
 
@@ -884,7 +891,7 @@ router.post('/forgot-password', async (req, res) => {
         try {
             await sendEmail({
                 email: user.email,
-                subject: 'إعادة تعيين كلمة المرور - HalaChat',
+                subject: 'إعادة تعيين كلمة المرور - دردشات',
                 message: `رمز إعادة تعيين كلمة المرور الخاص بك هو: ${resetToken}\n\nهذا الرمز صالح لمدة 10 دقائق.`,
                 html: message
             });
@@ -896,13 +903,13 @@ router.post('/forgot-password', async (req, res) => {
             }
         } catch (emailErr) {
             // فشل الإرسال — قد يكون SMTP error أو bounce محتمل
-            console.error('فشل إرسال bريد إعادة التعيين:', emailErr.message);
+            logger.error('فشل إرسال bريد إعادة التعيين:', emailErr.message);
 
             // حدّث عدّاد الفشل — بعد 3 فشل متتالي علّم البريد كـ invalid
             user.emailBounceCount = (user.emailBounceCount || 0) + 1;
             if (user.emailBounceCount >= 3) {
                 user.emailInvalid = true;
-                console.warn(`🚫 علّم البريد كـ invalid بعد ${user.emailBounceCount} فشل: ${user.email}`);
+                logger.warn(`🚫 علّم البريد كـ invalid بعد ${user.emailBounceCount} فشل: ${user.email}`);
             }
             await user.save();
 
@@ -913,7 +920,7 @@ router.post('/forgot-password', async (req, res) => {
         return silentSuccess();
 
     } catch (error) {
-        console.error('خطأ في طلب إعادة تعيين كلمة المرور:', error);
+        logger.error('خطأ في طلب إعادة تعيين كلمة المرور:', error);
         // حتى عند الخطأ الداخلي — silent success (لا نكشف معلومات)
         return silentSuccess();
     }
@@ -962,10 +969,12 @@ router.post('/reset-password', async (req, res) => {
             });
         }
 
-        // تحديث كلمة المرور
+        // تحديث كلمة المرور + إبطال كل الجلسات القديمة
+        // (إعادة التعيين غالباً بعد اختراق — يجب طرد أي جلسة قائمة)
         user.password = newPassword;
         user.resetPasswordToken = undefined;
         user.resetPasswordExpire = undefined;
+        user.tokenVersion = (user.tokenVersion || 0) + 1;
         await user.save();
 
         // تسجيل النشاط
@@ -992,7 +1001,7 @@ router.post('/reset-password', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في إعادة تعيين كلمة المرور:', error);
+        logger.error('خطأ في إعادة تعيين كلمة المرور:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -1070,7 +1079,7 @@ router.put('/upload-profile-image', protect, upload.single('profileImage'), opti
             fs.unlinkSync(req.file.path);
         }
 
-        console.error('خطأ في رفع الصورة:', error);
+        logger.error('خطأ في رفع الصورة:', error);
         res.status(500).json({
             success: false,
             message: error.message || 'خطأ في السيرفر'
@@ -1155,7 +1164,7 @@ router.delete('/delete-account', protect, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في حذف الحساب:', error);
+        logger.error('خطأ في حذف الحساب:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -1190,7 +1199,7 @@ router.post('/google', async (req, res) => {
             });
             payload = ticket.getPayload();
         } catch (error) {
-            console.error('خطأ في التحقق من Google Token:', error);
+            logger.error('خطأ في التحقق من Google Token:', error);
             return res.status(401).json({
                 success: false,
                 message: 'Google Token غير صالح'
@@ -1283,14 +1292,14 @@ router.post('/google', async (req, res) => {
                     lastLogin: user.lastLogin,
                     uniqueTag: user.uniqueTag
                 },
-                token: generateToken(user._id),
-                refreshToken: generateRefreshToken(user._id),
+                token: generateToken(user._id, user.tokenVersion),
+                refreshToken: generateRefreshToken(user._id, user.tokenVersion),
                 isNewUser
             }
         });
 
     } catch (error) {
-        console.error('خطأ في تسجيل الدخول عبر Google:', error);
+        logger.error('خطأ في تسجيل الدخول عبر Google:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -1324,7 +1333,7 @@ router.post('/apple', async (req, res) => {
                 ignoreExpiration: false
             });
         } catch (error) {
-            console.error('خطأ في التحقق من Apple Token:', error);
+            logger.error('خطأ في التحقق من Apple Token:', error);
             return res.status(401).json({
                 success: false,
                 message: 'Apple Token غير صالح'
@@ -1427,14 +1436,14 @@ router.post('/apple', async (req, res) => {
                     lastLogin: user.lastLogin,
                     uniqueTag: user.uniqueTag
                 },
-                token: generateToken(user._id),
-                refreshToken: generateRefreshToken(user._id),
+                token: generateToken(user._id, user.tokenVersion),
+                refreshToken: generateRefreshToken(user._id, user.tokenVersion),
                 isNewUser
             }
         });
 
     } catch (error) {
-        console.error('خطأ في تسجيل الدخول عبر Apple:', error);
+        logger.error('خطأ في تسجيل الدخول عبر Apple:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -1477,7 +1486,7 @@ router.put('/device-token', protect, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في تحديث Device Token:', error);
+        logger.error('خطأ في تحديث Device Token:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -1561,13 +1570,13 @@ router.post('/refresh-token', async (req, res) => {
             success: true,
             message: 'تم تجديد التوكن بنجاح',
             data: {
-                token: generateToken(user._id),
-                refreshToken: generateRefreshToken(user._id)
+                token: generateToken(user._id, user.tokenVersion),
+                refreshToken: generateRefreshToken(user._id, user.tokenVersion)
             }
         });
 
     } catch (error) {
-        console.error('خطأ في تجديد التوكن:', error);
+        logger.error('خطأ في تجديد التوكن:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر'

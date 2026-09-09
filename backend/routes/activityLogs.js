@@ -2,9 +2,13 @@
 // مسارات API الخاصة بسجلات النشاطات
 
 const express = require('express');
+const logger = require('../utils/logger');
 const router = express.Router();
 const ActivityLog = require('../models/ActivityLog');
 const { protect, adminOnly } = require('../middleware/auth');
+const { getPagination } = require('../utils/pagination');
+// سقف آمن للـ limit القادم من العميل (كان بلا حد: ?limit=100000)
+const safeLimit = (v) => getPagination({ limit: v }).limit;
 
 // Helper: تنظيف المدخلات من أحرف Regex الخاصة لمنع NoSQL Injection
 function escapeRegex(str) {
@@ -75,7 +79,7 @@ router.get('/', protect, adminOnly, async (req, res) => {
         const logs = await ActivityLog.find(filter)
             .populate('user', 'name email role')
             .sort(sort)
-            .limit(limit * 1)
+            .limit(safeLimit(limit))
             .skip((page - 1) * limit)
             .lean();
 
@@ -96,7 +100,7 @@ router.get('/', protect, adminOnly, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في جلب سجلات النشاطات:', error);
+        logger.error('خطأ في جلب سجلات النشاطات:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب سجلات النشاطات',
@@ -116,7 +120,7 @@ router.get('/user/:userId', protect, adminOnly, async (req, res) => {
         const logs = await ActivityLog.find({ user: userId })
             .populate('user', 'name email')
             .sort({ createdAt: -1 })
-            .limit(limit * 1)
+            .limit(safeLimit(limit))
             .skip((page - 1) * limit);
 
         const total = await ActivityLog.countDocuments({ user: userId });
@@ -131,7 +135,7 @@ router.get('/user/:userId', protect, adminOnly, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في جلب سجلات المستخدم:', error);
+        logger.error('خطأ في جلب سجلات المستخدم:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب سجلات المستخدم',
@@ -234,7 +238,7 @@ router.get('/stats/overview', protect, adminOnly, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في جلب إحصائيات السجلات:', error);
+        logger.error('خطأ في جلب إحصائيات السجلات:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب إحصائيات السجلات',
@@ -264,7 +268,7 @@ router.get('/:id', protect, adminOnly, async (req, res) => {
             data: log
         });
     } catch (error) {
-        console.error('خطأ في جلب السجل:', error);
+        logger.error('خطأ في جلب السجل:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب السجل',
@@ -294,7 +298,7 @@ router.delete('/:id', protect, adminOnly, async (req, res) => {
             message: 'تم حذف السجل بنجاح'
         });
     } catch (error) {
-        console.error('خطأ في حذف السجل:', error);
+        logger.error('خطأ في حذف السجل:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في حذف السجل',
@@ -323,7 +327,7 @@ router.delete('/bulk/delete', protect, adminOnly, async (req, res) => {
             deletedCount: result.deletedCount
         });
     } catch (error) {
-        console.error('خطأ في الحذف الجماعي:', error);
+        logger.error('خطأ في الحذف الجماعي:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في الحذف الجماعي',

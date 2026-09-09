@@ -3,6 +3,7 @@
 // يزيد العداد + يحفظ الدليل + يرسل إشعار + يعلّق تلقائياً عند 5 مخالفات يومية
 
 const Notification = require('../models/Notification');
+const logger = require('../utils/logger');
 const pushNotificationService = require('../services/pushNotificationService');
 const modConfig = require('../config/moderation');
 
@@ -79,11 +80,9 @@ async function recordViolation(opts) {
         });
         user.dailyViolationCount = 0;
 
-        // فصل الـ socket (إن كان متصل)
-        if (global.connectedUsers && global.connectedUsers.has(user._id.toString())) {
-            const info = global.connectedUsers.get(user._id.toString());
-            const sock = global.io?.sockets?.sockets?.get(info.socketId);
-            if (sock) sock.disconnect(true);
+        // فصل كل جلسات المستخدم (كل الأجهزة، لا الجهاز الأخير فقط)
+        if (global.disconnectUserSockets) {
+            global.disconnectUserSockets(user._id);
         }
     }
 
@@ -144,7 +143,7 @@ async function recordViolation(opts) {
                 });
             }
         } catch (e) {
-            console.error('recordViolation: فشل إرسال الإشعار', e.message);
+            logger.error('recordViolation: فشل إرسال الإشعار', e.message);
         }
     }
 

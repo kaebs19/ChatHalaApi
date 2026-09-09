@@ -3,6 +3,7 @@
 
 const NodeCache = require('node-cache');
 
+const logger = require('../utils/logger');
 // إنشاء instance للـ Cache
 // stdTTL: الوقت الافتراضي لانتهاء الصلاحية (بالثواني)
 // checkperiod: فترة التحقق من العناصر المنتهية (بالثواني)
@@ -48,7 +49,7 @@ const get = (key) => {
     try {
         return cache.get(key);
     } catch (error) {
-        console.error(`Cache GET Error [${key}]:`, error.message);
+        logger.error(`Cache GET Error [${key}]:`, error.message);
         return undefined;
     }
 };
@@ -67,7 +68,7 @@ const set = (key, value, ttl = undefined) => {
         }
         return cache.set(key, value);
     } catch (error) {
-        console.error(`Cache SET Error [${key}]:`, error.message);
+        logger.error(`Cache SET Error [${key}]:`, error.message);
         return false;
     }
 };
@@ -81,7 +82,7 @@ const del = (key) => {
     try {
         return cache.del(key);
     } catch (error) {
-        console.error(`Cache DEL Error [${key}]:`, error.message);
+        logger.error(`Cache DEL Error [${key}]:`, error.message);
         return 0;
     }
 };
@@ -98,7 +99,7 @@ const delByPattern = (pattern) => {
         matchingKeys.forEach(key => cache.del(key));
         return matchingKeys.length;
     } catch (error) {
-        console.error(`Cache DEL Pattern Error [${pattern}]:`, error.message);
+        logger.error(`Cache DEL Pattern Error [${pattern}]:`, error.message);
         return 0;
     }
 };
@@ -109,9 +110,9 @@ const delByPattern = (pattern) => {
 const flush = () => {
     try {
         cache.flushAll();
-        console.log('✅ تم مسح الـ Cache بالكامل');
+        logger.info('✅ تم مسح الـ Cache بالكامل');
     } catch (error) {
-        console.error('Cache FLUSH Error:', error.message);
+        logger.error('Cache FLUSH Error:', error.message);
     }
 };
 
@@ -137,11 +138,11 @@ const cacheMiddleware = (keyGenerator, ttl = 300) => {
         const cachedData = get(key);
 
         if (cachedData) {
-            console.log(`📦 Cache HIT: ${key}`);
+            logger.info(`📦 Cache HIT: ${key}`);
             return res.json(cachedData);
         }
 
-        console.log(`🔄 Cache MISS: ${key}`);
+        logger.info(`🔄 Cache MISS: ${key}`);
 
         // حفظ الـ res.json الأصلي
         const originalJson = res.json.bind(res);

@@ -1,19 +1,29 @@
 // HalaChat - Swagger/OpenAPI Configuration
 // إعداد توثيق API باستخدام Swagger
 
-const swaggerJsdoc = require('swagger-jsdoc');
-const swaggerUi = require('swagger-ui-express');
+// ⚠️ swagger-jsdoc و swagger-ui-express غير مدرجَين في package.json
+// require مباشر كان يُسقط السيرفر كلياً عند npm ci نظيف. التوثيق ميزة اختيارية:
+// إذا لم تُثبَّت الحزمتان، يعمل السيرفر بدون /api-docs بدل أن يفشل الإقلاع.
+const logger = require('../utils/logger');
+let swaggerJsdoc = null;
+let swaggerUi = null;
+try {
+    swaggerJsdoc = require('swagger-jsdoc');
+    swaggerUi = require('swagger-ui-express');
+} catch (e) {
+    logger.warn('⚠️  حزم Swagger غير مثبّتة — تم تعطيل /api-docs');
+}
 
 const BASE_URL = process.env.BASE_URL || 'https://halachat.khalafiati.io';
 
 const swaggerDefinition = {
     openapi: '3.0.0',
     info: {
-        title: 'HalaChat API Documentation',
+        title: 'Dardashat API Documentation',
         version: '2.1.0',
-        description: 'API documentation for HalaChat Dashboard & Mobile Application. Includes admin dashboard endpoints and mobile client endpoints.',
+        description: 'API documentation for Dardashat Dashboard & Mobile Application. Includes admin dashboard endpoints and mobile client endpoints.',
         contact: {
-            name: 'HalaChat Support',
+            name: 'Dardashat Support',
             url: BASE_URL
         }
     },
@@ -287,7 +297,7 @@ const swaggerDefinition = {
             Settings: {
                 type: 'object',
                 properties: {
-                    appName: { type: 'string', example: 'HalaChat' },
+                    appName: { type: 'string', example: 'دردشات' },
                     appVersion: { type: 'string', example: '2.1' },
                     appLogo: { type: 'string' },
                     privacyPolicy: { type: 'string' },
@@ -1896,16 +1906,20 @@ const swaggerDefinition = {
     }
 };
 
-const swaggerSpec = swaggerJsdoc({
-    definition: swaggerDefinition,
-    apis: [] // We define paths inline above, no need to scan files
-});
+const swaggerSpec = swaggerJsdoc
+    ? swaggerJsdoc({
+        definition: swaggerDefinition,
+        apis: [] // We define paths inline above, no need to scan files
+    })
+    : null;
 
 /**
  * Setup Swagger UI on the Express app
  * @param {import('express').Application} app - Express app instance
  */
 function setupSwagger(app) {
+    if (!swaggerJsdoc || !swaggerUi) return;
+
     // Swagger JSON endpoint
     app.get('/api-docs.json', (req, res) => {
         res.setHeader('Content-Type', 'application/json');
@@ -1915,7 +1929,7 @@ function setupSwagger(app) {
     // Swagger UI
     app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
         customCss: '.swagger-ui .topbar { display: none }',
-        customSiteTitle: 'HalaChat API Docs',
+        customSiteTitle: 'Dardashat API Docs',
         swaggerOptions: {
             persistAuthorization: true,
             docExpansion: 'none',

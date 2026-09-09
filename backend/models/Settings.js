@@ -5,7 +5,7 @@ const settingsSchema = new mongoose.Schema({
     // إعدادات التطبيق العامة
     appName: {
         type: String,
-        default: 'HalaChat'
+        default: 'دردشات'
     },
     appVersion: {
         type: String,
@@ -39,15 +39,15 @@ const settingsSchema = new mongoose.Schema({
     // صفحات المحتوى القابلة للتعديل
     privacyPolicy: {
         type: String,
-        default: '# سياسة الخصوصية\n\nمرحباً بك في HalaChat. نحن نحترم خصوصيتك...'
+        default: '# سياسة الخصوصية\n\nمرحباً بك في دردشات. نحن نحترم خصوصيتك...'
     },
     termsOfService: {
         type: String,
-        default: '# شروط الاستخدام\n\nبإستخدامك لـ HalaChat، فإنك توافق على...'
+        default: '# شروط الاستخدام\n\nبإستخدامك لـ دردشات، فإنك توافق على...'
     },
     aboutApp: {
         type: String,
-        default: '# حول التطبيق\n\nHalaChat هو تطبيق محادثة فوري...'
+        default: '# حول التطبيق\n\nدردشات هو تطبيق محادثة فوري...'
     },
     contactUs: {
         type: String,

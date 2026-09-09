@@ -2,10 +2,14 @@
 // المسارات الخاصة بإدارة المحادثات
 
 const express = require('express');
+const logger = require('../utils/logger');
 const router = express.Router();
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
 const { protect, adminOnly } = require('../middleware/auth');
+const { getPagination } = require('../utils/pagination');
+// سقف آمن للـ limit القادم من العميل (كان بلا حد: ?limit=100000)
+const safeLimit = (v) => getPagination({ limit: v }).limit;
 
 // @route   GET /api/conversations
 // @desc    الحصول على جميع المحادثات
@@ -23,7 +27,7 @@ router.get('/', protect, adminOnly, async (req, res) => {
             .populate('participants', 'name email profileImage isPremium verification.isVerified')
             .populate('lastMessage')
             .sort({ updatedAt: -1 })
-            .limit(limit * 1)
+            .limit(safeLimit(limit))
             .skip((page - 1) * limit);
 
         // إضافة عدد الرسائل المُخالفة لكل محادثة (استعلام واحد بدل N استعلام)
@@ -70,7 +74,7 @@ router.get('/', protect, adminOnly, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في جلب المحادثات:', error);
+        logger.error('خطأ في جلب المحادثات:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر'
@@ -111,7 +115,7 @@ router.get('/:id', protect, adminOnly, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في جلب المحادثة:', error);
+        logger.error('خطأ في جلب المحادثة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر'
@@ -145,7 +149,7 @@ router.delete('/:id', protect, adminOnly, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في حذف المحادثة:', error);
+        logger.error('خطأ في حذف المحادثة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر'
@@ -177,7 +181,7 @@ router.put('/:id/toggle-active', protect, adminOnly, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في تحديث المحادثة:', error);
+        logger.error('خطأ في تحديث المحادثة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر'
@@ -210,7 +214,7 @@ router.get('/stats/overview', protect, adminOnly, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في جلب الإحصائيات:', error);
+        logger.error('خطأ في جلب الإحصائيات:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر'
@@ -256,7 +260,7 @@ router.post('/create-group', protect, adminOnly, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في إنشاء المجموعة:', error);
+        logger.error('خطأ في إنشاء المجموعة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر'
@@ -292,7 +296,7 @@ router.put('/:id/lock', protect, adminOnly, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في قفل المحادثة:', error);
+        logger.error('خطأ في قفل المحادثة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر'
@@ -332,7 +336,7 @@ router.put('/:id/settings', protect, adminOnly, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في تحديث الإعدادات:', error);
+        logger.error('خطأ في تحديث الإعدادات:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر'
@@ -369,7 +373,7 @@ router.delete('/:id/messages', protect, adminOnly, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في حذف الرسائل:', error);
+        logger.error('خطأ في حذف الرسائل:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر'
@@ -397,7 +401,7 @@ router.get('/:id/reports', protect, adminOnly, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في جلب البلاغات:', error);
+        logger.error('خطأ في جلب البلاغات:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر'

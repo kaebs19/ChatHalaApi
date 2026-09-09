@@ -2,6 +2,7 @@
 // إجراءات الإشراف: تعليق، حظر، فك حظر، تحذير، إلخ
 
 const express = require('express');
+const logger = require('../../utils/logger');
 const router = express.Router();
 const User = require('../../models/User');
 const Notification = require('../../models/Notification');
@@ -13,11 +14,10 @@ const modConfig = require('../../config/moderation');
 const { logAdminAction } = require('../../utils/logAdminAction');
 
 // Helper: فصل socket للمستخدم عند الحظر
+// يفصل كل أجهزة المستخدم — الحظر من جهاز واحد كان يترك بقية الأجهزة متصلة
 const disconnectUserSocket = (userId) => {
-    if (global.connectedUsers && global.connectedUsers.has(userId.toString())) {
-        const info = global.connectedUsers.get(userId.toString());
-        const sock = global.io?.sockets?.sockets?.get(info.socketId);
-        if (sock) sock.disconnect(true);
+    if (global.disconnectUserSockets) {
+        global.disconnectUserSockets(userId);
     }
 };
 
@@ -37,7 +37,7 @@ router.put('/:id/toggle-active', protect, adminOnly, async (req, res) => {
             data: { user }
         });
     } catch (error) {
-        console.error('خطأ في تحديث المستخدم:', error);
+        logger.error('خطأ في تحديث المستخدم:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -92,7 +92,7 @@ router.put('/:id/suspend', protect, adminOnly, async (req, res) => {
             data: { suspendedUntil: user.suspendedUntil, reason }
         });
     } catch (error) {
-        console.error('خطأ في تعليق المستخدم:', error);
+        logger.error('خطأ في تعليق المستخدم:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -141,7 +141,7 @@ router.put('/:id/ban-permanent', protect, adminOnly, async (req, res) => {
             data: { suspendedUntil: user.suspendedUntil, reason }
         });
     } catch (error) {
-        console.error('خطأ في الحظر النهائي:', error);
+        logger.error('خطأ في الحظر النهائي:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -191,7 +191,7 @@ router.put('/:id/unban', protect, adminOnly, async (req, res) => {
 
         res.json({ success: true, message: `تم فك الحظر عن ${user.name}`, data: { user } });
     } catch (error) {
-        console.error('خطأ في فك الحظر:', error);
+        logger.error('خطأ في فك الحظر:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -221,7 +221,7 @@ router.put('/:id/reset-avatar', protect, adminOnly, async (req, res) => {
         invalidateUsers();
         res.json({ success: true, message: 'تم حذف الصورة وإشعار المستخدم' });
     } catch (error) {
-        console.error('خطأ:', error);
+        logger.error('خطأ:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -272,7 +272,7 @@ router.put('/:id/reset-bio', protect, adminOnly, async (req, res) => {
         invalidateUsers();
         res.json({ success: true, message: 'تم حذف النبذة وإشعار المستخدم' });
     } catch (error) {
-        console.error('خطأ في حذف النبذة:', error);
+        logger.error('خطأ في حذف النبذة:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -315,7 +315,7 @@ router.put('/:id/ban-name', protect, adminOnly, async (req, res) => {
         invalidateUsers();
         res.json({ success: true, message: `تم حظر الاسم "${oldName}"` });
     } catch (error) {
-        console.error('خطأ:', error);
+        logger.error('خطأ:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -397,7 +397,7 @@ router.put('/:id/warn', protect, adminOnly, async (req, res) => {
             data: { violationCount: user.violationCount, dailyViolationCount: user.dailyViolationCount, autoSuspended, suspendDays }
         });
     } catch (error) {
-        console.error('خطأ:', error);
+        logger.error('خطأ:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -469,7 +469,7 @@ router.post('/:id/notify', protect, adminOnly, async (req, res) => {
 
         res.json({ success: true, message: `تم إرسال التنبيه لـ ${user.name}` });
     } catch (error) {
-        console.error('خطأ في إرسال التنبيه:', error);
+        logger.error('خطأ في إرسال التنبيه:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -535,7 +535,7 @@ router.put('/:id/adjust-violations', protect, adminOnly, async (req, res) => {
             data: { oldCount, newCount: user.violationCount }
         });
     } catch (error) {
-        console.error('خطأ في تعديل المخالفات:', error);
+        logger.error('خطأ في تعديل المخالفات:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -567,7 +567,7 @@ router.put('/:id/clear-violations', protect, adminOnly, async (req, res) => {
             data: { oldCount, newCount: 0 }
         });
     } catch (error) {
-        console.error('خطأ في تصفير المخالفات:', error);
+        logger.error('خطأ في تصفير المخالفات:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -647,7 +647,7 @@ router.put('/:id/restrict', protect, adminOnly, async (req, res) => {
             data: { restrictions: user.restrictions }
         });
     } catch (error) {
-        console.error('خطأ في التقييد:', error);
+        logger.error('خطأ في التقييد:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -704,7 +704,7 @@ router.put('/:id/unrestrict', protect, adminOnly, async (req, res) => {
 
         res.json({ success: true, message: `تم رفع التقييد عن ${user.name}` });
     } catch (error) {
-        console.error('خطأ في رفع التقييد:', error);
+        logger.error('خطأ في رفع التقييد:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });

@@ -1,4 +1,5 @@
 const express = require('express');
+const logger = require('../utils/logger');
 const router = express.Router();
 const User = require('../models/User');
 const { protect: auth } = require('../middleware/auth');
@@ -32,7 +33,7 @@ router.get('/settings', auth, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في جلب إعدادات الخصوصية:', error);
+        logger.error('خطأ في جلب إعدادات الخصوصية:', error);
         res.status(500).json({
             success: false,
             message: 'حدث خطأ في الخادم'
@@ -94,7 +95,7 @@ router.put('/settings', [
             data: user.privacySettings
         });
     } catch (error) {
-        console.error('خطأ في تحديث إعدادات الخصوصية:', error);
+        logger.error('خطأ في تحديث إعدادات الخصوصية:', error);
         res.status(500).json({
             success: false,
             message: 'حدث خطأ في الخادم'
@@ -142,7 +143,7 @@ router.put('/profile-visibility', [
             data: { profileVisibility: visibility }
         });
     } catch (error) {
-        console.error('خطأ في تغيير إظهار الملف الشخصي:', error);
+        logger.error('خطأ في تغيير إظهار الملف الشخصي:', error);
         res.status(500).json({
             success: false,
             message: 'حدث خطأ في الخادم'
@@ -184,7 +185,7 @@ router.put('/last-seen', [
             data: { showLastSeen: show }
         });
     } catch (error) {
-        console.error('خطأ في تغيير إعداد آخر ظهور:', error);
+        logger.error('خطأ في تغيير إعداد آخر ظهور:', error);
         res.status(500).json({
             success: false,
             message: 'حدث خطأ في الخادم'
@@ -212,7 +213,7 @@ router.get('/blocked', auth, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في جلب قائمة المحظورين:', error);
+        logger.error('خطأ في جلب قائمة المحظورين:', error);
         res.status(500).json({
             success: false,
             message: 'حدث خطأ في الخادم'
@@ -277,7 +278,7 @@ router.post('/block/:userId', [
             data: { blockedUserId: userId }
         });
     } catch (error) {
-        console.error('خطأ في حظر المستخدم:', error);
+        logger.error('خطأ في حظر المستخدم:', error);
         res.status(500).json({
             success: false,
             message: 'حدث خطأ في الخادم'
@@ -323,7 +324,7 @@ router.delete('/unblock/:userId', [
             data: { unblockedUserId: userId }
         });
     } catch (error) {
-        console.error('خطأ في إلغاء حظر المستخدم:', error);
+        logger.error('خطأ في إلغاء حظر المستخدم:', error);
         res.status(500).json({
             success: false,
             message: 'حدث خطأ في الخادم'
@@ -357,7 +358,7 @@ router.get('/is-blocked/:userId', [
             data: { isBlocked }
         });
     } catch (error) {
-        console.error('خطأ في التحقق من الحظر:', error);
+        logger.error('خطأ في التحقق من الحظر:', error);
         res.status(500).json({
             success: false,
             message: 'حدث خطأ في الخادم'
@@ -391,7 +392,7 @@ router.get('/muted', auth, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في جلب المحادثات المكتومة:', error);
+        logger.error('خطأ في جلب المحادثات المكتومة:', error);
         res.status(500).json({
             success: false,
             message: 'حدث خطأ في الخادم'
@@ -479,7 +480,7 @@ router.post('/mute/:conversationId', [
             }
         });
     } catch (error) {
-        console.error('خطأ في كتم المحادثة:', error);
+        logger.error('خطأ في كتم المحادثة:', error);
         res.status(500).json({
             success: false,
             message: 'حدث خطأ في الخادم'
@@ -517,7 +518,7 @@ router.delete('/unmute/:conversationId', [
             data: { conversationId }
         });
     } catch (error) {
-        console.error('خطأ في إلغاء كتم المحادثة:', error);
+        logger.error('خطأ في إلغاء كتم المحادثة:', error);
         res.status(500).json({
             success: false,
             message: 'حدث خطأ في الخادم'
@@ -563,7 +564,7 @@ router.get('/is-muted/:conversationId', [
             data: { isMuted, mutedUntil }
         });
     } catch (error) {
-        console.error('خطأ في التحقق من كتم المحادثة:', error);
+        logger.error('خطأ في التحقق من كتم المحادثة:', error);
         res.status(500).json({
             success: false,
             message: 'حدث خطأ في الخادم'
@@ -605,7 +606,7 @@ router.put('/notification-sound', [
             data: { notificationSound: enabled }
         });
     } catch (error) {
-        console.error('خطأ في تغيير إعداد صوت الإشعارات:', error);
+        logger.error('خطأ في تغيير إعداد صوت الإشعارات:', error);
         res.status(500).json({
             success: false,
             message: 'حدث خطأ في الخادم'

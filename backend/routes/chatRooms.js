@@ -1,5 +1,6 @@
 // Chat Rooms Routes - مسارات غرف المحادثة
 const express = require('express');
+const logger = require('../utils/logger');
 const router = express.Router();
 const path = require('path');
 const fs = require('fs');
@@ -11,6 +12,9 @@ const { protect, adminOnly } = require('../middleware/auth');
 const { validate } = require('../middleware/validation');
 const upload = require('../config/multer');
 const { optimizeImage } = require('../middleware/imageOptimizer');
+const { getPagination } = require('../utils/pagination');
+// سقف آمن للـ limit القادم من العميل (كان بلا حد: ?limit=100000)
+const safeLimit = (v) => getPagination({ limit: v }).limit;
 const {
     createChatRoomValidation,
     updateChatRoomValidation,
@@ -46,7 +50,7 @@ router.get('/', protect, adminOnly, queryValidation, validate, async (req, res) 
             .populate('createdBy', 'name email')
             .populate('lastMessage.sender', 'name')
             .sort({ updatedAt: -1 })
-            .limit(limit * 1)
+            .limit(safeLimit(limit))
             .skip((page - 1) * limit);
 
         const count = await ChatRoom.countDocuments(query);
@@ -61,7 +65,7 @@ router.get('/', protect, adminOnly, queryValidation, validate, async (req, res) 
             }
         });
     } catch (error) {
-        console.error('خطأ في جلب غرف المحادثة:', error);
+        logger.error('خطأ في جلب غرف المحادثة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب غرف المحادثة',
@@ -88,7 +92,7 @@ router.get('/public', protect, async (req, res) => {
             data: rooms
         });
     } catch (error) {
-        console.error('خطأ في جلب الغرف العامة:', error);
+        logger.error('خطأ في جلب الغرف العامة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب الغرف العامة',
@@ -129,7 +133,7 @@ router.get('/:id', protect, mongoIdValidation, validate, async (req, res) => {
             data: room
         });
     } catch (error) {
-        console.error('خطأ في جلب الغرفة:', error);
+        logger.error('خطأ في جلب الغرفة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب الغرفة',
@@ -181,7 +185,7 @@ router.post('/', protect, adminOnly, createChatRoomValidation, validate, async (
             data: populatedRoom
         });
     } catch (error) {
-        console.error('خطأ في إنشاء الغرفة:', error);
+        logger.error('خطأ في إنشاء الغرفة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في إنشاء الغرفة',
@@ -225,7 +229,7 @@ router.put('/:id', protect, adminOnly, async (req, res) => {
             data: updatedRoom
         });
     } catch (error) {
-        console.error('خطأ في تحديث الغرفة:', error);
+        logger.error('خطأ في تحديث الغرفة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في تحديث الغرفة',
@@ -255,7 +259,7 @@ router.delete('/:id', protect, adminOnly, async (req, res) => {
             message: 'تم حذف الغرفة بنجاح'
         });
     } catch (error) {
-        console.error('خطأ في حذف الغرفة:', error);
+        logger.error('خطأ في حذف الغرفة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في حذف الغرفة',
@@ -295,7 +299,7 @@ router.delete('/:id/messages', protect, adminOnly, async (req, res) => {
             deletedCount: result.deletedCount
         });
     } catch (error) {
-        console.error('خطأ في حذف رسائل الغرفة:', error);
+        logger.error('خطأ في حذف رسائل الغرفة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في حذف الرسائل',
@@ -327,7 +331,7 @@ router.put('/:id/toggle-active', protect, adminOnly, async (req, res) => {
             data: room
         });
     } catch (error) {
-        console.error('خطأ في تغيير حالة الغرفة:', error);
+        logger.error('خطأ في تغيير حالة الغرفة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في تغيير حالة الغرفة',
@@ -359,7 +363,7 @@ router.put('/:id/toggle-lock', protect, adminOnly, async (req, res) => {
             data: room
         });
     } catch (error) {
-        console.error('خطأ في تغيير قفل الغرفة:', error);
+        logger.error('خطأ في تغيير قفل الغرفة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في تغيير قفل الغرفة',
@@ -407,7 +411,7 @@ router.get('/:id/stats', protect, adminOnly, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في جلب إحصائيات الغرفة:', error);
+        logger.error('خطأ في جلب إحصائيات الغرفة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب الإحصائيات',
@@ -453,7 +457,7 @@ router.put('/:id/pin', protect, adminOnly, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في تثبيت الإعلان:', error);
+        logger.error('خطأ في تثبيت الإعلان:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في تثبيت الإعلان',
@@ -511,7 +515,7 @@ router.post('/:id/upload-image', protect, adminOnly, upload.single('roomImage'),
             await fsPromises.unlink(req.file.path).catch(() => {});
         }
 
-        console.error('خطأ في رفع صورة الغرفة:', error);
+        logger.error('خطأ في رفع صورة الغرفة:', error);
         res.status(500).json({
             success: false,
             message: error.message || 'خطأ في السيرفر'
@@ -547,7 +551,7 @@ router.get('/:id/messages', protect, adminOnly, async (req, res) => {
         const messages = await Message.find(query)
             .populate('sender', 'name email profileImage')
             .sort({ createdAt: -1 })
-            .limit(limit * 1)
+            .limit(safeLimit(limit))
             .skip((page - 1) * limit);
 
         const count = await Message.countDocuments(query);
@@ -562,7 +566,7 @@ router.get('/:id/messages', protect, adminOnly, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في جلب رسائل الغرفة:', error);
+        logger.error('خطأ في جلب رسائل الغرفة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب الرسائل',
@@ -614,7 +618,7 @@ router.get('/:id/reports', protect, adminOnly, async (req, res) => {
             }))
         });
     } catch (error) {
-        console.error('خطأ في جلب بلاغات الغرفة:', error);
+        logger.error('خطأ في جلب بلاغات الغرفة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب البلاغات',

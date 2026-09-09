@@ -2,10 +2,14 @@
 // مسارات API الخاصة بالرسائل
 
 const express = require('express');
+const logger = require('../utils/logger');
 const router = express.Router();
 const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const { protect, adminOnly } = require('../middleware/auth');
+const { getPagination } = require('../utils/pagination');
+// سقف آمن للـ limit القادم من العميل (كان بلا حد: ?limit=100000)
+const safeLimit = (v) => getPagination({ limit: v }).limit;
 
 // Helper: تنظيف المدخلات من أحرف Regex الخاصة لمنع NoSQL Injection
 function escapeRegex(str) {
@@ -44,7 +48,7 @@ router.get('/conversation/:conversationId', protect, adminOnly, async (req, res)
         const messages = await Message.find(filter)
             .populate('sender', 'name email profileImage')
             .sort({ createdAt: -1 })
-            .limit(limit * 1)
+            .limit(safeLimit(limit))
             .skip((page - 1) * limit);
 
         // عدد الرسائل الكلي
@@ -60,7 +64,7 @@ router.get('/conversation/:conversationId', protect, adminOnly, async (req, res)
             }
         });
     } catch (error) {
-        console.error('خطأ في جلب الرسائل:', error);
+        logger.error('خطأ في جلب الرسائل:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب الرسائل',
@@ -230,7 +234,7 @@ router.get('/:id', protect, adminOnly, async (req, res) => {
             data: message
         });
     } catch (error) {
-        console.error('خطأ في جلب الرسالة:', error);
+        logger.error('خطأ في جلب الرسالة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب الرسالة',
@@ -261,7 +265,7 @@ router.delete('/:id', protect, adminOnly, async (req, res) => {
             message: 'تم حذف الرسالة بنجاح'
         });
     } catch (error) {
-        console.error('خطأ في حذف الرسالة:', error);
+        logger.error('خطأ في حذف الرسالة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في حذف الرسالة',
@@ -291,7 +295,7 @@ router.delete('/:id/permanent', protect, adminOnly, async (req, res) => {
             message: 'تم حذف الرسالة نهائياً'
         });
     } catch (error) {
-        console.error('خطأ في حذف الرسالة:', error);
+        logger.error('خطأ في حذف الرسالة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في حذف الرسالة',
@@ -343,7 +347,7 @@ router.post('/send', protect, adminOnly, async (req, res) => {
             data: populatedMessage
         });
     } catch (error) {
-        console.error('خطأ في إرسال الرسالة:', error);
+        logger.error('خطأ في إرسال الرسالة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في إرسال الرسالة',
@@ -374,7 +378,7 @@ router.get('/stats/:conversationId', protect, adminOnly, async (req, res) => {
             data: stats
         });
     } catch (error) {
-        console.error('خطأ في جلب الإحصائيات:', error);
+        logger.error('خطأ في جلب الإحصائيات:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب الإحصائيات',
@@ -414,7 +418,7 @@ router.get('/flagged/:messageId/context', protect, adminOnly, async (req, res) =
             }
         });
     } catch (error) {
-        console.error('خطأ:', error);
+        logger.error('خطأ:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });

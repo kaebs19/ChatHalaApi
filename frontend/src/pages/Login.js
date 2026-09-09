@@ -49,8 +49,8 @@ function Login({ onLogin }) {
         <div className="login-container">
             <div className="login-box">
                 <div className="logo">
-                    <img src="/favicon.svg" alt="شات هلا" className="logo-image" />
-                    <h1>شات هلا</h1>
+                    <img src="/favicon.svg" alt="دردشات" className="logo-image" />
+                    <h1>دردشات</h1>
                     <p>لوحة التحكم</p>
                 </div>
 

@@ -22,6 +22,7 @@ const User = require('./models/User');
 const Conversation = require('./models/Conversation');
 const ChatRoom = require('./models/ChatRoom');
 const BannedWord = require('./models/BannedWord');
+const { moderateContent, recordContentViolations } = require('./utils/moderateContent');
 
 // الاتصال بقاعدة البيانات
 connectDB();
@@ -32,6 +33,71 @@ const getFullUrl = (imgPath) => {
     if (imgPath.startsWith('http')) return imgPath;
     const baseUrl = process.env.BASE_URL || 'https://halachat.khalafiati.io';
     return `${baseUrl}${imgPath}`;
+};
+
+// Helper: هل المستخدم عضو في المحادثة؟ (مع كاش لكل اتصال socket)
+// الأدمن مستثنى (يحتاج متابعة المحادثات من اللوحة)
+const isConversationMember = async (socket, conversationId) => {
+    if (!conversationId) return false;
+    const key = String(conversationId);
+
+    if (socket.data.verifiedConversations?.has(key)) return true;
+    if (socket.user.role === 'admin') return true;
+
+    const conversation = await Conversation.findById(key).select('participants').lean();
+    if (!conversation) return false;
+
+    const isMember = (conversation.participants || []).some(
+        p => p.toString() === socket.userId
+    );
+    if (isMember) socket.data.verifiedConversations?.add(key);
+    return isMember;
+};
+
+// Helper: هل يحق للمستخدم الكتابة في الغرفة؟ (الغرف الخاصة تتطلب عضوية)
+const canWriteInRoom = (chatRoom, socketOrUser) => {
+    const userId = socketOrUser.userId || String(socketOrUser._id);
+    const role = socketOrUser.user?.role || socketOrUser.role;
+    if (role === 'admin') return true;
+    if (chatRoom.accessType !== 'private') return true;
+    return (chatRoom.members || []).some(m => m.toString() === userId);
+};
+
+// شركاء المحادثات — من يهمّه فعلاً معرفة حضور هذا المستخدم
+// ⚠️ كان بث الحضور يذهب لكل المتصلين (broadcast/io.emit): مع N مستخدم متصل
+// يصبح كل اتصال أو قطع اتصال N رسالة، أي O(N²) رسائل في الشبكة.
+const PRESENCE_PARTNERS_LIMIT = 300;
+
+const getPresencePartners = async (userId) => {
+    const conversations = await Conversation.find({
+        participants: userId,
+        isActive: true,
+        status: 'accepted'
+    })
+        .select('participants')
+        .limit(PRESENCE_PARTNERS_LIMIT)
+        .lean();
+
+    const partners = new Set();
+    for (const conv of conversations) {
+        for (const p of conv.participants || []) {
+            const pid = p.toString();
+            if (pid !== String(userId)) partners.add(pid);
+        }
+    }
+    return [...partners];
+};
+
+// يبثّ حالة الحضور لشركاء المحادثات فقط
+const emitPresence = async (userId, event, payload) => {
+    try {
+        const partners = await getPresencePartners(userId);
+        for (const pid of partners) {
+            io.to(`user:${pid}`).emit(event, payload);
+        }
+    } catch (e) {
+        logger.error(`فشل بث الحضور (${event}):`, e.message);
+    }
 };
 
 // إنشاء التطبيق
@@ -98,6 +164,11 @@ io.use(async (socket, next) => {
             return next(new Error('Authentication error: User is not active'));
         }
 
+        // نفس فحص إبطال التوكن الموجود في middleware/auth.js
+        if (typeof decoded.tv === 'number' && decoded.tv !== (user.tokenVersion || 0)) {
+            return next(new Error('Authentication error: Token revoked'));
+        }
+
         // إضافة بيانات المستخدم إلى socket
         socket.userId = user._id.toString();
         socket.user = user;
@@ -111,15 +182,32 @@ io.use(async (socket, next) => {
 });
 
 // تخزين اتصالات Socket.IO
+// ⚠️ المستخدم قد يكون متصلاً من أكثر من جهاز — لذلك كل مدخل يحمل مجموعة sockets
+// وليس socket واحداً. (سابقاً كان الجهاز الثاني يطرد الأول من الخريطة، وقطع اتصال
+// أي جهاز يجعل المستخدم "غير متصل" فتُرسَل/تُمنَع الإشعارات بشكل خاطئ)
 global.io = io;
 global.connectedUsers = new Map();
+
+// فصل كل جلسات المستخدم (عند الحظر/التعليق) — لا جهاز واحد فقط
+global.disconnectUserSockets = (userId) => {
+    const id = String(userId);
+    let count = 0;
+    const entry = global.connectedUsers.get(id);
+    for (const sid of entry?.sockets || []) {
+        const sock = io.sockets.sockets.get(sid);
+        if (sock) { sock.disconnect(true); count++; }
+    }
+    return count;
+};
 
 // Socket.IO Rate Limiter (محسّن - حد أقصى للذاكرة)
 const socketRateLimits = new Map();
 const MAX_RATE_LIMIT_ENTRIES = 10000; // حد أقصى لعدد المدخلات
 
-function checkSocketRate(socketId, event, maxPerMinute = 30) {
-    const key = `${socketId}:${event}`;
+// ⚠️ المفتاح مبني على userId وليس socket.id — إعادة الاتصال كانت تصفّر العدّاد
+// فيتجاوز أي مستخدم الحد بمجرد قطع الاتصال وإعادته
+function checkSocketRate(userId, event, maxPerMinute = 30) {
+    const key = `${userId}:${event}`;
     const now = Date.now();
     const windowMs = 60 * 1000;
 
@@ -268,6 +356,11 @@ app.use(mongoSanitize());
 app.use(hpp());
 
 // 8. Static Files - تقديم الملفات المرفوعة
+// 🔒 صور التوثيق مستثناة: تحتوي صور هوية وتُقدَّم فقط عبر
+// GET /api/verifications/file/:filename (أدمن فقط)
+app.use('/uploads/verifications', (req, res) => {
+    res.status(404).json({ success: false, message: 'غير موجود' });
+});
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Swagger API Documentation
@@ -296,6 +389,41 @@ app.get('/api/health', (req, res) => {
         message: dbState === 1 ? 'السيرفر يعمل بنجاح' : 'مشكلة في الاتصال',
         database: dbStatus[dbState] || 'unknown',
         uptime: Math.floor(process.uptime()) + 's'
+    });
+});
+
+// نقطة مراقبة تشغيلية (أدمن فقط) — بديل التشخيص عبر السجلات
+app.get('/api/metrics', require('./middleware/auth').protect, require('./middleware/auth').adminOnly, (req, res) => {
+    const mongoose = require('mongoose');
+    const mem = process.memoryUsage();
+    const mb = (n) => Math.round(n / 1024 / 1024);
+
+    // توزيع الجلسات: عدد المستخدمين مقابل عدد الاتصالات (تعدد الأجهزة)
+    let socketCount = 0;
+    for (const entry of connectedUsers.values()) {
+        socketCount += entry.sockets?.size || 1;
+    }
+
+    res.json({
+        success: true,
+        data: {
+            uptimeSeconds: Math.floor(process.uptime()),
+            environment: process.env.NODE_ENV || 'development',
+            memory: { rssMB: mb(mem.rss), heapUsedMB: mb(mem.heapUsed), heapTotalMB: mb(mem.heapTotal) },
+            database: {
+                state: ['disconnected', 'connected', 'connecting', 'disconnecting'][mongoose.connection.readyState] || 'unknown',
+                name: mongoose.connection.name || null
+            },
+            sockets: {
+                onlineUsers: connectedUsers.size,
+                openConnections: socketCount,
+                adminsConnected: io.sockets.adapter.rooms.get('admins')?.size || 0,
+                redisAdapter: !!process.env.REDIS_URL
+            },
+            cache: require('./utils/cache').getStats(),
+            rateLimitEntries: socketRateLimits.size,
+            sentry: logger.isSentryEnabled()
+        }
     });
 });
 
@@ -336,12 +464,21 @@ app.use(errorHandler); // Error Handler
 io.on('connection', async (socket) => {
     logger.info(`مستخدم متصل: ${socket.user.name} (${socket.id})`);
 
-    // إضافة المستخدم إلى قائمة المتصلين
-    connectedUsers.set(socket.userId, {
-        socketId: socket.id,
-        user: socket.user,
-        connectedAt: new Date()
-    });
+    // إضافة الجلسة إلى قائمة المتصلين (تراكمية — تدعم عدة أجهزة)
+    const existingEntry = connectedUsers.get(socket.userId);
+    const isFirstDevice = !existingEntry;
+    if (existingEntry) {
+        existingEntry.sockets.add(socket.id);
+        existingEntry.socketId = socket.id;   // آخر جهاز (للتوافق مع الكود القديم)
+        existingEntry.user = socket.user;
+    } else {
+        connectedUsers.set(socket.userId, {
+            socketId: socket.id,
+            sockets: new Set([socket.id]),
+            user: socket.user,
+            connectedAt: new Date()
+        });
+    }
 
     // تحديث حالة المستخدم: متصل
     await User.findByIdAndUpdate(socket.userId, {
@@ -349,11 +486,22 @@ io.on('connection', async (socket) => {
         lastLogin: new Date()
     });
 
-    // إبلاغ الآخرين أن المستخدم متصل
-    socket.broadcast.emit('user:online', { userId: socket.userId });
+    // إبلاغ شركاء المحادثات أن المستخدم متصل (أول جهاز فقط)
+    if (isFirstDevice) {
+        emitPresence(socket.userId, 'user:online', { userId: socket.userId });
+    }
 
     // انضم لغرفته الخاصة (للرسائل الخاصة)
     socket.join(`user:${socket.userId}`);
+
+    // 🔒 غرفة الأدمن — تنبيهات الإشراف تُرسل إليها فقط
+    // (كانت تُبثّ سابقاً لكل المتصلين عبر io.emit وتكشف محتوى الرسائل الخاصة)
+    if (socket.user.role === 'admin') {
+        socket.join('admins');
+    }
+
+    // كاش عضوية المحادثات لهذا الاتصال (يمنع استعلام DB لكل رسالة)
+    socket.data.verifiedConversations = new Set();
 
     // إرسال حالة الاتصال للمستخدم
     socket.emit('authenticated', {
@@ -482,7 +630,7 @@ io.on('connection', async (socket) => {
 
     // عند الكتابة
     socket.on('typing', ({ conversationId, userName }) => {
-        if (!checkSocketRate(socket.id, 'typing', 10)) return;
+        if (!checkSocketRate(socket.userId, 'typing', 10)) return;
         socket.to(`conversation-${conversationId}`).emit('user-typing', {
             conversationId,
             userName,
@@ -512,7 +660,7 @@ io.on('connection', async (socket) => {
             const type = data?.type || 'text';
 
             // Rate limiting
-            if (!checkSocketRate(socket.id, 'room-message', 20)) {
+            if (!checkSocketRate(socket.userId, 'room-message', 20)) {
                 return socket.emit('error', { message: 'أنت ترسل رسائل بسرعة كبيرة. انتظر قليلاً' });
             }
 
@@ -540,21 +688,14 @@ io.on('connection', async (socket) => {
                 return socket.emit('error', { message: 'الغرفة مقفلة' });
             }
 
-            // فحص الكلمات المحظورة
-            let bannedWordResult = { isClean: true, foundWords: [] };
-            if (type === 'text' && content) {
-                try {
-                    bannedWordResult = await BannedWord.checkText(content, 'word');
-                } catch (bwError) {
-                    logger.error('خطأ في فحص الكلمات المحظورة:', bwError);
-                }
+            // 🔒 الغرف الخاصة: الكتابة للأعضاء فقط (join-room كان يفحصها لكن الإرسال لا)
+            if (!canWriteInRoom(chatRoom, socket)) {
+                return socket.emit('error', { message: 'ليس لديك صلاحية للكتابة في هذه الغرفة' });
             }
 
-            // تنظيف النص من الكلمات المحظورة
-            let filteredContent = null;
-            if (!bannedWordResult.isClean) {
-                filteredContent = await BannedWord.cleanText(content, '*****');
-            }
+            // فحص المحتوى عبر الـ helper المركزي (نفس فلترة مسارات HTTP)
+            const moderation = await moderateContent(content, type);
+            const { bannedWordResult, externalCheck, filteredContent } = moderation;
 
             // إنشاء الرسالة
             const message = new Message({
@@ -563,78 +704,37 @@ io.on('connection', async (socket) => {
                 sender: socket.userId,
                 content: content,
                 type: type,
-                filteredContent: filteredContent,
-                reviewStatus: !bannedWordResult.isClean ? 'pending' : 'none',
-                hasBannedWords: !bannedWordResult.isClean,
-                bannedWordsFound: bannedWordResult.foundWords.map(w => ({
-                    word: w.word,
-                    severity: w.severity,
-                    action: w.action
-                })),
-                bannedWordSeverity: bannedWordResult.highestSeverity || null
+                ...moderation.messageFields
             });
             await message.save();
 
-            // تنبيه الأدمن + تحذير المرسل + نظام مخالفات يومي تصاعدي
-            if (!bannedWordResult.isClean) {
-                const today = new Date().toISOString().split('T')[0];
+            // تسجيل المخالفة عبر violationHelper المركزي
+            // ⚠️ كان هنا نسخة يدوية من منطق العقوبات (عدّاد يومي + مدد التعليق)
+            // منفصلة عن utils/violationHelper — أي تعديل على السياسة كان يلزم
+            // تطبيقه في مكانين، وقد تباعدا فعلاً (هذه النسخة تجاهلت
+            // config/moderation ولم تفحص الحسابات الخارجية إطلاقاً)
+            if (!bannedWordResult.isClean || externalCheck.hasExternalAccount) {
                 const roomUser = await User.findById(socket.userId);
-                if (roomUser.dailyViolationDate !== today) {
-                    roomUser.dailyViolationCount = 0;
-                    roomUser.dailyViolationDate = today;
+                if (roomUser) {
+                    await recordContentViolations({
+                        user: roomUser,
+                        bannedWordResult,
+                        externalCheck,
+                        evidence: {
+                            messageId: message._id,
+                            messageContent: content,
+                            messageType: type,
+                            roomId,
+                            roomName: chatRoom.name,
+                            chatType: 'room'
+                        }
+                    });
+
+                    // الحساب المعلَّق تُقطع كل جلساته
+                    if (!roomUser.isActive) {
+                        global.disconnectUserSockets(socket.userId);
+                    }
                 }
-                roomUser.dailyViolationCount += 1;
-                roomUser.violationCount += 1;
-
-                const dailyRemaining = Math.max(0, 5 - roomUser.dailyViolationCount);
-                let roomAutoSuspended = false;
-                let roomSuspendDays = 0;
-
-                if (roomUser.dailyViolationCount >= 5) {
-                    roomAutoSuspended = true;
-                    roomUser.suspensionCount = (roomUser.suspensionCount || 0) + 1;
-                    if (roomUser.suspensionCount === 1) roomSuspendDays = 1;
-                    else if (roomUser.suspensionCount === 2) roomSuspendDays = 3;
-                    else if (roomUser.suspensionCount === 3) roomSuspendDays = 7;
-                    else roomSuspendDays = 36500;
-
-                    roomUser.isActive = false;
-                    roomUser.suspendedUntil = new Date(Date.now() + roomSuspendDays * 24 * 60 * 60 * 1000);
-                    roomUser.suspendReason = roomSuspendDays >= 36500
-                        ? 'حظر دائم - تكرار المخالفات'
-                        : `تعليق تلقائي ${roomSuspendDays} يوم`;
-                    roomUser.warnings.push({ reason: roomUser.suspendReason, action: 'auto_suspend', date: new Date() });
-                    roomUser.dailyViolationCount = 0;
-                }
-                await roomUser.save();
-
-                io.emit('banned-word-alert', {
-                    messageId: message._id, roomId, roomName: chatRoom.name,
-                    senderId: socket.userId, senderName: socket.user.name,
-                    content: content.substring(0, 100),
-                    wordsFound: bannedWordResult.foundWords.map(w => w.word),
-                    severity: bannedWordResult.highestSeverity,
-                    chatType: 'room', timestamp: new Date()
-                });
-                io.to(`user:${socket.userId}`).emit('banned-word-warning', {
-                    title: roomAutoSuspended ? '🚫 تم تعليق حسابك' : '⚠️ تنبيه',
-                    body: roomAutoSuspended
-                        ? (roomSuspendDays >= 36500 ? 'تم حظر حسابك نهائياً.' : `تم تعليق حسابك لمدة ${roomSuspendDays} يوم.`)
-                        : `رسالتك تحتوي على كلمات محظورة! متبقي ${dailyRemaining} مخالفات اليوم.`,
-                    violationCount: roomUser.dailyViolationCount, remaining: dailyRemaining, suspended: roomAutoSuspended
-                });
-
-                if (roomAutoSuspended) {
-                    socket.disconnect(true);
-                }
-
-                // إشعار push
-                const Notification = require('./models/Notification');
-                const notifTitle = roomAutoSuspended ? '🚫 تم تعليق حسابك' : '⚠️ مخالفة';
-                const notifBody = roomAutoSuspended
-                    ? `تم تعليق حسابك لمدة ${roomSuspendDays >= 36500 ? 'دائم' : roomSuspendDays + ' يوم'}.`
-                    : `مخالفة ${roomUser.dailyViolationCount}/5 اليوم.`;
-                await Notification.create({ title: notifTitle, body: notifBody, type: 'system', targetUsers: [socket.userId], recipients: 'specific' });
             }
 
             // تحديث آخر رسالة في الغرفة
@@ -669,7 +769,7 @@ io.on('connection', async (socket) => {
 
     // الكتابة في الغرفة
     socket.on('room-typing', ({ roomId, userName, isTyping }) => {
-        if (!checkSocketRate(socket.id, 'typing', 10)) return;
+        if (!checkSocketRate(socket.userId, 'typing', 10)) return;
         socket.to(`room-${roomId}`).emit('room-user-typing', {
             roomId,
             userName,
@@ -678,9 +778,9 @@ io.on('connection', async (socket) => {
     });
 
     // إرسال رسالة في المحادثة الخاصة (من تطبيق الموبايل)
-    socket.on('send-message', (data) => {
+    socket.on('send-message', async (data) => {
         try {
-            if (!checkSocketRate(socket.id, 'send-message', 30)) {
+            if (!checkSocketRate(socket.userId, 'send-message', 30)) {
                 return socket.emit('error', { message: 'أنت ترسل رسائل بسرعة كبيرة. انتظر قليلاً' });
             }
 
@@ -688,6 +788,12 @@ io.on('connection', async (socket) => {
 
             if (!conversationId || !content) {
                 return socket.emit('error', { message: 'بيانات الرسالة غير مكتملة' });
+            }
+
+            // 🔒 التحقق من عضوية المرسل في المحادثة
+            // بدونه: أي مستخدم مسجّل يقدر يحقن رسالة في أي محادثة بمعرفها فقط
+            if (!(await isConversationMember(socket, conversationId))) {
+                return socket.emit('error', { message: 'ليس لديك صلاحية لهذه المحادثة' });
             }
 
             // بث الرسالة للمشاركين في المحادثة (ما عدا المرسل)
@@ -714,46 +820,66 @@ io.on('connection', async (socket) => {
     // عند قطع الاتصال
     socket.on('disconnect', async () => {
         logger.info(`${socket.user.name} قطع الاتصال (${socket.id})`);
-        connectedUsers.delete(socket.userId);
 
-        // تنظيف rate limits
-        for (const key of socketRateLimits.keys()) {
-            if (key.startsWith(socket.id + ':')) {
-                socketRateLimits.delete(key);
+        // إزالة هذه الجلسة فقط — المستخدم يبقى "متصل" ما دام له جهاز آخر
+        const entry = connectedUsers.get(socket.userId);
+        entry?.sockets?.delete(socket.id);
+        const stillOnline = (entry?.sockets?.size || 0) > 0;
+
+        if (!stillOnline) {
+            connectedUsers.delete(socket.userId);
+        } else if (entry.socketId === socket.id) {
+            // حدّث المرجع للجهاز المتبقي
+            entry.socketId = entry.sockets.values().next().value;
+        }
+
+        // تنظيف rate limits (المفتاح صار userId:event، ينظَّف عند آخر جلسة فقط)
+        if (!stillOnline) {
+            for (const key of socketRateLimits.keys()) {
+                if (key.startsWith(socket.userId + ':')) {
+                    socketRateLimits.delete(key);
+                }
             }
         }
 
-        // تحديث حالة المستخدم: غير متصل
-        await User.findByIdAndUpdate(socket.userId, {
-            isOnline: false,
-            lastLogin: new Date()
-        });
+        // آخر جهاز فقط يُعلِن المستخدم غير متصل
+        if (!stillOnline) {
+            await User.findByIdAndUpdate(socket.userId, {
+                isOnline: false,
+                lastLogin: new Date()
+            });
 
-        // إبلاغ الآخرين أن المستخدم قطع الاتصال
-        socket.broadcast.emit('user:offline', { userId: socket.userId });
+            // إبلاغ شركاء المحادثات فقط
+            await emitPresence(socket.userId, 'user:offline', { userId: socket.userId });
 
-        // إرسال إشعار للجميع بأن المستخدم غير متصل (للتوافق مع الكود القديم)
-        io.emit('user-disconnected', {
-            userId: socket.userId,
-            userName: socket.user.name
-        });
+            // حدث قديم للتوافق — لنفس الجمهور، لا لكل المتصلين
+            await emitPresence(socket.userId, 'user-disconnected', {
+                userId: socket.userId,
+                userName: socket.user.name
+            });
+        }
     });
 });
 
 // معالجة الأخطاء غير المعالجة
 process.on('uncaughtException', (err) => {
-    logger.error('Uncaught Exception:', err.message);
-    logger.error(err.stack);
-    process.exit(1);
+    logger.captureError(err, { fatal: true, source: 'uncaughtException' });
+    // مهلة قصيرة كي يصل التقرير قبل الخروج (PM2 يعيد التشغيل)
+    setTimeout(() => process.exit(1), 500).unref();
 });
 
-process.on('unhandledRejection', (reason, promise) => {
-    logger.error('Unhandled Rejection:', reason);
+process.on('unhandledRejection', (reason) => {
     // لا نوقف السيرفر لكن نسجل التفاصيل الكاملة
     if (reason instanceof Error) {
-        logger.error('Stack:', reason.stack);
+        logger.captureError(reason, { source: 'unhandledRejection' });
+    } else {
+        logger.error('Unhandled Rejection:', reason);
     }
 });
+
+// تفعيل Redis adapter إن توفّر (يسمح بتشغيل أكثر من عملية)
+const { setupSocketAdapter } = require('./config/socketAdapter');
+setupSocketAdapter(io).catch(e => logger.error('setupSocketAdapter:', e.message));
 
 // تشغيل السيرفر
 server.listen(PORT, () => {

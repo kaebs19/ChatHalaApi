@@ -1,5 +1,6 @@
 // Settings Routes - إدارة الإعدادات
 const express = require('express');
+const logger = require('../utils/logger');
 const router = express.Router();
 const Settings = require('../models/Settings');
 const { protect, adminOnly } = require('../middleware/auth');
@@ -13,7 +14,7 @@ router.get('/', async (req, res) => {
         // التحقق من الـ Cache
         const cachedSettings = get(CACHE_KEYS.SETTINGS);
         if (cachedSettings) {
-            console.log('📦 Settings من الـ Cache');
+            logger.info('📦 Settings من الـ Cache');
             // إذا لم يكن admin، أرجع فقط المعلومات العامة
             if (!req.user || req.user.role !== 'admin') {
                 return res.json({
@@ -63,7 +64,7 @@ router.get('/', async (req, res) => {
             data: settings
         });
     } catch (error) {
-        console.error('خطأ في جلب الإعدادات:', error);
+        logger.error('خطأ في جلب الإعدادات:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب الإعدادات',
@@ -123,7 +124,7 @@ router.put('/', protect, adminOnly, async (req, res) => {
             data: settings
         });
     } catch (error) {
-        console.error('خطأ في تحديث الإعدادات:', error);
+        logger.error('خطأ في تحديث الإعدادات:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في تحديث الإعدادات',
@@ -276,7 +277,7 @@ router.put('/content/:type', protect, adminOnly, async (req, res) => {
             data: settings
         });
     } catch (error) {
-        console.error('خطأ في تحديث المحتوى:', error);
+        logger.error('خطأ في تحديث المحتوى:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في تحديث المحتوى',
@@ -328,7 +329,7 @@ router.get('/app-version', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في جلب إصدار التطبيق:', error);
+        logger.error('خطأ في جلب إصدار التطبيق:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });

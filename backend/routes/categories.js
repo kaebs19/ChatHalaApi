@@ -2,6 +2,7 @@
 // مسارات إدارة التصنيفات
 
 const express = require('express');
+const logger = require('../utils/logger');
 const router = express.Router();
 const Category = require('../models/Category');
 const { protect, adminOnly } = require('../middleware/auth');
@@ -23,7 +24,7 @@ router.get('/', async (req, res) => {
             count: categories.length
         });
     } catch (error) {
-        console.error('خطأ في جلب التصنيفات:', error);
+        logger.error('خطأ في جلب التصنيفات:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب التصنيفات'
@@ -48,7 +49,7 @@ router.get('/:id', async (req, res) => {
             data: category
         });
     } catch (error) {
-        console.error('خطأ في جلب التصنيف:', error);
+        logger.error('خطأ في جلب التصنيف:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب التصنيف'
@@ -92,7 +93,7 @@ router.post('/', protect, adminOnly, async (req, res) => {
             data: category
         });
     } catch (error) {
-        console.error('خطأ في إنشاء التصنيف:', error);
+        logger.error('خطأ في إنشاء التصنيف:', error);
         res.status(500).json({
             success: false,
             message: error.message || 'خطأ في إنشاء التصنيف'
@@ -141,7 +142,7 @@ router.put('/:id', protect, adminOnly, async (req, res) => {
             data: category
         });
     } catch (error) {
-        console.error('خطأ في تحديث التصنيف:', error);
+        logger.error('خطأ في تحديث التصنيف:', error);
         res.status(500).json({
             success: false,
             message: error.message || 'خطأ في تحديث التصنيف'
@@ -178,7 +179,7 @@ router.delete('/:id', protect, adminOnly, async (req, res) => {
             message: 'تم حذف التصنيف بنجاح'
         });
     } catch (error) {
-        console.error('خطأ في حذف التصنيف:', error);
+        logger.error('خطأ في حذف التصنيف:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في حذف التصنيف'
@@ -211,7 +212,7 @@ router.put('/reorder/bulk', protect, adminOnly, async (req, res) => {
             message: 'تم إعادة ترتيب التصنيفات بنجاح'
         });
     } catch (error) {
-        console.error('خطأ في إعادة الترتيب:', error);
+        logger.error('خطأ في إعادة الترتيب:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في إعادة ترتيب التصنيفات'
@@ -240,7 +241,7 @@ router.put('/:id/toggle', protect, adminOnly, async (req, res) => {
             data: category
         });
     } catch (error) {
-        console.error('خطأ في تبديل الحالة:', error);
+        logger.error('خطأ في تبديل الحالة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في تبديل حالة التصنيف'

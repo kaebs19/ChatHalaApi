@@ -1,6 +1,7 @@
 // HalaChat - Users Violations & Activity Routes (Admin)
 
 const express = require('express');
+const logger = require('../../utils/logger');
 const router = express.Router();
 const User = require('../../models/User');
 const Message = require('../../models/Message');
@@ -40,7 +41,7 @@ router.get('/:id/activity', protect, adminOnly, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في جلب نشاط المستخدم:', error);
+        logger.error('خطأ في جلب نشاط المستخدم:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -83,7 +84,7 @@ router.get('/:id/violations', protect, adminOnly, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ:', error);
+        logger.error('خطأ:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });

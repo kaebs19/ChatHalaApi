@@ -1,5 +1,6 @@
 // Image Optimizer Middleware - تحسين الصور عند الرفع
 const sharp = require('sharp');
+const logger = require('../utils/logger');
 const path = require('path');
 const fs = require('fs').promises;
 
@@ -117,12 +118,12 @@ const optimizeImage = (options = {}) => {
                 file.size = stats.size;
                 file.optimized = true;
 
-                console.log(`📸 تم تحسين الصورة: ${file.originalname} (${metadata.width}x${metadata.height} -> optimized)`);
+                logger.info(`📸 تم تحسين الصورة: ${file.originalname} (${metadata.width}x${metadata.height} -> optimized)`);
             }
 
             next();
         } catch (error) {
-            console.error('❌ خطأ في تحسين الصورة:', error);
+            logger.error('❌ خطأ في تحسين الصورة:', error);
             // في حالة الخطأ، تابع بدون تحسين
             next();
         }
@@ -189,7 +190,7 @@ const optimizeExistingImage = async (imagePath, options = {}) => {
             dimensions: { width: metadata.width, height: metadata.height }
         };
     } catch (error) {
-        console.error('خطأ في تحسين الصورة:', error);
+        logger.error('خطأ في تحسين الصورة:', error);
         return { optimized: false, error: error.message };
     }
 };
@@ -215,7 +216,7 @@ const createThumbnail = async (imagePath, width = 150, height = 150) => {
 
         return thumbnailPath;
     } catch (error) {
-        console.error('خطأ في إنشاء الصورة المصغرة:', error);
+        logger.error('خطأ في إنشاء الصورة المصغرة:', error);
         return null;
     }
 };

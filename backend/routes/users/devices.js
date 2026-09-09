@@ -2,6 +2,7 @@
 // حظر/فك حظر أجهزة المستخدمين
 
 const express = require('express');
+const logger = require('../../utils/logger');
 const router = express.Router();
 const User = require('../../models/User');
 const BannedDevice = require('../../models/BannedDevice');
@@ -61,7 +62,7 @@ router.get('/banned-devices/list', protect, adminOnly, async (req, res) => {
 
         res.json({ success: true, count: devices.length, data: devices });
     } catch (error) {
-        console.error('خطأ في قائمة الأجهزة:', error);
+        logger.error('خطأ في قائمة الأجهزة:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -103,7 +104,7 @@ router.get('/banned-devices/:id/linked-accounts', protect, adminOnly, async (req
             }
         });
     } catch (error) {
-        console.error('خطأ في الحسابات المرتبطة:', error);
+        logger.error('خطأ في الحسابات المرتبطة:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -151,7 +152,7 @@ router.get('/:id/linked-accounts', protect, adminOnly, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في الحسابات المرتبطة:', error);
+        logger.error('خطأ في الحسابات المرتبطة:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -186,7 +187,7 @@ router.get('/by-ip/:ip', protect, adminOnly, async (req, res) => {
 
         res.json({ success: true, count: enriched.length, data: { ip, accounts: enriched } });
     } catch (error) {
-        console.error('خطأ في البحث بـ IP:', error);
+        logger.error('خطأ في البحث بـ IP:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -248,11 +249,7 @@ router.put('/:id/ban-device', protect, adminOnly, async (req, res) => {
 
         // قطع الجلسة الحية للحساب الأصلي
         const disconnectUser = (uid) => {
-            if (global.connectedUsers && global.connectedUsers.has(uid)) {
-                const info = global.connectedUsers.get(uid);
-                const sock = global.io?.sockets?.sockets?.get(info.socketId);
-                if (sock) sock.disconnect(true);
-            }
+            if (global.disconnectUserSockets) global.disconnectUserSockets(uid);
         };
         disconnectUser(user._id.toString());
 
@@ -311,7 +308,7 @@ router.put('/:id/ban-device', protect, adminOnly, async (req, res) => {
             data: { deviceBanned: true, linkedBannedCount }
         });
     } catch (error) {
-        console.error('خطأ في حظر الجهاز:', error);
+        logger.error('خطأ في حظر الجهاز:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -366,11 +363,7 @@ router.put('/banned-devices/:id/ban-active-linked', protect, adminOnly, async (r
                 }
             );
             // قطع الجلسة الحية
-            if (global.connectedUsers && global.connectedUsers.has(u._id.toString())) {
-                const info = global.connectedUsers.get(u._id.toString());
-                const sock = global.io?.sockets?.sockets?.get(info.socketId);
-                if (sock) sock.disconnect(true);
-            }
+            if (global.disconnectUserSockets) global.disconnectUserSockets(u._id);
         }
 
         invalidateUsers();
@@ -389,7 +382,7 @@ router.put('/banned-devices/:id/ban-active-linked', protect, adminOnly, async (r
             accounts: activeLinked.map(u => ({ id: u._id, name: u.name }))
         });
     } catch (error) {
-        console.error('خطأ في حظر الحسابات النشطة:', error);
+        logger.error('خطأ في حظر الحسابات النشطة:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -429,7 +422,7 @@ router.put('/:id/unban-device', protect, adminOnly, async (req, res) => {
 
         res.json({ success: true, message: 'تم فك حظر الجهاز' });
     } catch (error) {
-        console.error('خطأ في فك حظر الجهاز:', error);
+        logger.error('خطأ في فك حظر الجهاز:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -456,7 +449,7 @@ router.get('/banned-ips/list', protect, adminOnly, async (req, res) => {
 
         res.json({ success: true, count: list.length, data: list });
     } catch (error) {
-        console.error('خطأ في قائمة IPs المحظورة:', error);
+        logger.error('خطأ في قائمة IPs المحظورة:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -507,7 +500,7 @@ router.post('/banned-ips', protect, adminOnly, async (req, res) => {
 
         res.json({ success: true, message: 'تم حظر IP', data: banned });
     } catch (error) {
-        console.error('خطأ في حظر IP:', error);
+        logger.error('خطأ في حظر IP:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -529,7 +522,7 @@ router.delete('/banned-ips/:id', protect, adminOnly, async (req, res) => {
 
         res.json({ success: true, message: 'تم فك حظر IP' });
     } catch (error) {
-        console.error('خطأ في فك حظر IP:', error);
+        logger.error('خطأ في فك حظر IP:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -549,7 +542,7 @@ router.get('/banned-ips/:id/accounts', protect, adminOnly, async (req, res) => {
 
         res.json({ success: true, count: accounts.length, data: { ip: banned, accounts } });
     } catch (error) {
-        console.error('خطأ في حسابات IP المحظور:', error);
+        logger.error('خطأ في حسابات IP المحظور:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });

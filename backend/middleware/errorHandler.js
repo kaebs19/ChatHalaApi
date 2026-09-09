@@ -1,6 +1,7 @@
 // Error Handler Middleware
 // معالج أخطاء محسّن ومركزي
 
+const logger = require('../utils/logger');
 class ErrorResponse extends Error {
     constructor(message, statusCode) {
         super(message);
@@ -16,13 +17,23 @@ const errorHandler = (err, req, res, next) => {
     error.message = err.message;
     error.statusCode = err.statusCode || 500;
 
-    // Log للأخطاء
-    if (process.env.NODE_ENV === 'development') {
-        console.error('Error:', {
-            message: err.message,
-            stack: err.stack,
-            statusCode: err.statusCode
-        });
+    // ⚠️ كان التسجيل مقصوراً على بيئة التطوير — أي أن كل خطأ 500 في
+    // الإنتاج يختفي بصمت ولا أثر له في السجلات.
+    // الآن: أخطاء السيرفر (5xx) تُسجَّل دائماً مع سياق الطلب،
+    // وأخطاء العميل (4xx) على مستوى debug فقط لتفادي الضجيج.
+    const status = error.statusCode || 500;
+    const context = {
+        method: req.method,
+        path: req.originalUrl,
+        userId: req.user?._id?.toString() || null,
+        ip: req.ip,
+        statusCode: status
+    };
+
+    if (status >= 500) {
+        logger.captureError(err, context);
+    } else {
+        logger.debug(`خطأ ${status}: ${err.message}`, context);
     }
 
     // أخطاء Mongoose - Cast Error (معرف غير صحيح)

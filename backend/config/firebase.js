@@ -2,6 +2,7 @@
 // تكوين Firebase للإشعارات الفورية (Push Notifications)
 
 const admin = require('firebase-admin');
+const logger = require('../utils/logger');
 const path = require('path');
 
 // تحميل ملف بيانات الاعتماد
@@ -19,13 +20,69 @@ try {
             projectId: serviceAccount.project_id
         });
     }
-    console.log('✅ Firebase Admin SDK تم تهيئته بنجاح');
+    logger.info('✅ Firebase Admin SDK تم تهيئته بنجاح');
 } catch (error) {
-    console.error('❌ خطأ في تهيئة Firebase:', error.message);
+    logger.error('❌ خطأ في تهيئة Firebase:', error.message);
 }
 
 // الحصول على خدمة المراسلة
 const messaging = admin.messaging();
+
+
+// ═══════════════════════════════════════════════════════════════════
+// بناء إعدادات APNs موحّدة
+// ═══════════════════════════════════════════════════════════════════
+// ⚠️ كان هنا 'content-available': 1 بلا 'apns-push-type' — وهو ما يجعل iOS
+// يعامل الإشعار أحياناً كـ silent فيصدر صوتاً بلا banner. الإصلاح طُبِّق سابقاً
+// في services/notificationService.js فقط، بينما هذا هو المسار الأساسي (FCM).
+const APNS_EXPIRATION_HOURS = 24;
+
+// FCM يرفض أي قيمة غير نصية في data — القيم الكائنية كانت تُسقط الإرسال بصمت
+const stringifyData = (data = {}) => Object.fromEntries(
+    Object.entries(data)
+        .filter(([, v]) => v !== undefined && v !== null)
+        .map(([k, v]) => [k, typeof v === 'object' ? JSON.stringify(v) : String(v)])
+);
+
+const buildApnsConfig = (data = {}) => {
+    // تجميع إشعارات نفس المحادثة في iOS
+    const threadId = data.conversationId || data.threadId || 'default';
+
+    const aps = {
+        sound: 'default',
+        badge: data.badge ? parseInt(data.badge) : 1,
+        'mutable-content': 1,
+        'thread-id': String(threadId).substring(0, 64)
+    };
+
+    // subtitle يتطلب alert صريحاً (FCM لا يضيفه من notification)
+    if (data.subtitle && data.title) {
+        aps.alert = { title: String(data.title), subtitle: String(data.subtitle), body: String(data.body || '') };
+    }
+    if (data.category) aps.category = String(data.category);
+
+    return {
+        headers: {
+            'apns-priority': '10',
+            // alert = يعرض banner (وليس silent)
+            'apns-push-type': 'alert',
+            // ⚠️ كان '0' = "سلّم الآن أو أسقط" — أي جهاز مقفل/بلا شبكة يفقد الإشعار
+            // نهائياً. الآن APNs يحتفظ به ويعيد المحاولة لمدة يوم.
+            'apns-expiration': String(Math.floor(Date.now() / 1000) + APNS_EXPIRATION_HOURS * 3600)
+        },
+        payload: { aps }
+    };
+};
+
+// أكواد FCM التي تعني أن التوكن ميّت ويجب حذفه من المستخدم
+// ملاحظة: لا نُدرج 'messaging/invalid-argument' — فهي تُرفع أيضاً عند خطأ في
+// الحمولة، فحذف التوكن عندها يقتل إشعارات مستخدم سليم بسبب خطأ برمجي عندنا.
+const DEAD_TOKEN_CODES = new Set([
+    'messaging/registration-token-not-registered',
+    'messaging/invalid-registration-token'
+]);
+
+const isDeadToken = (error) => !!error && DEAD_TOKEN_CODES.has(error.code);
 
 /**
  * إرسال إشعار لجهاز واحد
@@ -41,22 +98,13 @@ const sendToDevice = async (token, notification, data = {}) => {
                 title: notification.title,
                 body: notification.body
             },
-            data: {
+            data: stringifyData({
                 ...data,
+                title: notification.title,
+                body: notification.body,
                 click_action: 'FLUTTER_NOTIFICATION_CLICK'
-            },
-            apns: {
-                headers: {
-                    'apns-priority': '10'
-                },
-                payload: {
-                    aps: {
-                        badge: data.badge ? parseInt(data.badge) : 1,
-                        sound: 'default',
-                        'content-available': 1
-                    }
-                }
-            },
+            }),
+            apns: buildApnsConfig({ ...data, title: notification.title, body: notification.body }),
             android: {
                 priority: 'high',
                 notification: {
@@ -67,11 +115,12 @@ const sendToDevice = async (token, notification, data = {}) => {
         };
 
         const response = await messaging.send(message);
-        console.log('✅ تم إرسال الإشعار بنجاح:', response);
+        logger.info('✅ تم إرسال الإشعار بنجاح:', response);
         return { success: true, messageId: response };
     } catch (error) {
-        console.error('❌ خطأ في إرسال الإشعار:', error.message);
-        return { success: false, error: error.message };
+        logger.error('❌ خطأ في إرسال الإشعار:', error.message);
+        // التوكن الميّت يُبلَّغ عنه ليحذفه المستدعي من المستخدم
+        return { success: false, error: error.message, deadToken: isDeadToken(error) };
     }
 };
 
@@ -92,22 +141,13 @@ const sendToMultipleDevices = async (tokens, notification, data = {}) => {
                 title: notification.title,
                 body: notification.body
             },
-            data: {
+            data: stringifyData({
                 ...data,
+                title: notification.title,
+                body: notification.body,
                 click_action: 'FLUTTER_NOTIFICATION_CLICK'
-            },
-            apns: {
-                headers: {
-                    'apns-priority': '10'
-                },
-                payload: {
-                    aps: {
-                        badge: data.badge ? parseInt(data.badge) : 1,
-                        sound: 'default',
-                        'content-available': 1
-                    }
-                }
-            },
+            }),
+            apns: buildApnsConfig({ ...data, title: notification.title, body: notification.body }),
             android: {
                 priority: 'high',
                 notification: {
@@ -120,14 +160,16 @@ const sendToMultipleDevices = async (tokens, notification, data = {}) => {
 
         const response = await messaging.sendEachForMulticast(message);
 
-        console.log(`✅ تم إرسال ${response.successCount} إشعار من أصل ${tokens.length}`);
+        logger.info(`✅ تم إرسال ${response.successCount} إشعار من أصل ${tokens.length}`);
 
         // تتبع التوكنات الفاشلة لحذفها لاحقاً
         const failedTokens = [];
+        const deadTokens = [];
         response.responses.forEach((resp, idx) => {
             if (!resp.success) {
                 failedTokens.push(tokens[idx]);
-                console.error(`❌ فشل إرسال للتوكن ${idx}:`, resp.error?.message);
+                if (isDeadToken(resp.error)) deadTokens.push(tokens[idx]);
+                logger.error(`❌ فشل إرسال للتوكن ${idx}:`, resp.error?.message);
             }
         });
 
@@ -135,10 +177,11 @@ const sendToMultipleDevices = async (tokens, notification, data = {}) => {
             success: true,
             successCount: response.successCount,
             failureCount: response.failureCount,
-            failedTokens
+            failedTokens,
+            deadTokens
         };
     } catch (error) {
-        console.error('❌ خطأ في إرسال الإشعارات المتعددة:', error.message);
+        logger.error('❌ خطأ في إرسال الإشعارات المتعددة:', error.message);
         return { success: false, error: error.message };
     }
 };
@@ -178,10 +221,10 @@ const sendToTopic = async (topic, notification, data = {}) => {
         };
 
         const response = await messaging.send(message);
-        console.log(`✅ تم إرسال الإشعار للموضوع ${topic}:`, response);
+        logger.info(`✅ تم إرسال الإشعار للموضوع ${topic}:`, response);
         return { success: true, messageId: response };
     } catch (error) {
-        console.error('❌ خطأ في إرسال الإشعار للموضوع:', error.message);
+        logger.error('❌ خطأ في إرسال الإشعار للموضوع:', error.message);
         return { success: false, error: error.message };
     }
 };
@@ -194,10 +237,10 @@ const sendToTopic = async (topic, notification, data = {}) => {
 const subscribeToTopic = async (token, topic) => {
     try {
         const response = await messaging.subscribeToTopic(token, topic);
-        console.log(`✅ تم الاشتراك في الموضوع ${topic}`);
+        logger.info(`✅ تم الاشتراك في الموضوع ${topic}`);
         return { success: true, response };
     } catch (error) {
-        console.error('❌ خطأ في الاشتراك بالموضوع:', error.message);
+        logger.error('❌ خطأ في الاشتراك بالموضوع:', error.message);
         return { success: false, error: error.message };
     }
 };
@@ -210,10 +253,10 @@ const subscribeToTopic = async (token, topic) => {
 const unsubscribeFromTopic = async (token, topic) => {
     try {
         const response = await messaging.unsubscribeFromTopic(token, topic);
-        console.log(`✅ تم إلغاء الاشتراك من الموضوع ${topic}`);
+        logger.info(`✅ تم إلغاء الاشتراك من الموضوع ${topic}`);
         return { success: true, response };
     } catch (error) {
-        console.error('❌ خطأ في إلغاء الاشتراك من الموضوع:', error.message);
+        logger.error('❌ خطأ في إلغاء الاشتراك من الموضوع:', error.message);
         return { success: false, error: error.message };
     }
 };

@@ -2,12 +2,16 @@
 // المسارات الخاصة بإدارة البلاغات
 
 const express = require('express');
+const logger = require('../utils/logger');
 const router = express.Router();
 const Report = require('../models/Report');
 const User = require('../models/User');
 const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const { protect, adminOnly } = require('../middleware/auth');
+const { getPagination } = require('../utils/pagination');
+// سقف آمن للـ limit القادم من العميل (كان بلا حد: ?limit=100000)
+const safeLimit = (v) => getPagination({ limit: v }).limit;
 
 // Helper: شكر المُبلِّغ بعد اتخاذ إجراء على بلاغه
 async function notifyReporterOfResolution(report, action) {
@@ -57,7 +61,7 @@ async function notifyReporterOfResolution(report, action) {
             );
         } catch (pushErr) { /* لا نوقف على فشل push */ }
     } catch (e) {
-        console.error('خطأ في إشعار المُبلِّغ:', e);
+        logger.error('خطأ في إشعار المُبلِّغ:', e);
     }
 }
 
@@ -94,7 +98,7 @@ router.get('/', protect, adminOnly, async (req, res) => {
             .populate('assignedTo', 'name')
             .populate('resolvedBy', 'name')
             .sort({ createdAt: -1 })
-            .limit(limit * 1)
+            .limit(safeLimit(limit))
             .skip((page - 1) * limit);
 
         const count = await Report.countDocuments(filter);
@@ -110,7 +114,7 @@ router.get('/', protect, adminOnly, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في جلب البلاغات:', error);
+        logger.error('خطأ في جلب البلاغات:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر'
@@ -163,7 +167,7 @@ router.get('/stats', protect, adminOnly, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في جلب إحصائيات البلاغات:', error);
+        logger.error('خطأ في جلب إحصائيات البلاغات:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر'
@@ -197,7 +201,7 @@ router.get('/:id', protect, adminOnly, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في جلب البلاغ:', error);
+        logger.error('خطأ في جلب البلاغ:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر'
@@ -248,7 +252,7 @@ router.put('/:id/status', protect, adminOnly, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في تحديث البلاغ:', error);
+        logger.error('خطأ في تحديث البلاغ:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر'
@@ -421,7 +425,7 @@ router.put('/:id/action', protect, adminOnly, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في تنفيذ الإجراء:', error);
+        logger.error('خطأ في تنفيذ الإجراء:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر'
@@ -456,7 +460,7 @@ router.put('/:id/priority', protect, adminOnly, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في تحديث الأولوية:', error);
+        logger.error('خطأ في تحديث الأولوية:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر'
@@ -487,7 +491,7 @@ router.delete('/bulk', protect, adminOnly, async (req, res) => {
             data: { deletedCount: result.deletedCount }
         });
     } catch (error) {
-        console.error('خطأ في حذف البلاغات:', error);
+        logger.error('خطأ في حذف البلاغات:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -514,7 +518,7 @@ router.delete('/:id', protect, adminOnly, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في حذف البلاغ:', error);
+        logger.error('خطأ في حذف البلاغ:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر'

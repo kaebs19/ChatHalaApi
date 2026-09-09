@@ -2,6 +2,7 @@
 // عرض سجل نشاطات الأدمن (audit log)
 
 const express = require('express');
+const logger = require('../utils/logger');
 const router = express.Router();
 const ActivityLog = require('../models/ActivityLog');
 const { protect, adminOnly } = require('../middleware/auth');
@@ -61,7 +62,7 @@ router.get('/', protect, adminOnly, async (req, res) => {
             data: { logs, total, skip, limit, stats24h }
         });
     } catch (error) {
-        console.error('خطأ في جلب نشاطات الأدمن:', error);
+        logger.error('خطأ في جلب نشاطات الأدمن:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });

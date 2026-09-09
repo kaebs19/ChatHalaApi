@@ -2,8 +2,44 @@
 // للتحقق من صلاحية Token
 
 const jwt = require('jsonwebtoken');
+const logger = require('../utils/logger');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+const { get: cacheGet, set: cacheSet, del: cacheDel } = require('../utils/cache');
+
+// ═══════════════════════════════════════════════════════════════════
+// كاش قصير لبيانات المستخدم في المصادقة
+// ═══════════════════════════════════════════════════════════════════
+// كل طلب كان يجلب مستند المستخدم كاملاً من قاعدة البيانات — وهو أثقل
+// استعلام في النظام لأنه يعمل على كل نقطة نهاية.
+// نخزّن نسخة lean لمدة قصيرة ثم hydrate لكل طلب: النسخة معزولة تماماً
+// (التعديل على req.user لا يمسّ الكاش) و .save() يعمل كالمعتاد.
+//
+// المفتاح يبدأ بـ user_ عمداً حتى تمسحه invalidateUsers() الموجودة
+// أصلاً في مسارات الإشراف، فتُطبَّق قرارات الحظر فوراً.
+const AUTH_CACHE_TTL = parseInt(process.env.AUTH_CACHE_TTL_SECONDS || '20', 10);
+const authCacheKey = (id) => `user_auth_${id}`;
+
+// إبطال كاش مستخدم واحد (يُستدعى من hook الحفظ في نموذج User)
+const invalidateAuthCache = (userId) => cacheDel(authCacheKey(userId));
+
+const loadUser = async (userId) => {
+    if (AUTH_CACHE_TTL <= 0) {
+        return User.findById(userId).select('-password');
+    }
+
+    const key = authCacheKey(userId);
+    let raw = cacheGet(key);
+
+    if (!raw) {
+        raw = await User.findById(userId).select('-password').lean();
+        if (!raw) return null;
+        cacheSet(key, raw, AUTH_CACHE_TTL);
+    }
+
+    // مستند mongoose كامل الصلاحيات بلا استعلام
+    return User.hydrate(raw);
+};
 
 const protect = async (req, res, next) => {
     let token;
@@ -17,13 +53,23 @@ const protect = async (req, res, next) => {
             // التحقق من Token
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-            // الحصول على بيانات المستخدم (بدون كلمة المرور)
-            req.user = await User.findById(decoded.id).select('-password');
+            // الحصول على بيانات المستخدم (بدون كلمة المرور) — عبر كاش قصير
+            req.user = await loadUser(decoded.id);
 
             if (!req.user) {
                 return res.status(401).json({
                     success: false,
                     message: 'المستخدم غير موجود'
+                });
+            }
+
+            // إبطال التوكنات القديمة (بعد تغيير كلمة المرور أو الحظر)
+            // التوكنات الصادرة قبل إضافة الميزة لا تحمل tv → تبقى صالحة للتوافق
+            if (typeof decoded.tv === 'number' && decoded.tv !== (req.user.tokenVersion || 0)) {
+                return res.status(401).json({
+                    success: false,
+                    message: 'انتهت الجلسة. سجّل الدخول مرة أخرى',
+                    code: 'TOKEN_REVOKED'
                 });
             }
 
@@ -96,7 +142,7 @@ const protect = async (req, res, next) => {
 
             next();
         } catch (error) {
-            console.error('خطأ في التحقق من Token:', error.message);
+            logger.error('خطأ في التحقق من Token:', error.message);
             return res.status(401).json({
                 success: false,
                 message: 'غير مصرح، Token غير صالح'
@@ -122,4 +168,4 @@ const adminOnly = (req, res, next) => {
     }
 };
 
-module.exports = { protect, adminOnly };
+module.exports = { protect, adminOnly, invalidateAuthCache };

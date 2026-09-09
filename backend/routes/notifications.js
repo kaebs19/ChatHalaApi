@@ -1,10 +1,14 @@
 // Notifications Routes - مسارات الإشعارات
 const express = require('express');
+const logger = require('../utils/logger');
 const router = express.Router();
 const Notification = require('../models/Notification');
 const User = require('../models/User');
 const { protect, adminOnly } = require('../middleware/auth');
 const notificationService = require('../services/notificationService');
+const { getPagination } = require('../utils/pagination');
+// سقف آمن للـ limit القادم من العميل (كان بلا حد: ?limit=100000)
+const safeLimit = (v) => getPagination({ limit: v }).limit;
 
 // @route   GET /api/notifications
 // @desc    الحصول على جميع الإشعارات
@@ -21,7 +25,7 @@ router.get('/', protect, adminOnly, async (req, res) => {
             .populate('sender', 'name email')
             .populate('targetUsers', 'name email')
             .sort({ createdAt: -1 })
-            .limit(limit * 1)
+            .limit(safeLimit(limit))
             .skip((page - 1) * limit);
 
         const count = await Notification.countDocuments(query);
@@ -36,7 +40,7 @@ router.get('/', protect, adminOnly, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في جلب الإشعارات:', error);
+        logger.error('خطأ في جلب الإشعارات:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب الإشعارات',
@@ -76,7 +80,7 @@ router.get('/stats', protect, adminOnly, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في جلب إحصائيات الإشعارات:', error);
+        logger.error('خطأ في جلب إحصائيات الإشعارات:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في جلب الإحصائيات',
@@ -176,7 +180,9 @@ router.post('/send', protect, adminOnly, async (req, res) => {
                 });
             } else {
                 targetUserIds.forEach(userId => {
-                    global.io.to(`user-${userId}`).emit('notification', {
+                    // ⚠️ كان `user-${userId}` بينما السوكت ينضم لـ `user:${userId}`
+                    // فكانت كل الإشعارات الموجّهة من اللوحة تذهب لغرفة غير موجودة
+                    global.io.to(`user:${userId}`).emit('notification', {
                         id: notification._id,
                         title,
                         body,
@@ -196,7 +202,7 @@ router.post('/send', protect, adminOnly, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في إرسال الإشعار:', error);
+        logger.error('خطأ في إرسال الإشعار:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في إرسال الإشعار',

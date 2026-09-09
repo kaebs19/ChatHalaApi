@@ -2,6 +2,7 @@
 // يدعم APNs (Apple Push Notifications) و Firebase Cloud Messaging
 
 const fs = require('fs');
+const logger = require('../utils/logger');
 const path = require('path');
 const apn = require('@parse/node-apn');
 const apnsConfig = require('../config/apns-config');
@@ -11,7 +12,7 @@ let firebaseAdmin = null;
 try {
     firebaseAdmin = require('firebase-admin');
 } catch (e) {
-    console.log('⚠️ Firebase Admin غير مثبت - npm install firebase-admin');
+    logger.info('⚠️ Firebase Admin غير مثبت - npm install firebase-admin');
 }
 
 // iOS notification categories (يطابق iOS registerNotificationCategories)
@@ -49,7 +50,7 @@ class NotificationService {
     // تهيئة Firebase Admin
     async initializeFirebase() {
         if (!firebaseAdmin) {
-            console.log('⚠️ Firebase Admin غير متوفر');
+            logger.info('⚠️ Firebase Admin غير متوفر');
             return false;
         }
 
@@ -57,8 +58,8 @@ class NotificationService {
             const serviceAccountPath = path.join(__dirname, '../config/serviceAccount.json');
 
             if (!fs.existsSync(serviceAccountPath)) {
-                console.warn('⚠️ ملف serviceAccount.json غير موجود');
-                console.warn('   المسار المتوقع:', serviceAccountPath);
+                logger.warn('⚠️ ملف serviceAccount.json غير موجود');
+                logger.warn('   المسار المتوقع:', serviceAccountPath);
                 return false;
             }
 
@@ -70,10 +71,10 @@ class NotificationService {
             }
 
             this.firebaseInitialized = true;
-            console.log('✅ تم تهيئة Firebase Admin بنجاح');
+            logger.info('✅ تم تهيئة Firebase Admin بنجاح');
             return true;
         } catch (error) {
-            console.error('❌ خطأ في تهيئة Firebase:', error.message);
+            logger.error('❌ خطأ في تهيئة Firebase:', error.message);
             return false;
         }
     }
@@ -134,11 +135,11 @@ class NotificationService {
             };
 
             const response = await firebaseAdmin.messaging().send(message);
-            console.log('📱 Firebase Push sent:', response);
+            logger.info('📱 Firebase Push sent:', response);
             return { success: true, messageId: response };
 
         } catch (error) {
-            console.error('❌ Firebase Push failed:', error.message);
+            logger.error('❌ Firebase Push failed:', error.message);
 
             // لو التوكن منتهي، احذفه
             if (error.code === 'messaging/registration-token-not-registered' ||
@@ -148,7 +149,7 @@ class NotificationService {
                     { deviceToken },
                     { deviceToken: null }
                 );
-                console.log('🗑️ تم حذف Device Token المنتهي');
+                logger.info('🗑️ تم حذف Device Token المنتهي');
             }
 
             return { success: false, error: error.message };
@@ -162,8 +163,8 @@ class NotificationService {
             const keyPath = apnsConfig.apns.keyPath;
 
             if (!fs.existsSync(keyPath)) {
-                console.warn('⚠️ ملف مفتاح APNs غير موجود:', keyPath);
-                console.warn('⚠️ الإشعارات ستعمل في الوضع التجريبي');
+                logger.warn('⚠️ ملف مفتاح APNs غير موجود:', keyPath);
+                logger.warn('⚠️ الإشعارات ستعمل في الوضع التجريبي');
                 return false;
             }
 
@@ -179,15 +180,15 @@ class NotificationService {
 
             this.initialized = true;
 
-            console.log('✅ تم تهيئة APNs بنجاح');
-            console.log(`   Key ID: ${apnsConfig.apns.keyId}`);
-            console.log(`   Team ID: ${apnsConfig.apns.teamId}`);
-            console.log(`   Bundle ID: ${apnsConfig.apns.bundleId}`);
-            console.log(`   البيئة: ${apnsConfig.apns.production ? 'Production' : 'Development'}`);
+            logger.info('✅ تم تهيئة APNs بنجاح');
+            logger.info(`   Key ID: ${apnsConfig.apns.keyId}`);
+            logger.info(`   Team ID: ${apnsConfig.apns.teamId}`);
+            logger.info(`   Bundle ID: ${apnsConfig.apns.bundleId}`);
+            logger.info(`   البيئة: ${apnsConfig.apns.production ? 'Production' : 'Development'}`);
 
             return true;
         } catch (error) {
-            console.error('❌ خطأ في تهيئة APNs:', error.message);
+            logger.error('❌ خطأ في تهيئة APNs:', error.message);
             return false;
         }
     }
@@ -196,7 +197,7 @@ class NotificationService {
     async sendAPNsNotification(deviceToken, notification) {
         try {
             if (!this.initialized || !this.apnsProvider) {
-                console.log('⚠️ APNs غير مُهيأ، استخدام وضع التجربة');
+                logger.info('⚠️ APNs غير مُهيأ، استخدام وضع التجربة');
                 return this.mockSendNotification(deviceToken, notification);
             }
 
@@ -219,11 +220,11 @@ class NotificationService {
 
             if (result.failed.length > 0) {
                 const failedDevice = result.failed[0];
-                console.error('❌ فشل إرسال الإشعار:', failedDevice.response?.reason || 'Unknown error');
+                logger.error('❌ فشل إرسال الإشعار:', failedDevice.response?.reason || 'Unknown error');
 
                 // إذا كان الخطأ BadDeviceToken، يمكن حذف التوكن من قاعدة البيانات
                 if (failedDevice.response?.reason === 'BadDeviceToken') {
-                    console.log('⚠️ Device Token غير صالح، يجب حذفه');
+                    logger.info('⚠️ Device Token غير صالح، يجب حذفه');
                 }
 
                 return {
@@ -232,22 +233,22 @@ class NotificationService {
                 };
             }
 
-            console.log('✅ تم إرسال الإشعار بنجاح');
+            logger.info('✅ تم إرسال الإشعار بنجاح');
             return { success: true, sent: result.sent.length };
 
         } catch (error) {
-            console.error('❌ خطأ في إرسال إشعار APNs:', error.message);
+            logger.error('❌ خطأ في إرسال إشعار APNs:', error.message);
             return { success: false, error: error.message };
         }
     }
 
     // إرسال تجريبي (للاختبار)
     async mockSendNotification(deviceToken, notification) {
-        console.log('📱 إرسال إشعار تجريبي...');
-        console.log(`   العنوان: ${notification.title}`);
-        console.log(`   المحتوى: ${notification.body}`);
-        console.log(`   Device Token: ${deviceToken ? deviceToken.substring(0, 20) + '...' : 'N/A'}`);
-        console.log(`   النوع: ${notification.type}`);
+        logger.info('📱 إرسال إشعار تجريبي...');
+        logger.info(`   العنوان: ${notification.title}`);
+        logger.info(`   المحتوى: ${notification.body}`);
+        logger.info(`   Device Token: ${deviceToken ? deviceToken.substring(0, 20) + '...' : 'N/A'}`);
+        logger.info(`   النوع: ${notification.type}`);
 
         // محاكاة تأخير الشبكة
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -267,7 +268,7 @@ class NotificationService {
             const deviceToken = user.deviceToken || null;
 
             if (!deviceToken) {
-                console.log(`⚠️ المستخدم ${user.name} ليس لديه device token`);
+                logger.info(`⚠️ المستخدم ${user.name} ليس لديه device token`);
                 return { success: false, reason: 'no_device_token' };
             }
 
@@ -276,7 +277,7 @@ class NotificationService {
 
             return result;
         } catch (error) {
-            console.error(`❌ فشل إرسال إشعار للمستخدم ${user.name}:`, error.message);
+            logger.error(`❌ فشل إرسال إشعار للمستخدم ${user.name}:`, error.message);
             return { success: false, error: error.message };
         }
     }
@@ -321,16 +322,16 @@ class NotificationService {
                 deviceToken: { $exists: true, $ne: null, $ne: '' }
             }).select('_id name email deviceToken');
 
-            console.log(`📢 إرسال إشعار لـ ${users.length} مستخدم...`);
+            logger.info(`📢 إرسال إشعار لـ ${users.length} مستخدم...`);
 
             const results = await this.sendToMultipleUsers(users, notification);
 
-            console.log(`✅ تم إرسال ${results.sent} إشعار بنجاح`);
-            console.log(`❌ فشل إرسال ${results.failed} إشعار`);
+            logger.info(`✅ تم إرسال ${results.sent} إشعار بنجاح`);
+            logger.info(`❌ فشل إرسال ${results.failed} إشعار`);
 
             return results;
         } catch (error) {
-            console.error('❌ خطأ في إرسال الإشعارات:', error.message);
+            logger.error('❌ خطأ في إرسال الإشعارات:', error.message);
             throw error;
         }
     }
@@ -338,7 +339,7 @@ class NotificationService {
     // إنشاء إشعار من نموذج
     createNotificationPayload(data) {
         return {
-            title: data.title || 'HalaChat',
+            title: data.title || 'دردشات',
             body: data.body || '',
             type: data.type || 'general',
             badge: data.badge || 1,
@@ -352,7 +353,7 @@ class NotificationService {
     shutdown() {
         if (this.apnsProvider) {
             this.apnsProvider.shutdown();
-            console.log('🔌 تم إغلاق اتصال APNs');
+            logger.info('🔌 تم إغلاق اتصال APNs');
         }
     }
 
@@ -386,6 +387,6 @@ const notificationService = new NotificationService();
 (async () => {
     await notificationService.initializeFirebase();
     await notificationService.initializeAPNs();
-})().catch(console.error);
+})().catch(err => logger.error('فشل تهيئة خدمة الإشعارات:', err));
 
 module.exports = notificationService;

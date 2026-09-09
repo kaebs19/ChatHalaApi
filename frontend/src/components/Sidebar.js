@@ -81,8 +81,8 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick, badges = {} 
     return (
         <div className="sidebar">
             <div className="sidebar-header" onClick={() => onPageChange('dashboard')} style={{ cursor: 'pointer' }}>
-                <img src="/favicon.svg" alt="شات هلا" className="sidebar-logo" />
-                <h2>شات هلا</h2>
+                <img src="/favicon.svg" alt="دردشات" className="sidebar-logo" />
+                <h2>دردشات</h2>
                 <p>لوحة التحكم</p>
             </div>
 

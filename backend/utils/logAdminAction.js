@@ -3,6 +3,7 @@
 
 const ActivityLog = require('../models/ActivityLog');
 
+const logger = require('../utils/logger');
 /**
  * تسجيل عملية إدارية مع metadata + requestInfo تلقائياً.
  * fail-silent — لا يوقف العملية الأصلية إذا فشل التسجيل.
@@ -45,7 +46,7 @@ const logAdminAction = async (req, {
             status
         });
     } catch (e) {
-        console.error('فشل تسجيل نشاط الأدمن:', e.message);
+        logger.error('فشل تسجيل نشاط الأدمن:', e.message);
     }
 };
 

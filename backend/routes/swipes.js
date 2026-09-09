@@ -2,6 +2,7 @@
 // نظام الإعجاب والمطابقة
 
 const express = require('express');
+const logger = require('../utils/logger');
 const router = express.Router();
 const Swipe = require('../models/Swipe');
 const User = require('../models/User');
@@ -131,7 +132,7 @@ router.post('/', protect, blockIfSoftSuspended, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في swipe:', error);
+        logger.error('خطأ في swipe:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -190,7 +191,7 @@ router.get('/likes-me', protect, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في likes-me:', error);
+        logger.error('خطأ في likes-me:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -232,7 +233,7 @@ router.get('/my-likes', protect, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في my-likes:', error);
+        logger.error('خطأ في my-likes:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });

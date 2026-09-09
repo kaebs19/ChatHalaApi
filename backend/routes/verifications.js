@@ -2,10 +2,37 @@
 // مسارات إدارة طلبات التوثيق (للأدمن)
 
 const express = require('express');
+const logger = require('../utils/logger');
 const router = express.Router();
+const path = require('path');
+const fs = require('fs');
 const User = require('../models/User');
 const { protect, adminOnly } = require('../middleware/auth');
 const pushNotificationService = require('../services/pushNotificationService');
+
+// 🔒 تقديم صور التوثيق (سيلفي) للأدمن فقط
+// كانت تُقدَّم عبر nginx على /uploads/verifications/ بلا أي مصادقة —
+// أي شخص يملك الرابط يرى صورة هوية مستخدم.
+// @route   GET /api/verifications/file/:filename
+// @access  Admin
+const VERIFICATIONS_DIR = path.join(__dirname, '..', 'uploads', 'verifications');
+
+router.get('/file/:filename', protect, adminOnly, (req, res) => {
+    const { filename } = req.params;
+
+    // منع path traversal: اسم ملف بسيط فقط
+    if (!/^[A-Za-z0-9._-]+$/.test(filename) || filename.includes('..')) {
+        return res.status(400).json({ success: false, message: 'اسم ملف غير صالح' });
+    }
+
+    const filePath = path.join(VERIFICATIONS_DIR, filename);
+    if (!filePath.startsWith(VERIFICATIONS_DIR) || !fs.existsSync(filePath)) {
+        return res.status(404).json({ success: false, message: 'الملف غير موجود' });
+    }
+
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.sendFile(filePath);
+});
 
 // @route   GET /api/verifications
 // @desc    قائمة طلبات التوثيق
@@ -50,7 +77,7 @@ router.get('/', protect, adminOnly, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في جلب طلبات التوثيق:', error);
+        logger.error('خطأ في جلب طلبات التوثيق:', error);
         res.status(500).json({ success: false, message: 'فشل في جلب طلبات التوثيق' });
     }
 });
@@ -100,7 +127,7 @@ router.put('/:userId', protect, adminOnly, async (req, res) => {
                 type: 'verification'
             }, { type: 'verification', status: action });
         } catch (notifError) {
-            console.error('خطأ في إرسال إشعار التوثيق:', notifError);
+            logger.error('خطأ في إرسال إشعار التوثيق:', notifError);
         }
 
         res.json({
@@ -112,7 +139,7 @@ router.put('/:userId', protect, adminOnly, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في مراجعة طلب التوثيق:', error);
+        logger.error('خطأ في مراجعة طلب التوثيق:', error);
         res.status(500).json({ success: false, message: 'فشل في مراجعة طلب التوثيق' });
     }
 });

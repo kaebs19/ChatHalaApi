@@ -3,6 +3,7 @@
 
 const mongoose = require('mongoose');
 
+const logger = require('../utils/logger');
 const activityLogSchema = new mongoose.Schema({
     // المستخدم الذي قام بالنشاط
     user: {
@@ -242,7 +243,7 @@ activityLogSchema.statics.logActivity = async function({
         });
         return log;
     } catch (error) {
-        console.error('خطأ في تسجيل النشاط:', error);
+        logger.error('خطأ في تسجيل النشاط:', error);
         return null;
     }
 };

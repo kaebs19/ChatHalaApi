@@ -14,6 +14,11 @@ const { checkCanStartChat, checkCanReply, blockIfSoftSuspended } = require('../.
 const { conversationRequestValidation, mongoIdParam } = require('../../validators/mobile.validator');
 const pushNotificationService = require('../../services/pushNotificationService');
 const { getFullUrl } = require('./helpers');
+const { checkBlockBetween, blockResponse } = require('../../utils/blockCheck');
+const { moderateContent, recordContentViolations } = require('../../utils/moderateContent');
+const { getPagination } = require('../../utils/pagination');
+// سقف آمن للـ limit القادم من العميل (كان بلا حد: ?limit=100000)
+const safeLimit = (v) => getPagination({ limit: v }).limit;
 
 // ==========================================
 // نظام المحادثات (طلب/قبول/رفض)
@@ -59,6 +64,20 @@ router.post('/conversations/request', protect, blockIfSoftSuspended, checkCanSta
             });
         }
 
+        // 🔒 فحص الحظر المتبادل قبل أي شيء
+        const blockCheck = await checkBlockBetween(req.user, [targetUserId]);
+        if (blockCheck.blocked) {
+            return blockResponse(res, blockCheck.direction);
+        }
+
+        // منع طلب محادثة مع النفس
+        if (targetUserId.toString() === req.user._id.toString()) {
+            return res.status(400).json({
+                success: false,
+                message: 'لا يمكنك بدء محادثة مع نفسك'
+            });
+        }
+
         // التحقق من وجود محادثة سابقة بين الطرفين
         let existingConversation = await Conversation.findOne({
             type: 'private',
@@ -81,7 +100,21 @@ router.post('/conversations/request', protect, blockIfSoftSuspended, checkCanSta
                     await existingConversation.save();
                 }
             } else {
-                // مرفوضة/محذوفة → أعد تفعيلها كطلب جديد
+                // 🔒 مرفوضة: لا يُسمح لمن رُفض طلبه بإعادة الإرسال (كان يُعاد التفعيل بلا حد)
+                // يُسمح فقط إذا كان الطالب الآن هو من رفض سابقاً — أي أنه غيّر رأيه وبدأ هو
+                // أنا مُنشئ الطلب السابق ورُفض ← ممنوع إعادة الإرسال
+                const myRequestWasRejected = existingConversation.status === 'rejected' &&
+                    existingConversation.creator?.toString() === req.user._id.toString();
+
+                if (myRequestWasRejected) {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'تم رفض طلبك السابق مع هذا المستخدم',
+                        code: 'REQUEST_ALREADY_REJECTED'
+                    });
+                }
+
+                // من رفض سابقاً يبدأ محادثة جديدة → يُعاد التفعيل وهو المنشئ
                 existingConversation.status = 'pending';
                 existingConversation.isActive = true;
                 existingConversation.creator = req.user._id;
@@ -138,15 +171,41 @@ router.post('/conversations/request', protect, blockIfSoftSuspended, checkCanSta
         });
 
         // إرسال الرسالة الأولى إذا وجدت
+        // 🛡️ تمر على نفس فلترة الرسائل العادية (كانت تُحفظ خاماً بلا أي فحص)
         if (initialMessage) {
-            await Message.create({
+            const moderation = await moderateContent(initialMessage, 'text');
+
+            const firstMessage = await Message.create({
                 chatType: 'conversation',
                 conversation: conversation._id,
                 sender: req.user._id,
                 content: initialMessage,
                 type: 'text',
-                status: 'sent'
+                status: 'sent',
+                ...moderation.messageFields
             });
+
+            // ⚠️ كانت الرسالة تُنشأ بلا ربط بالمحادثة، فلا يراها المستقبِل في
+            // بطاقة الطلب أبداً — رغم أنها أهم ما يقرر به القبول أو الرفض
+            conversation.lastMessage = firstMessage._id;
+            await conversation.save();
+
+            if (!moderation.bannedWordResult.isClean || moderation.externalCheck.hasExternalAccount) {
+                const violator = await User.findById(req.user._id);
+                if (violator) {
+                    await recordContentViolations({
+                        user: violator,
+                        bannedWordResult: moderation.bannedWordResult,
+                        externalCheck: moderation.externalCheck,
+                        evidence: {
+                            messageId: firstMessage._id,
+                            messageContent: initialMessage,
+                            messageType: 'text',
+                            conversationId: conversation._id
+                        }
+                    });
+                }
+            }
         }
 
         // ١. Socket.IO (لو متصل)
@@ -480,25 +539,40 @@ router.get('/conversations/pending', protect, async (req, res) => {
 
         const total = await Conversation.countDocuments(query);
 
-        const conversations = await Conversation.find(query)
+        // ⚠️ الترتيب يجب أن يتم في قاعدة البيانات قبل التقطيع.
+        // سابقاً: كانت الصفحة تُجلب مرتبة بالتاريخ ثم يُرفع الـ Super Like
+        // إلى أعلى *داخل الصفحة* فقط — أي Super Like في الصفحة الثالثة يبقى
+        // في الصفحة الثالثة، ويتكرر/يختفي عنصر عند تصفّح الصفحات.
+        const superLikeSenders = await SuperLike.find({ receiver: req.user._id })
+            .select('sender')
+            .lean();
+        const superLikeIds = superLikeSenders.map(sl => sl.sender);
+        const superLikeSet = new Set(superLikeIds.map(id => id.toString()));
+
+        // ترتيب + ترقيم في قاعدة البيانات، ثم جلب المستندات بنفس الترتيب
+        const ordered = await Conversation.aggregate([
+            { $match: query },
+            { $addFields: { isSuperLike: { $in: ['$creator', superLikeIds] } } },
+            { $sort: { isSuperLike: -1, createdAt: -1 } },
+            { $skip: skip },
+            { $limit: limit },
+            { $project: { _id: 1 } }
+        ]);
+
+        const orderedIds = ordered.map(o => o._id);
+        const orderIndex = new Map(orderedIds.map((id, i) => [id.toString(), i]));
+
+        const conversations = (await Conversation.find({ _id: { $in: orderedIds } })
             .populate('creator', 'name email profileImage verification.isVerified isPremium isActive deviceBanned suspendedUntil')
             .populate('participants', 'name email profileImage lastLogin isOnline isPremium verification.isVerified isActive deviceBanned suspendedUntil')
-            .sort({ createdAt: -1 })
-            .skip(skip)
-            .limit(limit);
-
-        // إضافة حقل isSuperLike لكل طلب
-        const creatorIds = conversations.map(c => c.creator._id);
-        const superLikes = await SuperLike.find({
-            receiver: req.user._id,
-            sender: { $in: creatorIds }
-        });
-        const superLikeSet = new Set(superLikes.map(sl => sl.sender.toString()));
+            // الرسالة الافتتاحية — تُعرض في بطاقة الطلب
+            .populate('lastMessage', 'content filteredContent type sender createdAt'))
+            .sort((a, b) => orderIndex.get(a._id.toString()) - orderIndex.get(b._id.toString()));
 
         const { isUserSuspended: isSusp } = require('../../utils/userStatus');
         const enrichedConversations = conversations.map(conv => {
             const convObj = conv.toObject();
-            convObj.isSuperLike = superLikeSet.has(conv.creator._id.toString());
+            convObj.isSuperLike = !!conv.creator && superLikeSet.has(conv.creator._id.toString());
 
             // قناع الـ creator إذا موقوف (مع حماية try/catch)
             try {
@@ -541,13 +615,6 @@ router.get('/conversations/pending', protect, async (req, res) => {
             return convObj;
         });
 
-        // ترتيب: Super Like أولاً ثم بالتاريخ
-        enrichedConversations.sort((a, b) => {
-            if (a.isSuperLike && !b.isSuperLike) return -1;
-            if (!a.isSuperLike && b.isSuperLike) return 1;
-            return new Date(b.createdAt) - new Date(a.createdAt);
-        });
-
         res.status(200).json({
             success: true,
             data: {
@@ -585,7 +652,7 @@ router.get('/conversations', protect, async (req, res) => {
             .populate('participants', 'name email profileImage lastLogin isOnline isPremium verification.isVerified isActive deviceBanned suspendedUntil')
             .populate('lastMessage')
             .sort({ updatedAt: -1 })
-            .limit(limit * 1)
+            .limit(safeLimit(limit))
             .skip((page - 1) * limit)
             .lean(); // استخدام lean للتعديل على النتائج
 

@@ -9,6 +9,7 @@ const {
     unsubscribeFromTopic
 } = require('../config/firebase');
 const User = require('../models/User');
+const logger = require('../utils/logger');
 const Notification = require('../models/Notification');
 const notificationService = require('./notificationService');
 
@@ -19,9 +20,10 @@ const notificationService = require('./notificationService');
  * @param {object} data - بيانات إضافية للإشعار
  * @param {boolean} saveToDb - حفظ في قاعدة البيانات
  */
-const sendNotificationToUser = async (userId, notification, data = {}, saveToDb = true) => {
+const sendNotificationToUser = async (userId, notification, data = {}, saveToDb = true, preloadedUser = null) => {
     try {
-        const user = await User.findById(userId);
+        // preloadedUser يمنع استعلاماً مكرراً عندما يكون المستدعي قد جلب المستخدم أصلاً
+        const user = preloadedUser || await User.findById(userId).select('name fcmToken deviceToken').lean();
 
         if (!user) {
             return { success: false, error: 'المستخدم غير موجود' };
@@ -53,8 +55,14 @@ const sendNotificationToUser = async (userId, notification, data = {}, saveToDb 
                 if (fcmResult.success) {
                     return { success: true, saved: true, pushed: true, via: 'fcm' };
                 }
+                // التوكن ميّت (التطبيق مُزال / التوكن مُبطَل) → احذفه بدل إعادة
+                // محاولة الإرسال إليه في كل رسالة إلى الأبد
+                if (fcmResult.deadToken) {
+                    await User.updateOne({ _id: userId }, { $unset: { fcmToken: 1 } });
+                    logger.info(`🧹 حُذف FCM token ميّت للمستخدم ${user.name}`);
+                }
             } catch (e) {
-                console.log(`⚠️ FCM فشل للمستخدم ${user.name}:`, e.message);
+                logger.info(`⚠️ FCM فشل للمستخدم ${user.name}:`, e.message);
             }
         }
 
@@ -74,16 +82,16 @@ const sendNotificationToUser = async (userId, notification, data = {}, saveToDb 
                     return { success: true, saved: true, pushed: true, via: 'apns' };
                 }
             } catch (e) {
-                console.log(`⚠️ APNs فشل للمستخدم ${user.name}:`, e.message);
+                logger.info(`⚠️ APNs فشل للمستخدم ${user.name}:`, e.message);
             }
         }
 
         if (!user.fcmToken && !user.deviceToken) {
-            console.log(`⚠️ المستخدم ${user.name} ليس لديه FCM ولا APNs Token`);
+            logger.info(`⚠️ المستخدم ${user.name} ليس لديه FCM ولا APNs Token`);
         }
         return { success: true, saved: true, pushed: false };
     } catch (error) {
-        console.error('❌ خطأ في إرسال الإشعار للمستخدم:', error.message);
+        logger.error('❌ خطأ في إرسال الإشعار للمستخدم:', error.message);
         return { success: false, error: error.message };
     }
 };
@@ -121,20 +129,21 @@ const sendNotificationToUsers = async (userIds, notification, data = {}, saveToD
             .map(user => user.fcmToken);
 
         if (tokens.length === 0) {
-            console.log('⚠️ لا يوجد مستخدمين بـ FCM Token');
+            logger.info('⚠️ لا يوجد مستخدمين بـ FCM Token');
             return { success: true, saved: true, pushed: false, usersWithoutToken: users.length };
         }
 
         // إرسال Push Notifications
         const result = await sendToMultipleDevices(tokens, notification, data);
 
-        // تحديث التوكنات الفاشلة (حذفها من المستخدمين)
-        if (result.failedTokens && result.failedTokens.length > 0) {
+        // حذف التوكنات الميتة فقط
+        // ⚠️ كان يحذف كل توكن فشل — أي خطأ شبكة عابر كان يقتل إشعارات مستخدم سليم نهائياً
+        if (result.deadTokens && result.deadTokens.length > 0) {
             await User.updateMany(
-                { fcmToken: { $in: result.failedTokens } },
+                { fcmToken: { $in: result.deadTokens } },
                 { $unset: { fcmToken: 1 } }
             );
-            console.log(`🗑️ تم حذف ${result.failedTokens.length} توكنات غير صالحة`);
+            logger.info(`🗑️ تم حذف ${result.deadTokens.length} توكنات ميتة`);
         }
 
         return {
@@ -145,7 +154,7 @@ const sendNotificationToUsers = async (userIds, notification, data = {}, saveToD
             failureCount: result.failureCount
         };
     } catch (error) {
-        console.error('❌ خطأ في إرسال الإشعارات للمستخدمين:', error.message);
+        logger.error('❌ خطأ في إرسال الإشعارات للمستخدمين:', error.message);
         return { success: false, error: error.message };
     }
 };
@@ -193,8 +202,8 @@ const broadcastNotification = async (notification, data = {}, filter = {}) => {
             if (result.success) {
                 totalSuccess += result.successCount;
                 totalFailure += result.failureCount;
-                if (result.failedTokens) {
-                    allFailedTokens.push(...result.failedTokens);
+                if (result.deadTokens) {
+                    allFailedTokens.push(...result.deadTokens);
                 }
             }
         }
@@ -207,7 +216,7 @@ const broadcastNotification = async (notification, data = {}, filter = {}) => {
             );
         }
 
-        console.log(`📢 Broadcast: نجاح ${totalSuccess}، فشل ${totalFailure} من ${tokens.length}`);
+        logger.info(`📢 Broadcast: نجاح ${totalSuccess}، فشل ${totalFailure} من ${tokens.length}`);
 
         return {
             success: true,
@@ -216,7 +225,7 @@ const broadcastNotification = async (notification, data = {}, filter = {}) => {
             failureCount: totalFailure
         };
     } catch (error) {
-        console.error('❌ خطأ في البث العام:', error.message);
+        logger.error('❌ خطأ في البث العام:', error.message);
         return { success: false, error: error.message };
     }
 };
@@ -228,10 +237,17 @@ const broadcastNotification = async (notification, data = {}, filter = {}) => {
  * @param {string} messagePreview - معاينة الرسالة
  * @param {string} conversationId - معرف المحادثة
  */
+// كل رسالة خاصة كانت تُنشئ مستند Notification — كتابة إضافية على كل رسالة
+// ونمو غير محدود للـ collection. اضبط PERSIST_MESSAGE_NOTIFICATIONS=false لتعطيلها
+// (سِجل الرسائل موجود أصلاً في شاشة المحادثات).
+const PERSIST_MESSAGE_NOTIFICATIONS = process.env.PERSIST_MESSAGE_NOTIFICATIONS !== 'false';
+
 const sendNewMessageNotification = async (recipientId, senderName, messagePreview, conversationId) => {
     try {
-        // التحقق من كتم المحادثة
-        const user = await User.findById(recipientId);
+        // التحقق من كتم المحادثة — الحقول المطلوبة فقط بدل المستند كاملاً
+        const user = await User.findById(recipientId)
+            .select('name fcmToken deviceToken mutedConversations')
+            .lean();
         if (!user) {
             return { success: false, error: 'المستخدم غير موجود' };
         }
@@ -245,14 +261,14 @@ const sendNewMessageNotification = async (recipientId, senderName, messagePrevie
             // تحقق إذا انتهت مدة الكتم
             if (mutedConv.mutedUntil && new Date() < new Date(mutedConv.mutedUntil)) {
                 // لا تزال مكتومة - لا ترسل إشعار
-                console.log(`🔇 المحادثة ${conversationId} مكتومة للمستخدم ${user.name}`);
+                logger.info(`🔇 المحادثة ${conversationId} مكتومة للمستخدم ${user.name}`);
                 return { success: true, skipped: true, reason: 'muted' };
             } else {
                 // انتهت مدة الكتم - أزل من القائمة
                 await User.findByIdAndUpdate(recipientId, {
                     $pull: { mutedConversations: { conversationId: conversationId } }
                 });
-                console.log(`🔔 انتهت مدة كتم المحادثة ${conversationId} للمستخدم ${user.name}`);
+                logger.info(`🔔 انتهت مدة كتم المحادثة ${conversationId} للمستخدم ${user.name}`);
             }
         }
 
@@ -272,9 +288,10 @@ const sendNewMessageNotification = async (recipientId, senderName, messagePrevie
             subtitle: 'رسالة جديدة'   // يظهر تحت الاسم مباشرة في iOS
         };
 
-        return sendNotificationToUser(recipientId, notification, data, true);
+        // نمرّر المستخدم المحمّل هنا بدل جلبه مرة أخرى (كان استعلامين لكل رسالة)
+        return sendNotificationToUser(recipientId, notification, data, PERSIST_MESSAGE_NOTIFICATIONS, user);
     } catch (error) {
-        console.error('❌ خطأ في إرسال إشعار الرسالة:', error.message);
+        logger.error('❌ خطأ في إرسال إشعار الرسالة:', error.message);
         return { success: false, error: error.message };
     }
 };
@@ -360,7 +377,7 @@ const manageTopicSubscription = async (userId, topic, subscribe = true) => {
             return await unsubscribeFromTopic(user.fcmToken, topic);
         }
     } catch (error) {
-        console.error('❌ خطأ في إدارة اشتراك الموضوع:', error.message);
+        logger.error('❌ خطأ في إدارة اشتراك الموضوع:', error.message);
         return { success: false, error: error.message };
     }
 };

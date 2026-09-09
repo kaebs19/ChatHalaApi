@@ -3,6 +3,7 @@
 
 const ActivityLog = require('../models/ActivityLog');
 
+const logger = require('../utils/logger');
 /**
  * Middleware لتسجيل النشاطات بناءً على المسار والطريقة
  */
@@ -43,7 +44,7 @@ const activityLogger = (action, description, options = {}) => {
                     severity,
                     status: 'success'
                 }).catch(err => {
-                    console.error('خطأ في تسجيل النشاط:', err);
+                    logger.error('خطأ في تسجيل النشاط:', err);
                 });
             }
 

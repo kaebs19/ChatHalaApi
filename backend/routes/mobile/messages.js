@@ -13,6 +13,11 @@ const { checkCanReply, blockIfSoftSuspended } = require('../../middleware/checkR
 const pushNotificationService = require('../../services/pushNotificationService');
 const { uploadMessageImage, getFullUrl } = require('./helpers');
 const { userStatusFields, maskInPlace, isUserSuspended } = require('../../utils/userStatus');
+const { checkBlockBetween, blockResponse } = require('../../utils/blockCheck');
+const { moderateContent, recordContentViolations } = require('../../utils/moderateContent');
+const { getPagination } = require('../../utils/pagination');
+// سقف آمن للـ limit القادم من العميل (كان بلا حد: ?limit=100000)
+const safeLimit = (v) => getPagination({ limit: v }).limit;
 
 // ==========================================
 // نظام الرسائل
@@ -73,6 +78,14 @@ router.post('/messages/send', protect, blockIfSoftSuspended, checkCanReply, asyn
         const otherParticipants = conversation.participants.filter(
             p => p._id.toString() !== req.user._id.toString()
         );
+
+        // 🔒 فحص الحظر المتبادل — الحظر كان يُخفي المستخدم من الاكتشاف فقط
+        // بينما المراسلة تبقى ممكنة في الاتجاهين
+        const blockCheck = await checkBlockBetween(req.user, otherParticipants.map(p => p._id));
+        if (blockCheck.blocked) {
+            return blockResponse(res, blockCheck.direction);
+        }
+
         const allSuspended = otherParticipants.length > 0 &&
             otherParticipants.every(p => isUserSuspended(p));
         if (allSuspended) {
@@ -140,7 +153,7 @@ router.post('/messages/send', protect, blockIfSoftSuspended, checkCanReply, asyn
                     }
                 });
                 if (global.io) {
-                    global.io.emit('banned-word-alert', {
+                    global.io.to('admins').emit('banned-word-alert', {
                         messageId: message._id,
                         conversationId,
                         senderId: req.user._id,
@@ -162,7 +175,7 @@ router.post('/messages/send', protect, blockIfSoftSuspended, checkCanReply, asyn
                     });
                 }
             } catch (e) {
-                console.error('recordViolation failed for banned word:', e.message);
+                logger.error('recordViolation failed for banned word:', e.message);
             }
         }
 
@@ -200,7 +213,7 @@ router.post('/messages/send', protect, blockIfSoftSuspended, checkCanReply, asyn
                     });
                 }
             } catch (e) {
-                console.error('recordViolation failed for external_account:', e.message);
+                logger.error('recordViolation failed for external_account:', e.message);
             }
         }
 
@@ -341,7 +354,7 @@ router.post('/conversations/:conversationId/messages/image', protect, blockIfSof
 
         if (!conversation) {
             // حذف الصورة المرفوعة
-            fs.unlink(req.file.path, (err) => { if (err) console.error('File cleanup error:', err); });
+            fs.unlink(req.file.path, (err) => { if (err) logger.error('File cleanup error:', err); });
             return res.status(404).json({
                 success: false,
                 message: 'المحادثة غير موجودة'
@@ -354,12 +367,28 @@ router.post('/conversations/:conversationId/messages/image', protect, blockIfSof
         );
 
         if (!isParticipant) {
-            fs.unlink(req.file.path, (err) => { if (err) console.error('File cleanup error:', err); });
+            fs.unlink(req.file.path, (err) => { if (err) logger.error('File cleanup error:', err); });
             return res.status(403).json({
                 success: false,
                 message: 'ليس لديك صلاحية لهذه المحادثة'
             });
         }
+
+        // 🔒 فحص الحظر المتبادل
+        const imgBlockCheck = await checkBlockBetween(
+            req.user,
+            conversation.participants
+                .filter(p => p._id.toString() !== senderId.toString())
+                .map(p => p._id)
+        );
+        if (imgBlockCheck.blocked) {
+            fs.unlink(req.file.path, (err) => { if (err) logger.error('File cleanup error:', err); });
+            return blockResponse(res, imgBlockCheck.direction);
+        }
+
+        // 🛡️ فحص التعليق (caption) — كان يتجاوز الفلترة كلياً
+        const caption = req.body.caption || '';
+        const captionModeration = await moderateContent(caption, 'text');
 
         // رابط الصورة
         const baseUrl = process.env.BASE_URL || 'https://halachat.khalafiati.io';
@@ -372,9 +401,30 @@ router.post('/conversations/:conversationId/messages/image', protect, blockIfSof
             sender: senderId,
             type: 'image',
             mediaUrl: mediaUrl,
-            content: req.body.caption || '',
-            status: 'sent'
+            content: caption,
+            status: 'sent',
+            ...captionModeration.messageFields
         });
+
+        // تسجيل مخالفة التعليق إن وُجدت (لا يمنع إرسال الصورة)
+        if (!captionModeration.bannedWordResult.isClean || captionModeration.externalCheck.hasExternalAccount) {
+            const UserModel = require('../../models/User');
+            const violator = await UserModel.findById(senderId);
+            if (violator) {
+                await recordContentViolations({
+                    user: violator,
+                    bannedWordResult: captionModeration.bannedWordResult,
+                    externalCheck: captionModeration.externalCheck,
+                    evidence: {
+                        messageId: message._id,
+                        messageContent: caption,
+                        messageMedia: mediaUrl,
+                        messageType: 'image',
+                        conversationId
+                    }
+                });
+            }
+        }
 
         // تحديث آخر رسالة في المحادثة
         conversation.lastMessage = message._id;
@@ -389,6 +439,8 @@ router.post('/conversations/:conversationId/messages/image', protect, blockIfSof
         maskInPlace(imgMsgObj);
         if (imgMsgObj.sender && !imgMsgObj.sender.isSuspended) imgMsgObj.sender.profileImage = getFullUrl(imgMsgObj.sender.profileImage);
         if (imgMsgObj.mediaUrl) imgMsgObj.mediaUrl = getFullUrl(imgMsgObj.mediaUrl);
+        // عرض التعليق المفلتر بدل الأصلي
+        if (imgMsgObj.filteredContent) imgMsgObj.content = imgMsgObj.filteredContent;
 
         // إرسال عبر Socket.IO — مرة واحدة فقط لكل مشارك
         if (global.io) {
@@ -441,7 +493,7 @@ router.post('/conversations/:conversationId/messages/image', protect, blockIfSof
         logger.error('خطأ في إرسال الصورة:', error);
         // حذف الصورة إذا حدث خطأ
         if (req.file && fs.existsSync(req.file.path)) {
-            fs.unlink(req.file.path, (err) => { if (err) console.error('File cleanup error:', err); });
+            fs.unlink(req.file.path, (err) => { if (err) logger.error('File cleanup error:', err); });
         }
         res.status(500).json({
             success: false,
@@ -541,7 +593,7 @@ router.post('/conversations/:conversationId/messages', protect, blockIfSoftSuspe
                     }
                 });
                 if (global.io) {
-                    global.io.emit('banned-word-alert', {
+                    global.io.to('admins').emit('banned-word-alert', {
                         messageId: message._id,
                         conversationId,
                         senderId: req.user._id,
@@ -563,7 +615,7 @@ router.post('/conversations/:conversationId/messages', protect, blockIfSoftSuspe
                     });
                 }
             } catch (e) {
-                console.error('recordViolation failed for banned word:', e.message);
+                logger.error('recordViolation failed for banned word:', e.message);
             }
         }
 
@@ -601,7 +653,7 @@ router.post('/conversations/:conversationId/messages', protect, blockIfSoftSuspe
                     });
                 }
             } catch (e) {
-                console.error('recordViolation failed for external_account:', e.message);
+                logger.error('recordViolation failed for external_account:', e.message);
             }
         }
 
@@ -798,7 +850,7 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
             })
             .populate('reactions.user', 'name')
             .sort({ createdAt: -1 })
-            .limit(limit * 1)
+            .limit(safeLimit(limit))
             .skip((page - 1) * limit);
 
         const total = await Message.countDocuments({
@@ -891,7 +943,7 @@ router.post('/messages/:messageId/react', protect, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('خطأ في الريأكشن:', error);
+        logger.error('خطأ في الريأكشن:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });

@@ -2,6 +2,7 @@
 // مطابقات المستخدم (مستمدة من Swipes المتبادلة)
 
 const express = require('express');
+const logger = require('../utils/logger');
 const router = express.Router();
 const Swipe = require('../models/Swipe');
 const Conversation = require('../models/Conversation');
@@ -60,7 +61,7 @@ router.get('/', protect, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في المطابقات:', error);
+        logger.error('خطأ في المطابقات:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -96,7 +97,7 @@ router.delete('/:id', protect, async (req, res) => {
 
         res.json({ success: true, message: 'تم إلغاء المطابقة' });
     } catch (error) {
-        console.error('خطأ في إلغاء المطابقة:', error);
+        logger.error('خطأ في إلغاء المطابقة:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });

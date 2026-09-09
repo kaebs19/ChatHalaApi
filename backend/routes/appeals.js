@@ -2,6 +2,7 @@
 // طلبات الاستئناف: تقديم من المستخدم + مراجعة من الأدمن
 
 const express = require('express');
+const logger = require('../utils/logger');
 const router = express.Router();
 const Appeal = require('../models/Appeal');
 const User = require('../models/User');
@@ -85,7 +86,7 @@ const submitHandler = async (req, res) => {
         // Socket event للأدمن (badge + notification)
         try {
             if (global.io) {
-                global.io.emit('appeal-submitted', {
+                global.io.to('admins').emit('appeal-submitted', {
                     appealId: String(appeal._id),
                     userId: String(req.user._id),
                     userName: req.user.name,
@@ -102,7 +103,7 @@ const submitHandler = async (req, res) => {
             data: { appealId: appeal._id }
         });
     } catch (error) {
-        console.error('خطأ في تقديم الاستئناف:', error);
+        logger.error('خطأ في تقديم الاستئناف:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 };
@@ -176,7 +177,7 @@ router.get('/my-violations', protectEvenSuspended, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في سجل المخالفات:', error);
+        logger.error('خطأ في سجل المخالفات:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -216,7 +217,7 @@ router.get('/', protect, adminOnly, async (req, res) => {
             data: appeals
         });
     } catch (error) {
-        console.error('خطأ في جلب الاستئنافات:', error);
+        logger.error('خطأ في جلب الاستئنافات:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -325,9 +326,9 @@ router.put('/:id/approve', protect, adminOnly, async (req, res) => {
 
         res.json({ success: true, message: 'تم قبول الطلب وفك الحظر', data: { appeal } });
     } catch (error) {
-        console.error('خطأ في قبول الاستئناف:', error);
-        console.error('Stack:', error.stack);
-        console.error('Appeal ID:', req.params.id);
+        logger.error('خطأ في قبول الاستئناف:', error);
+        logger.error('Stack:', error.stack);
+        logger.error('Appeal ID:', req.params.id);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -386,7 +387,7 @@ router.put('/:id/reject', protect, adminOnly, async (req, res) => {
 
         res.json({ success: true, message: 'تم رفض الطلب' });
     } catch (error) {
-        console.error('خطأ في رفض الاستئناف:', error);
+        logger.error('خطأ في رفض الاستئناف:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -465,7 +466,7 @@ router.post('/:id/message', protectEvenSuspended, async (req, res) => {
             } else {
                 // إشعار للأدمن عبر socket (كل الأدمن)
                 if (global.io) {
-                    global.io.emit('appeal-message', {
+                    global.io.to('admins').emit('appeal-message', {
                         appealId: appeal._id,
                         userId: appeal.user,
                         senderName: req.user.name,
@@ -473,11 +474,11 @@ router.post('/:id/message', protectEvenSuspended, async (req, res) => {
                     });
                 }
             }
-        } catch (e) { console.error('notify error', e.message); }
+        } catch (e) { logger.error('notify error', e.message); }
 
         res.json({ success: true, message: 'تم الإرسال', data: { entry } });
     } catch (error) {
-        console.error('خطأ في إرسال الرسالة:', error);
+        logger.error('خطأ في إرسال الرسالة:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -553,7 +554,7 @@ router.get('/:id/details', protect, adminOnly, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في التفاصيل:', error);
+        logger.error('خطأ في التفاصيل:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -567,7 +568,7 @@ router.delete('/:id', protect, adminOnly, async (req, res) => {
         if (!appeal) return res.status(404).json({ success: false, message: 'الطلب غير موجود' });
         res.json({ success: true, message: 'تم حذف الطلب' });
     } catch (error) {
-        console.error('خطأ في حذف الاستئناف:', error);
+        logger.error('خطأ في حذف الاستئناف:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });

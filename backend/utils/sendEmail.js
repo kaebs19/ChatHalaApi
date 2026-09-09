@@ -3,13 +3,14 @@
 
 const nodemailer = require('nodemailer');
 
+const logger = require('../utils/logger');
 // التحقق من إعدادات البريد
 const checkEmailConfig = () => {
     const requiredVars = ['EMAIL_USER', 'EMAIL_PASSWORD'];
     const missing = requiredVars.filter(v => !process.env[v]);
 
     if (missing.length > 0) {
-        console.warn('⚠️ متغيرات البريد الإلكتروني المفقودة:', missing.join(', '));
+        logger.warn('⚠️ متغيرات البريد الإلكتروني المفقودة:', missing.join(', '));
         return false;
     }
     return true;
@@ -36,10 +37,10 @@ const sendEmail = async (options) => {
     try {
         // التحقق من الإعدادات
         if (!checkEmailConfig()) {
-            console.log('📧 وضع التجربة: البريد لن يُرسل فعلياً');
-            console.log(`   المستقبل: ${options.email}`);
-            console.log(`   الموضوع: ${options.subject}`);
-            console.log(`   المحتوى: ${options.message?.substring(0, 100)}...`);
+            logger.info('📧 وضع التجربة: البريد لن يُرسل فعلياً');
+            logger.info(`   المستقبل: ${options.email}`);
+            logger.info(`   الموضوع: ${options.subject}`);
+            logger.info(`   المحتوى: ${options.message?.substring(0, 100)}...`);
 
             // في بيئة التطوير، أعد نتيجة ناجحة مزيفة
             if (process.env.NODE_ENV === 'development') {
@@ -59,9 +60,9 @@ const sendEmail = async (options) => {
         // التحقق من الاتصال
         try {
             await transporter.verify();
-            console.log('✅ تم الاتصال بخادم البريد بنجاح');
+            logger.info('✅ تم الاتصال بخادم البريد بنجاح');
         } catch (verifyError) {
-            console.error('❌ فشل الاتصال بخادم البريد:', verifyError.message);
+            logger.error('❌ فشل الاتصال بخادم البريد:', verifyError.message);
 
             // رسائل مساعدة للمشاكل الشائعة
             if (verifyError.message.includes('Invalid login')) {
@@ -76,7 +77,7 @@ const sendEmail = async (options) => {
 
         // إعدادات الرسالة
         const mailOptions = {
-            from: `${process.env.EMAIL_FROM_NAME || 'HalaChat'} <${process.env.EMAIL_USER}>`,
+            from: `${process.env.EMAIL_FROM_NAME || 'Dardashat'} <${process.env.EMAIL_USER}>`,
             to: options.email,
             subject: options.subject,
             text: options.message,
@@ -86,14 +87,14 @@ const sendEmail = async (options) => {
         // إرسال البريد
         const info = await transporter.sendMail(mailOptions);
 
-        console.log('✅ تم إرسال البريد بنجاح:', info.messageId);
+        logger.info('✅ تم إرسال البريد بنجاح:', info.messageId);
         return {
             success: true,
             messageId: info.messageId
         };
 
     } catch (error) {
-        console.error('❌ خطأ في إرسال البريد:', error.message);
+        logger.error('❌ خطأ في إرسال البريد:', error.message);
 
         // تحسين رسالة الخطأ
         let errorMessage = 'فشل إرسال البريد الإلكتروني';

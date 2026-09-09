@@ -13,7 +13,9 @@
     "cleanup:dry": "node cleanupOldMessages.js --dry-run",
     "cleanup:rooms": "node cleanupOldMessages.js --rooms-only",
     "cleanup:private": "node cleanupOldMessages.js --private-only",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test tests/unit.test.js",
+    "test:integration": "node --test tests/integration.test.js",
+    "test:all": "node --test tests/unit.test.js tests/integration.test.js"
   },
   "keywords": [],
   "author": "",

@@ -2,6 +2,7 @@
 // العمليات الأساسية: قائمة، عرض، تعديل، حذف
 
 const express = require('express');
+const logger = require('../../utils/logger');
 const router = express.Router();
 const User = require('../../models/User');
 const { protect, adminOnly } = require('../../middleware/auth');
@@ -83,7 +84,7 @@ router.get('/', protect, adminOnly, async (req, res) => {
             data: { users, total, currentPage: pageNum, totalPages: Math.ceil(total / limitNum) }
         });
     } catch (error) {
-        console.error('خطأ في جلب المستخدمين:', error);
+        logger.error('خطأ في جلب المستخدمين:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -118,7 +119,7 @@ router.put('/:id/premium', protect, adminOnly, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في تعديل الاشتراك:', error);
+        logger.error('خطأ في تعديل الاشتراك:', error);
         res.status(500).json({ success: false, message: 'فشل في تعديل الاشتراك' });
     }
 });
@@ -130,7 +131,7 @@ router.get('/:id', protect, adminOnly, async (req, res) => {
         if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
         res.status(200).json({ success: true, data: { user } });
     } catch (error) {
-        console.error('خطأ في جلب المستخدم:', error);
+        logger.error('خطأ في جلب المستخدم:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -145,7 +146,7 @@ router.delete('/:id', protect, adminOnly, async (req, res) => {
         invalidateUsers();
         res.status(200).json({ success: true, message: 'تم حذف المستخدم بنجاح' });
     } catch (error) {
-        console.error('خطأ في حذف المستخدم:', error);
+        logger.error('خطأ في حذف المستخدم:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -185,7 +186,7 @@ router.put('/:id', protect, adminOnly, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في تحديث المستخدم:', error);
+        logger.error('خطأ في تحديث المستخدم:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });

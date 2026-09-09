@@ -53,9 +53,9 @@ const restrictionResponse = (res, user, type) => {
  */
 const checkCanStartChat = async (req, res, next) => {
     try {
-        if (!req.user?._id) return next();
-        const user = await User.findById(req.user._id).select('restrictions');
-        if (!user) return next();
+        // req.user محمّل أصلاً في protect ويحوي restrictions — لا داعي لاستعلام ثانٍ
+        const user = req.user;
+        if (!user?._id) return next();
         await autoExpireRestriction(user);
         if (user.restrictions?.cannotStartChat) {
             return restrictionResponse(res, user, 'start_chat');
@@ -69,9 +69,9 @@ const checkCanStartChat = async (req, res, next) => {
  */
 const checkCanReply = async (req, res, next) => {
     try {
-        if (!req.user?._id) return next();
-        const user = await User.findById(req.user._id).select('restrictions');
-        if (!user) return next();
+        // نفس السبب: كان استعلاماً إضافياً على كل رسالة تُرسَل
+        const user = req.user;
+        if (!user?._id) return next();
         await autoExpireRestriction(user);
         if (user.restrictions?.cannotReply) {
             return restrictionResponse(res, user, 'reply');

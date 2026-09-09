@@ -2,6 +2,7 @@
 // المسارات الخاصة بالإحصائيات
 
 const express = require('express');
+const logger = require('../utils/logger');
 const router = express.Router();
 const User = require('../models/User');
 const Message = require('../models/Message');
@@ -18,7 +19,7 @@ router.get('/dashboard', protect, adminOnly, async (req, res) => {
         // التحقق من الـ Cache أولاً
         const cachedData = get(CACHE_KEYS.DASHBOARD_STATS);
         if (cachedData) {
-            console.log('📦 Dashboard Stats من الـ Cache');
+            logger.info('📦 Dashboard Stats من الـ Cache');
             return res.status(200).json(cachedData);
         }
 
@@ -116,12 +117,12 @@ router.get('/dashboard', protect, adminOnly, async (req, res) => {
 
         // تخزين في الـ Cache
         set(CACHE_KEYS.DASHBOARD_STATS, responseData, CACHE_TTL.DASHBOARD_STATS);
-        console.log('💾 Dashboard Stats تم تخزينها في الـ Cache');
+        logger.info('💾 Dashboard Stats تم تخزينها في الـ Cache');
 
         res.status(200).json(responseData);
 
     } catch (error) {
-        console.error('خطأ في جلب الإحصائيات:', error);
+        logger.error('خطأ في جلب الإحصائيات:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر'
@@ -214,7 +215,7 @@ router.get('/super-likes', protect, adminOnly, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في جلب Super Likes:', error);
+        logger.error('خطأ في جلب Super Likes:', error);
         res.status(500).json({ success: false, message: 'فشل في جلب Super Likes' });
     }
 });
@@ -267,7 +268,7 @@ router.get('/flagged-messages', protect, adminOnly, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في جلب الرسائل المُبلّغة:', error);
+        logger.error('خطأ في جلب الرسائل المُبلّغة:', error);
         res.status(500).json({ success: false, message: 'فشل في جلب الرسائل المُبلّغة' });
     }
 });

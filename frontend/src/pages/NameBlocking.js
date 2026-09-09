@@ -65,7 +65,7 @@ const PRESET_CATEGORIES = [
         words: [
             'ادمن', 'مدير', 'مشرف', 'دعم فني', 'خدمة العملاء', 'رسمي', 'موظف',
             'admin', 'moderator', 'support', 'official', 'staff', 'manager',
-            'halachat', 'halachat', 'هلا شات', 'شات هلا'
+            'halachat', 'dardashat', 'هلا شات', 'شات هلا', 'دردشات', 'شات دردشات'
         ]
     }
 ];

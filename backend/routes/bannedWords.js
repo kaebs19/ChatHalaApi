@@ -2,6 +2,7 @@
 // إدارة الكلمات المحظورة
 
 const express = require('express');
+const logger = require('../utils/logger');
 const router = express.Router();
 const BannedWord = require('../models/BannedWord');
 const { protect, adminOnly } = require('../middleware/auth');
@@ -37,7 +38,7 @@ router.get('/', protect, adminOnly, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في جلب الكلمات المحظورة:', error);
+        logger.error('خطأ في جلب الكلمات المحظورة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -89,7 +90,7 @@ router.get('/stats', protect, adminOnly, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('خطأ في جلب الإحصائيات:', error);
+        logger.error('خطأ في جلب الإحصائيات:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -136,7 +137,7 @@ router.post('/', protect, adminOnly, async (req, res) => {
             data: bannedWord
         });
     } catch (error) {
-        console.error('خطأ في إضافة الكلمة:', error);
+        logger.error('خطأ في إضافة الكلمة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -197,7 +198,7 @@ router.post('/bulk', protect, adminOnly, async (req, res) => {
             data: results
         });
     } catch (error) {
-        console.error('خطأ في إضافة الكلمات:', error);
+        logger.error('خطأ في إضافة الكلمات:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -227,7 +228,7 @@ router.post('/check', protect, adminOnly, async (req, res) => {
             data: result
         });
     } catch (error) {
-        console.error('خطأ في التحقق:', error);
+        logger.error('خطأ في التحقق:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -258,7 +259,7 @@ router.put('/:id/toggle', protect, adminOnly, async (req, res) => {
             data: bannedWord
         });
     } catch (error) {
-        console.error('خطأ في تحديث الكلمة:', error);
+        logger.error('خطأ في تحديث الكلمة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -297,7 +298,7 @@ router.put('/:id', protect, adminOnly, async (req, res) => {
             data: bannedWord
         });
     } catch (error) {
-        console.error('خطأ في تحديث الكلمة:', error);
+        logger.error('خطأ في تحديث الكلمة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -326,7 +327,7 @@ router.delete('/:id', protect, adminOnly, async (req, res) => {
             message: 'تم حذف الكلمة بنجاح'
         });
     } catch (error) {
-        console.error('خطأ في حذف الكلمة:', error);
+        logger.error('خطأ في حذف الكلمة:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',

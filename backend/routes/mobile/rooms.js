@@ -3,6 +3,7 @@
 
 const express = require('express');
 const router = express.Router();
+const fs = require('fs');
 const logger = require('../../utils/logger');
 const User = require('../../models/User');
 const Message = require('../../models/Message');
@@ -17,6 +18,23 @@ const { get: cacheGet, set: cacheSet, CACHE_TTL } = require('../../utils/cache')
 // Helper: تنظيف المدخلات من أحرف Regex الخاصة لمنع NoSQL Injection
 function escapeRegex(str) {
     return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Helper: هل يحق للمستخدم الكتابة في الغرفة؟ الغرف الخاصة للأعضاء فقط.
+// (كان الإرسال يفحص وجود الغرفة ونشاطها فقط، بينما الانضمام يفحص العضوية)
+function canWriteInRoom(room, user) {
+    if (user.role === 'admin') return true;
+    if (room.accessType !== 'private') return true;
+    return (room.members || []).some(m => m.toString() === user._id.toString());
+}
+
+// حد أقصى لطول رسالة الغرفة (مطابق لمسار الـ socket)
+const MAX_ROOM_MESSAGE_LENGTH = 5000;
+
+// حذف الملف المرفوع عند رفض الطلب (يمنع تراكم صور لرسائل لم تُنشأ)
+function cleanupUpload(file) {
+    if (!file?.path) return;
+    fs.unlink(file.path, (err) => { if (err) logger.error('فشل حذف ملف مرفوع:', err.message); });
 }
 
 // ==========================================
@@ -127,6 +145,14 @@ router.get('/rooms/:id/messages', protect, async (req, res) => {
             return res.status(404).json({
                 success: false,
                 message: 'الغرفة غير موجودة'
+            });
+        }
+
+        // 🔒 الغرف الخاصة: القراءة للأعضاء فقط
+        if (!canWriteInRoom(room, req.user)) {
+            return res.status(403).json({
+                success: false,
+                message: 'ليس لديك صلاحية لعرض رسائل هذه الغرفة'
             });
         }
 
@@ -360,6 +386,13 @@ router.post('/rooms/:id/messages', protect, blockIfSoftSuspended, async (req, re
             });
         }
 
+        if (content.trim().length > MAX_ROOM_MESSAGE_LENGTH) {
+            return res.status(400).json({
+                success: false,
+                message: `الرسالة يجب ألا تتجاوز ${MAX_ROOM_MESSAGE_LENGTH} حرف`
+            });
+        }
+
         // التحقق من وجود الغرفة
         const room = await ChatRoom.findById(roomId);
         if (!room) {
@@ -380,6 +413,14 @@ router.post('/rooms/:id/messages', protect, blockIfSoftSuspended, async (req, re
             return res.status(403).json({
                 success: false,
                 message: 'الغرفة مقفلة'
+            });
+        }
+
+        // 🔒 الغرف الخاصة: الكتابة للأعضاء فقط
+        if (!canWriteInRoom(room, req.user)) {
+            return res.status(403).json({
+                success: false,
+                message: 'ليس لديك صلاحية للكتابة في هذه الغرفة'
             });
         }
 
@@ -416,7 +457,7 @@ router.post('/rooms/:id/messages', protect, blockIfSoftSuspended, async (req, re
 
         // تنبيه الأدمن إذا وُجدت كلمات محظورة
         if (!bannedWordResult.isClean && global.io) {
-            global.io.emit('banned-word-alert', {
+            global.io.to('admins').emit('banned-word-alert', {
                 messageId: message._id,
                 roomId,
                 senderId,
@@ -463,7 +504,7 @@ router.post('/rooms/:id/messages', protect, blockIfSoftSuspended, async (req, re
                     });
                 }
             } catch (e) {
-                console.error('recordViolation failed for external_account (room):', e.message);
+                logger.error('recordViolation failed for external_account (room):', e.message);
             }
         }
 
@@ -545,6 +586,15 @@ router.post('/rooms/:id/messages/image', protect, blockIfSoftSuspended, uploadMe
             return res.status(404).json({
                 success: false,
                 message: 'الغرفة غير موجودة'
+            });
+        }
+
+        // 🔒 الغرف الخاصة: الكتابة للأعضاء فقط
+        if (!canWriteInRoom(room, req.user)) {
+            cleanupUpload(req.file);
+            return res.status(403).json({
+                success: false,
+                message: 'ليس لديك صلاحية للكتابة في هذه الغرفة'
             });
         }
 

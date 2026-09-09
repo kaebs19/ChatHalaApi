@@ -253,6 +253,11 @@ const userSchema = new mongoose.Schema({
     },
 
     // عداد المخالفات
+    // إصدار التوكن — رفعه يُبطل كل التوكنات الصادرة قبله فوراً
+    // (تغيير كلمة المرور، الحظر، حذف الحساب). التوكنات القديمة التي لا
+    // تحمل الحقل تبقى صالحة للتوافق حتى انتهاء صلاحيتها الطبيعية.
+    tokenVersion: { type: Number, default: 0 },
+
     violationCount: { type: Number, default: 0 },
     dailyViolationCount: { type: Number, default: 0 },
     dailyViolationDate: { type: String, default: null },
@@ -399,6 +404,33 @@ userSchema.index({ isPremium: 1, premiumExpiresAt: 1 });
 userSchema.index({ fcmToken: 1 }, { sparse: true });
 userSchema.index({ deviceToken: 1 }, { sparse: true });
 userSchema.index({ createdAt: -1 });
+
+// ═══════════════════════════════════════════════════════════════════
+// إبطال كاش المصادقة عند أي تعديل على المستخدم
+// ═══════════════════════════════════════════════════════════════════
+// middleware/auth.js يخزّن نسخة قصيرة من المستخدم. بدون هذه الـ hooks
+// قد يبقى مستخدم محظور قادراً على الوصول حتى انتهاء مدة الكاش.
+// require داخلي متأخر لتفادي دورة الاستيراد (auth.js يستورد هذا النموذج).
+const dropAuthCache = (userId) => {
+    if (!userId) return;
+    try {
+        const key = `user_auth_${userId}`;
+        // مع Redis يُبثّ الإبطال لكل العمليات، وبدونه يُبطَل محلياً فقط
+        if (global.publishCacheInvalidation) {
+            global.publishCacheInvalidation(key);
+        } else {
+            require('../utils/cache').del(key);
+        }
+    } catch (e) { /* لا يوقف الحفظ */ }
+};
+
+userSchema.post('save', function (doc) { dropAuthCache(doc?._id); });
+userSchema.post('findOneAndUpdate', function (doc) { dropAuthCache(doc?._id); });
+userSchema.post('findOneAndDelete', function (doc) { dropAuthCache(doc?._id); });
+userSchema.post('updateOne', function () {
+    const id = this.getQuery?.()?._id;
+    if (id) dropAuthCache(id);
+});
 
 const User = mongoose.model('User', userSchema);
 
