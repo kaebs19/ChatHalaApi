@@ -458,6 +458,50 @@ router.put('/conversations/:id/reject', protect, mongoIdParam, validate, async (
     }
 });
 
+// @route   PUT /api/mobile/conversations/requests/reject-older
+// @desc    رفض جماعي لطلبات المحادثة الأقدم من عدد أيام
+// @access  Private
+router.put('/conversations/requests/reject-older', protect, async (req, res) => {
+    try {
+        const allowedDays = [3, 5, 7];
+        const days = parseInt(req.body?.days, 10);
+
+        if (!allowedDays.includes(days)) {
+            return res.status(400).json({
+                success: false,
+                message: 'المدة غير مدعومة'
+            });
+        }
+
+        const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+        // الطلبات الواردة إليّ فقط — لا تُمسّ الطلبات التي أرسلتُها أنا
+        const query = {
+            participants: req.user._id,
+            creator: { $ne: req.user._id },
+            status: 'pending',
+            createdAt: { $lt: cutoff }
+        };
+
+        const result = await Conversation.updateMany(query, {
+            $set: { status: 'rejected', isActive: false }
+        });
+
+        res.status(200).json({
+            success: true,
+            message: `تم رفض ${result.modifiedCount} طلباً`,
+            data: { rejectedCount: result.modifiedCount, days }
+        });
+
+    } catch (error) {
+        logger.error('خطأ في الرفض الجماعي للطلبات:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر'
+        });
+    }
+});
+
 // @route   PUT /api/mobile/conversations/:id/close
 // @desc    إنهاء محادثة مقبولة — تُقفل للطرفين ولا يمكن الإرسال فيها بعدها
 // @access  Private
