@@ -273,7 +273,9 @@ router.post('/conversations/request', protect, blockIfSoftSuspended, checkCanSta
 router.put('/conversations/:id/accept', protect, blockIfSoftSuspended, checkCanReply, mongoIdParam, validate, async (req, res) => {
     try {
         const conversation = await Conversation.findById(req.params.id)
-            .populate('participants', 'name email deviceToken fcmToken');
+            .populate('participants', 'name email deviceToken fcmToken')
+            // lastMessage معرّف خام بدون هذا — والعميل يتوقّع كائناً
+            .populate('lastMessage', 'content filteredContent type sender createdAt');
 
         if (!conversation) {
             return res.status(404).json({
@@ -365,7 +367,9 @@ router.put('/conversations/:id/accept', protect, blockIfSoftSuspended, checkCanR
 router.put('/conversations/:id/reject', protect, mongoIdParam, validate, async (req, res) => {
     try {
         const conversation = await Conversation.findById(req.params.id)
-            .populate('participants', 'name email deviceToken fcmToken');
+            .populate('participants', 'name email deviceToken fcmToken')
+            // lastMessage معرّف خام بدون هذا — والعميل يتوقّع كائناً
+            .populate('lastMessage', 'content filteredContent type sender createdAt');
 
         if (!conversation) {
             return res.status(404).json({
