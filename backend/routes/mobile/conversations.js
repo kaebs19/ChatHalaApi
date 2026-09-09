@@ -454,6 +454,69 @@ router.put('/conversations/:id/reject', protect, mongoIdParam, validate, async (
     }
 });
 
+// @route   PUT /api/mobile/conversations/:id/close
+// @desc    إنهاء محادثة مقبولة — تُقفل للطرفين ولا يمكن الإرسال فيها بعدها
+// @access  Private
+router.put('/conversations/:id/close', protect, mongoIdParam, validate, async (req, res) => {
+    try {
+        const conversation = await Conversation.findOne({
+            _id: req.params.id,
+            participants: req.user._id
+        }).populate('participants', 'name');
+
+        if (!conversation) {
+            return res.status(404).json({
+                success: false,
+                message: 'المحادثة غير موجودة'
+            });
+        }
+
+        if (!conversation.isActive) {
+            return res.status(400).json({
+                success: false,
+                message: 'المحادثة منتهية بالفعل'
+            });
+        }
+
+        // الإنهاء يخصّ المحادثات المقبولة — الطلبات المعلّقة تُرفض لا تُنهى
+        if (conversation.status !== 'accepted') {
+            return res.status(400).json({
+                success: false,
+                message: 'لا يمكن إنهاء طلب لم يُقبل بعد'
+            });
+        }
+
+        conversation.isActive = false;
+        conversation.closedBy = req.user._id;
+        conversation.closedAt = new Date();
+        await conversation.save();
+
+        // إعلام الطرف الآخر فوراً ليتحدّث شريط الإدخال عنده
+        const other = conversation.participants.find(
+            p => p._id.toString() !== req.user._id.toString()
+        );
+        if (global.io && other) {
+            global.io.to(`user:${other._id.toString()}`).emit('conversation-closed', {
+                conversationId: conversation._id,
+                closedBy: req.user._id.toString()
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'تم إنهاء المحادثة',
+            data: { conversationId: conversation._id }
+        });
+
+    } catch (error) {
+        logger.error('خطأ في إنهاء المحادثة:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر'
+        });
+    }
+});
+
 // @route   PUT /api/mobile/conversations/:id/read
 // @desc    تحديث الرسائل كمقروءة في المحادثة
 // @access  Private

@@ -53,6 +53,16 @@ const conversationSchema = new mongoose.Schema({
         default: 'accepted' // المحادثات القديمة تكون مقبولة بشكل افتراضي
     },
     // المستخدمون الذين أخفوا المحادثة (حذف ناعم)
+    // من أنهى المحادثة ومتى — يبقى السجل بعد الإقفال
+    closedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: null
+    },
+    closedAt: {
+        type: Date,
+        default: null
+    },
     hiddenBy: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'
