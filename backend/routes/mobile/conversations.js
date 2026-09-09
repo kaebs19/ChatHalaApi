@@ -114,11 +114,15 @@ router.post('/conversations/request', protect, blockIfSoftSuspended, checkCanSta
                     });
                 }
 
-                // من رفض سابقاً يبدأ محادثة جديدة → يُعاد التفعيل وهو المنشئ
+                // من رفض سابقاً يبدأ محادثة جديدة → يُعاد التفعيل وهو المنشئ.
+                // ويمرّ من هنا أيضاً من أراد استئناف محادثة أُنهيت (accepted + !isActive):
+                // تعود طلباً معلّقاً يقرّره الطرف الآخر، مع مسح أثر الإنهاء السابق.
                 existingConversation.status = 'pending';
                 existingConversation.isActive = true;
                 existingConversation.creator = req.user._id;
                 existingConversation.hiddenBy = [];
+                existingConversation.closedBy = null;
+                existingConversation.closedAt = null;
                 await existingConversation.save();
             }
         }
@@ -718,10 +722,11 @@ router.get('/conversations', protect, async (req, res) => {
             ? status
             : { $in: allowedStatuses };
 
+        // بلا فلتر isActive: المحادثة المُنهاة تبقى في القائمة معلَّمة كمغلقة،
+        // ولا تختفي إلا بالحذف. المرفوضة مستبعَدة بالحالة نفسها لا بـ isActive.
         const baseQuery = {
             participants: userId,
             status: statusFilter,
-            isActive: true,
             hiddenBy: { $ne: userId }
         };
 
