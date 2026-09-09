@@ -707,15 +707,25 @@ router.get('/conversations/pending', protect, async (req, res) => {
 // @access  Private
 router.get('/conversations', protect, async (req, res) => {
     try {
-        const { page = 1, limit = 20 } = req.query;
+        const { page = 1, limit = 20, status } = req.query;
         const userId = req.user._id;
 
-        const conversations = await Conversation.find({
+        // بلا status تعود المقبولة والمعلّقة معاً في صفحة واحدة — وحين تكثر
+        // الطلبات تُزيح المحادثات المقبولة خارج الصفحة الأولى فتبدو مختفية.
+        // العميل يطلب status=accepted ويجلب الطلبات من /conversations/pending.
+        const allowedStatuses = ['accepted', 'pending'];
+        const statusFilter = allowedStatuses.includes(status)
+            ? status
+            : { $in: allowedStatuses };
+
+        const baseQuery = {
             participants: userId,
-            status: { $in: ['accepted', 'pending'] },
+            status: statusFilter,
             isActive: true,
             hiddenBy: { $ne: userId }
-        })
+        };
+
+        const conversations = await Conversation.find(baseQuery)
             .populate('participants', 'name email profileImage lastLogin isOnline isPremium verification.isVerified isActive deviceBanned suspendedUntil')
             .populate('lastMessage')
             .sort({ updatedAt: -1 })
@@ -764,12 +774,8 @@ router.get('/conversations', protect, async (req, res) => {
             unreadCount: unreadMap.get(conv._id.toString()) || 0
         }));
 
-        const total = await Conversation.countDocuments({
-            participants: userId,
-            status: { $in: ['accepted', 'pending'] },
-            isActive: true,
-            hiddenBy: { $ne: userId }
-        });
+        // العدّ بنفس فلتر الاستعلام — وإلا زاد totalPages فطلب العميل صفحات فارغة
+        const total = await Conversation.countDocuments(baseQuery);
 
         // حساب إجمالي الرسائل غير المقروءة
         const totalUnread = conversationsWithUnread.reduce((sum, conv) => sum + conv.unreadCount, 0);
