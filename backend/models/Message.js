@@ -64,6 +64,16 @@ const messageSchema = new mongoose.Schema({
         enum: ['text', 'image', 'file', 'audio', 'video'],
         default: 'text'
     },
+    // صورة تُفتح مرة واحدة: يُحذف الملف من القرص فور فتحها، ولا يبقى
+    // منها إلا سجلّ أنها أُرسلت وفُتحت.
+    viewOnce: {
+        type: Boolean,
+        default: false
+    },
+    viewedAt: {
+        type: Date,
+        default: null
+    },
     // مصدر الصورة: كاميرا (لُقطت الآن) أو معرض. إشارة ثقة للمستلِم،
     // فالصورة المُلتقطة لحظتها أصعب تزويراً من صورة محفوظة.
     mediaSource: {

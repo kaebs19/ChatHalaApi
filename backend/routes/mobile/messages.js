@@ -5,6 +5,7 @@ const express = require('express');
 const router = express.Router();
 const logger = require('../../utils/logger');
 const fs = require('fs');
+const path = require('path');
 const Message = require('../../models/Message');
 const Conversation = require('../../models/Conversation');
 const BannedWord = require('../../models/BannedWord');
@@ -401,6 +402,9 @@ router.post('/conversations/:conversationId/messages/image', protect, blockIfSof
             ? req.body.mediaSource
             : null;
 
+        // 'true' نصّاً لأن multipart يرسل كل شيء كنصّ
+        const viewOnce = req.body.viewOnce === 'true' || req.body.viewOnce === true;
+
         const message = await Message.create({
             chatType: 'conversation',
             conversation: conversationId,
@@ -408,6 +412,7 @@ router.post('/conversations/:conversationId/messages/image', protect, blockIfSof
             type: 'image',
             mediaUrl: mediaUrl,
             mediaSource,
+            viewOnce,
             content: caption,
             status: 'sent',
             ...captionModeration.messageFields
@@ -902,6 +907,86 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
 // @desc    إضافة أو إزالة ردّ فعل (إيموجي) على رسالة
 // @access  Private
 // ═══════════════════════════════════════════════════════════════
+// @route   PUT /api/mobile/messages/:messageId/viewed
+// @desc    فتح صورة «مرة واحدة» — يُحذف الملف نهائياً بعد الفتح
+// @access  Private
+router.put('/messages/:messageId/viewed', protect, async (req, res) => {
+    try {
+        const message = await Message.findById(req.params.messageId);
+
+        if (!message || message.type !== 'image' || !message.viewOnce) {
+            return res.status(404).json({
+                success: false,
+                message: 'الرسالة غير موجودة أو ليست صورة مؤقتة'
+            });
+        }
+
+        // المرسِل لا يستهلك الفتحة: هو يعرف ما أرسل، والفتحة للمستلِم
+        if (message.sender.toString() === req.user._id.toString()) {
+            return res.status(400).json({
+                success: false,
+                message: 'لا يمكنك استهلاك فتحة صورتك'
+            });
+        }
+
+        // التحقق أن الطالب طرف في المحادثة
+        const conversation = await Conversation.findOne({
+            _id: message.conversation,
+            participants: req.user._id
+        }).select('_id').lean();
+
+        if (!conversation) {
+            return res.status(403).json({
+                success: false,
+                message: 'ليس لديك صلاحية لهذه الرسالة'
+            });
+        }
+
+        if (message.viewedAt) {
+            return res.status(410).json({
+                success: false,
+                code: 'ALREADY_VIEWED',
+                message: 'فُتحت هذه الصورة من قبل'
+            });
+        }
+
+        // حذف الملف من القرص — الوعد بأنها «مرة واحدة» لا يتحقّق بإخفاء الرابط
+        if (message.mediaUrl) {
+            const filename = message.mediaUrl.split('/').pop();
+            if (/^[A-Za-z0-9._-]+$/.test(filename)) {
+                const filePath = path.join(__dirname, '..', '..', 'uploads', 'messages', filename);
+                fs.unlink(filePath, (err) => {
+                    if (err && err.code !== 'ENOENT') {
+                        logger.error('تعذّر حذف صورة مؤقتة:', err);
+                    }
+                });
+            }
+        }
+
+        message.viewedAt = new Date();
+        message.mediaUrl = '';
+        await message.save();
+
+        // إعلام المرسِل أن صورته فُتحت
+        if (global.io) {
+            global.io.to(`user:${message.sender.toString()}`).emit('image-viewed', {
+                messageId: message._id,
+                conversationId: message.conversation
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'تم فتح الصورة',
+            data: { messageId: message._id, viewedAt: message.viewedAt }
+        });
+
+    } catch (error) {
+        logger.error('خطأ في فتح الصورة المؤقتة:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 router.post('/messages/:messageId/react', protect, async (req, res) => {
     try {
         const { messageId } = req.params;
