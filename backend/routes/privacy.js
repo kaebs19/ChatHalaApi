@@ -202,14 +202,28 @@ router.put('/last-seen', [
  */
 router.get('/blocked', auth, async (req, res) => {
     try {
+        // ⚠️ كان يجلب 'name phone avatar isOnline' — و phone و avatar لا وجود
+        // لهما في نموذج المستخدم أصلاً، فلا تصل الصورة أبداً.
         const user = await User.findById(req.user.id)
-            .populate('blockedUsers', 'name phone avatar isOnline');
+            .populate('blockedUsers', 'name profileImage isOnline')
+            .lean();
+
+        const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+        const blocked = (user?.blockedUsers || []).map(u => ({
+            // العميل يتوقّع id لا _id
+            id: u._id.toString(),
+            name: u.name,
+            profileImage: u.profileImage
+                ? (u.profileImage.startsWith('http') ? u.profileImage : `${baseUrl}${u.profileImage}`)
+                : null,
+            isOnline: u.isOnline || false
+        }));
 
         res.json({
             success: true,
             data: {
-                blockedUsers: user.blockedUsers || [],
-                count: user.blockedUsers?.length || 0
+                blockedUsers: blocked,
+                count: blocked.length
             }
         });
     } catch (error) {
