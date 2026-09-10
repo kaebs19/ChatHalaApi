@@ -8,6 +8,7 @@ const User = require('../../models/User');
 const Report = require('../../models/Report');
 const Notification = require('../../models/Notification');
 const { protect } = require('../../middleware/auth');
+const { uploadReportEvidence } = require('./helpers');
 const notificationService = require('../../services/notificationService');
 
 // ==========================================
@@ -17,7 +18,7 @@ const notificationService = require('../../services/notificationService');
 // @route   POST /api/mobile/reports
 // @desc    إنشاء بلاغ جديد (شكل مبسط للتطبيق)
 // @access  Private
-router.post('/reports', protect, async (req, res) => {
+router.post('/reports', protect, uploadReportEvidence.single('screenshot'), async (req, res) => {
     try {
         const {
             reportedUser,   // userId للمستخدم المبلغ عنه
@@ -83,14 +84,24 @@ router.post('/reports', protect, async (req, res) => {
         const highPriorityReasons = ['harassment', 'inappropriate'];
         const priority = highPriorityReasons.includes(reason) ? 'high' : 'medium';
 
+        // لقطة الشاشة إن أُرفقت — دليل المشرف الوحيد، فالمحادثات لا يُطّلع عليها
+        let evidenceUrl = null;
+        if (req.file) {
+            const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+            evidenceUrl = `${baseUrl}/uploads/reports/${req.file.filename}`;
+        }
+
         const report = await Report.create({
             type: 'user',
             reportedBy: req.user._id,
             reportedUser: reportedUser,
             category: reason,
             description: description || '',
+            evidenceUrl,
+            evidenceUploadedAt: evidenceUrl ? new Date() : null,
             status: 'pending',
-            priority
+            // بلاغ بدليل مرفق يُقدَّم في المراجعة: المشرف يستطيع الحسم فيه فوراً
+            priority: evidenceUrl && priority === 'medium' ? 'high' : priority
         });
 
         // إرسال إشعار للأدمن عند إنشاء بلاغ جديد
@@ -112,7 +123,7 @@ router.post('/reports', protect, async (req, res) => {
             // إنشاء إشعار في قاعدة البيانات
             await Notification.create({
                 title: 'بلاغ جديد',
-                body: `${req.user.name} أبلغ عن ${targetUser.name} - السبب: ${reasonArabic}`,
+                body: `${req.user.name} أبلغ عن ${targetUser.name} - السبب: ${reasonArabic}${evidenceUrl ? ' 📎 مع لقطة شاشة' : ''}`,
                 type: 'report',
                 recipients: 'specific',
                 targetUsers: admins.map(admin => admin._id),

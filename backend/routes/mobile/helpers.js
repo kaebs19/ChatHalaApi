@@ -45,6 +45,37 @@ const uploadMessageImage = multer({
     }
 });
 
+// إعداد multer لرفع لقطات شاشة البلاغات (Report Evidence)
+const reportsUploadDir = path.join(__dirname, '..', '..', 'uploads', 'reports');
+if (!fs.existsSync(reportsUploadDir)) {
+    fs.mkdirSync(reportsUploadDir, { recursive: true });
+}
+
+const reportEvidenceStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, reportsUploadDir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueName = `report-${Date.now()}-${crypto.randomBytes(8).toString('hex')}${path.extname(file.originalname)}`;
+        cb(null, uniqueName);
+    }
+});
+
+const uploadReportEvidence = multer({
+    storage: reportEvidenceStorage,
+    limits: { fileSize: 8 * 1024 * 1024 }, // 8MB max
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = /jpeg|jpg|png/;
+        const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+        const mimetype = allowedTypes.test(file.mimetype);
+        if (extname && mimetype) {
+            cb(null, true);
+        } else {
+            cb(new Error('فقط صور JPEG أو PNG مسموحة للقطة الشاشة'));
+        }
+    }
+});
+
 // إعداد multer لرفع صور التوثيق (Verification Selfies)
 const verificationsUploadDir = path.join(__dirname, '..', '..', 'uploads', 'verifications');
 if (!fs.existsSync(verificationsUploadDir)) {
@@ -79,5 +110,6 @@ const uploadVerificationSelfie = multer({
 module.exports = {
     getFullUrl,
     uploadMessageImage,
-    uploadVerificationSelfie
+    uploadVerificationSelfie,
+    uploadReportEvidence
 };

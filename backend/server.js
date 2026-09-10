@@ -361,6 +361,11 @@ app.use(hpp());
 app.use('/uploads/verifications', (req, res) => {
     res.status(404).json({ success: false, message: 'غير موجود' });
 });
+// 🔒 لقطات البلاغات مستثناة كذلك: محتواها محادثات خاصة، ووعدنا المُبلِّغ
+// بأن لا أحد يطّلع عليها. تُقدَّم فقط عبر GET /api/reports/evidence/:filename
+app.use('/uploads/reports', (req, res) => {
+    res.status(404).json({ success: false, message: 'غير موجود' });
+});
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Swagger API Documentation

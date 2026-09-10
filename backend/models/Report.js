@@ -47,6 +47,16 @@ const reportSchema = new mongoose.Schema({
         required: true,
         maxlength: 1000
     },
+    // لقطة شاشة يُرفقها المُبلِّغ طوعاً — المحادثات نفسها لا يطّلع عليها أحد،
+    // فهذه اللقطة هي الدليل الوحيد المتاح للمشرف.
+    evidenceUrl: {
+        type: String,
+        default: null
+    },
+    evidenceUploadedAt: {
+        type: Date,
+        default: null
+    },
     status: {
         type: String,
         enum: ['pending', 'reviewing', 'resolved', 'rejected'],

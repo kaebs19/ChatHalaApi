@@ -4,11 +4,38 @@
 const express = require('express');
 const logger = require('../utils/logger');
 const router = express.Router();
+
 const Report = require('../models/Report');
 const User = require('../models/User');
 const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const { protect, adminOnly } = require('../middleware/auth');
+
+const pathModule = require('path');
+const fsModule = require('fs');
+
+// @route   GET /api/reports/evidence/:filename
+// @desc    عرض لقطة شاشة مرفقة ببلاغ — للأدمن فقط
+// @access  Admin
+const REPORTS_EVIDENCE_DIR = pathModule.join(__dirname, '..', 'uploads', 'reports');
+
+router.get('/evidence/:filename', protect, adminOnly, (req, res) => {
+    const { filename } = req.params;
+
+    // منع path traversal: اسم ملف بسيط فقط
+    if (!/^[A-Za-z0-9._-]+$/.test(filename) || filename.includes('..')) {
+        return res.status(400).json({ success: false, message: 'اسم ملف غير صالح' });
+    }
+
+    const filePath = pathModule.join(REPORTS_EVIDENCE_DIR, filename);
+    if (!filePath.startsWith(REPORTS_EVIDENCE_DIR) || !fsModule.existsSync(filePath)) {
+        return res.status(404).json({ success: false, message: 'الملف غير موجود' });
+    }
+
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.sendFile(filePath);
+});
+
 const { getPagination } = require('../utils/pagination');
 // سقف آمن للـ limit القادم من العميل (كان بلا حد: ?limit=100000)
 const safeLimit = (v) => getPagination({ limit: v }).limit;

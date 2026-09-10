@@ -6,6 +6,7 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import { getImageUrl } from '../config';
 import { formatDateTime } from '../utils/formatters';
 import ConfirmModal from '../components/ConfirmModal';
+import ReportEvidence from '../components/ReportEvidence';
 import './Reports.css';
 
 function Reports({ onViewUserDetail, onViewConversation }) {
@@ -368,6 +369,11 @@ function Reports({ onViewUserDetail, onViewConversation }) {
                                     <div className="report-body">
                                         <p className="report-description">{report.description}</p>
 
+                                        <ReportEvidence
+                                            evidenceUrl={report.evidenceUrl}
+                                            uploadedAt={report.evidenceUploadedAt}
+                                        />
+
                                         <div className="report-users">
                                             <div className="report-user">
                                                 <span className="label">المبلّغ:</span>
@@ -571,6 +577,10 @@ function Reports({ onViewUserDetail, onViewConversation }) {
                                     <p className="preview-content">{selectedReport.reportedMessage.content}</p>
                                 </div>
                             )}
+                            <ReportEvidence
+                                evidenceUrl={selectedReport.evidenceUrl}
+                                uploadedAt={selectedReport.evidenceUploadedAt}
+                            />
                             {selectedReport.reportedMessage?.type === 'image' && selectedReport.reportedMessage?.mediaUrl && (
                                 <img
                                     src={getImageUrl(selectedReport.reportedMessage.mediaUrl)}
