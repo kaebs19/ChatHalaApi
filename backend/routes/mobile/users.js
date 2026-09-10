@@ -290,7 +290,7 @@ router.get('/users/search', protect, async (req, res) => {
         } else {
             // بدون موقع — البحث العادي
             users = await User.find(filter)
-                .select('name email profileImage birthDate gender country bio isOnline lastLogin verification.isVerified isPremium stealthMode uniqueTag fuzzyLocation')
+                .select('name profileImage birthDate gender country bio isOnline lastLogin verification.isVerified isPremium stealthMode uniqueTag fuzzyLocation')
                 .sort({ isOnline: -1, lastLogin: -1 })
                 .limit(limitNum)
                 .skip(skipNum);

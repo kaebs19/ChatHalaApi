@@ -277,7 +277,7 @@ router.post('/conversations/request', protect, blockIfSoftSuspended, checkCanSta
 router.put('/conversations/:id/accept', protect, blockIfSoftSuspended, checkCanReply, mongoIdParam, validate, async (req, res) => {
     try {
         const conversation = await Conversation.findById(req.params.id)
-            .populate('participants', 'name email deviceToken fcmToken')
+            .populate('participants', 'name deviceToken fcmToken')
             // lastMessage معرّف خام بدون هذا — والعميل يتوقّع كائناً
             .populate('lastMessage', 'content filteredContent type sender createdAt');
 
@@ -371,7 +371,7 @@ router.put('/conversations/:id/accept', protect, blockIfSoftSuspended, checkCanR
 router.put('/conversations/:id/reject', protect, mongoIdParam, validate, async (req, res) => {
     try {
         const conversation = await Conversation.findById(req.params.id)
-            .populate('participants', 'name email deviceToken fcmToken')
+            .populate('participants', 'name deviceToken fcmToken')
             // lastMessage معرّف خام بدون هذا — والعميل يتوقّع كائناً
             .populate('lastMessage', 'content filteredContent type sender createdAt');
 
@@ -678,8 +678,8 @@ router.get('/conversations/pending', protect, async (req, res) => {
         const orderIndex = new Map(orderedIds.map((id, i) => [id.toString(), i]));
 
         const conversations = (await Conversation.find({ _id: { $in: orderedIds } })
-            .populate('creator', 'name email profileImage verification.isVerified isPremium isActive deviceBanned suspendedUntil')
-            .populate('participants', 'name email profileImage lastLogin isOnline isPremium verification.isVerified isActive deviceBanned suspendedUntil')
+            .populate('creator', 'name profileImage verification.isVerified isPremium isActive deviceBanned suspendedUntil')
+            .populate('participants', 'name profileImage lastLogin isOnline isPremium verification.isVerified isActive deviceBanned suspendedUntil')
             // الرسالة الافتتاحية — تُعرض في بطاقة الطلب
             .populate('lastMessage', 'content filteredContent type sender createdAt'))
             .sort((a, b) => orderIndex.get(a._id.toString()) - orderIndex.get(b._id.toString()));
@@ -775,7 +775,7 @@ router.get('/conversations', protect, async (req, res) => {
         };
 
         const conversations = await Conversation.find(baseQuery)
-            .populate('participants', 'name email profileImage lastLogin isOnline isPremium verification.isVerified isActive deviceBanned suspendedUntil')
+            .populate('participants', 'name profileImage lastLogin isOnline isPremium verification.isVerified isActive deviceBanned suspendedUntil')
             .populate('lastMessage')
             .sort({ updatedAt: -1 })
             .limit(safeLimit(limit))

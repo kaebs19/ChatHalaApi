@@ -192,7 +192,7 @@ router.post('/reports', protect, uploadReportEvidence.single('screenshot'), asyn
 router.get('/reports/my', protect, async (req, res) => {
     try {
         const reports = await Report.find({ reportedBy: req.user._id })
-            .populate('reportedUser', 'name email')
+            .populate('reportedUser', 'name')
             .sort({ createdAt: -1 });
 
         res.status(200).json({

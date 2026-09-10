@@ -54,7 +54,7 @@ router.post('/messages/send', protect, blockIfSoftSuspended, checkCanReply, asyn
 
         // التحقق من المحادثة
         const conversation = await Conversation.findById(conversationId)
-            .populate('participants', 'name email deviceToken isActive deviceBanned suspendedUntil');
+            .populate('participants', 'name deviceToken isActive deviceBanned suspendedUntil');
 
         if (!conversation) {
             return res.status(404).json({
@@ -226,7 +226,7 @@ router.post('/messages/send', protect, blockIfSoftSuspended, checkCanReply, asyn
 
         // جلب الرسالة مع بيانات المرسل + الرسالة المردود عليها
         const populatedMessage = await Message.findById(message._id)
-            .populate('sender', 'name email profileImage isPremium verification.isVerified isActive deviceBanned suspendedUntil')
+            .populate('sender', 'name profileImage isPremium verification.isVerified isActive deviceBanned suspendedUntil')
             .populate({
                 path: 'replyTo',
                 select: 'content type sender mediaUrl createdAt',
@@ -351,7 +351,7 @@ router.post('/conversations/:conversationId/messages/image', protect, blockIfSof
 
         // التحقق من المحادثة
         const conversation = await Conversation.findById(conversationId)
-            .populate('participants', 'name email fcmToken');
+            .populate('participants', 'name fcmToken');
 
         if (!conversation) {
             // حذف الصورة المرفوعة
@@ -550,7 +550,7 @@ router.post('/conversations/:conversationId/messages', protect, blockIfSoftSuspe
 
         // التحقق من المحادثة
         const conversation = await Conversation.findById(conversationId)
-            .populate('participants', 'name email deviceToken fcmToken');
+            .populate('participants', 'name deviceToken fcmToken');
 
         if (!conversation) {
             return res.status(404).json({
@@ -681,7 +681,7 @@ router.post('/conversations/:conversationId/messages', protect, blockIfSoftSuspe
 
         // جلب الرسالة مع بيانات المرسل
         const populatedMessage = await Message.findById(message._id)
-            .populate('sender', 'name email profileImage isPremium verification.isVerified isActive deviceBanned suspendedUntil');
+            .populate('sender', 'name profileImage isPremium verification.isVerified isActive deviceBanned suspendedUntil');
 
         // تحويل الصور إلى URLs كاملة
         const altMsgObj = populatedMessage.toObject();
@@ -803,7 +803,7 @@ router.get('/messages/:conversationId/since', protect, async (req, res) => {
             isDeleted: false,
             createdAt: { $gt: sinceDate }
         })
-            .populate('sender', 'name email profileImage isPremium verification.isVerified isActive deviceBanned suspendedUntil')
+            .populate('sender', 'name profileImage isPremium verification.isVerified isActive deviceBanned suspendedUntil')
             .populate({
                 path: 'replyTo',
                 select: 'content type sender mediaUrl createdAt',
@@ -858,7 +858,7 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
             conversation: conversationId,
             isDeleted: false
         })
-            .populate('sender', 'name email profileImage isPremium verification.isVerified isActive deviceBanned suspendedUntil')
+            .populate('sender', 'name profileImage isPremium verification.isVerified isActive deviceBanned suspendedUntil')
             .populate({
                 path: 'replyTo',
                 select: 'content type sender mediaUrl createdAt',
