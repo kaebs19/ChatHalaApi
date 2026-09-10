@@ -19,11 +19,28 @@ jobs:
     timeout-minutes: 10
 
     steps:
+      - name: التحقّق من وجود المفتاح
+        run: |
+          # printf لا يفشل على قيمة فارغة، فبدون هذا الفحص يبدو تجهيز
+          # المفتاح ناجحاً ثم يفشل ssh بلا سبب مفهوم في السجلّ.
+          if [ -z "${{ secrets.DEPLOY_SSH_KEY }}" ]; then
+            echo "::error::السرّ DEPLOY_SSH_KEY غير مضبوط."
+            echo "::error::اضبطه من Settings › Secrets and variables › Actions،"
+            echo "::error::بمحتوى ~/.ssh/halachat_deploy_key كاملاً بما فيه سطرا BEGIN و END."
+            exit 1
+          fi
+
       - name: تجهيز مفتاح SSH
         run: |
           mkdir -p ~/.ssh
           printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
+          # يتحقّق من صلاحية المفتاح قبل محاولة الاتصال — فالخطأ يظهر هنا
+          # واضحاً بدل "invalid format" غامضاً داخل خطوة النشر
+          if ! ssh-keygen -y -f ~/.ssh/id_ed25519 > /dev/null 2>&1; then
+            echo "::error::محتوى DEPLOY_SSH_KEY ليس مفتاحاً خاصاً صالحاً — تأكّد من نسخه كاملاً."
+            exit 1
+          fi
           # مفتاح المضيف مثبّت لا يُجلب وقت التشغيل — فلا مجال لوسيط يعترض
           echo '31.97.158.25 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL/5K9PzwOiQUCgqb0BJ81t7hk7+QGz0oXxcwAQ2r48o' > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
