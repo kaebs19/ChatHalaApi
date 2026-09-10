@@ -911,6 +911,54 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
 // @desc    إضافة أو إزالة ردّ فعل (إيموجي) على رسالة
 // @access  Private
 // ═══════════════════════════════════════════════════════════════
+// @route   GET /api/mobile/media/messages/:filename
+// @desc    صورة محادثة — للمشاركين في المحادثة فقط
+// @access  Private
+const MESSAGES_MEDIA_DIR = path.join(__dirname, '..', '..', 'uploads', 'messages');
+
+router.get('/media/messages/:filename', protect, async (req, res) => {
+    try {
+        const { filename } = req.params;
+
+        // منع path traversal: اسم ملف بسيط فقط
+        if (!/^[A-Za-z0-9._-]+$/.test(filename) || filename.includes('..')) {
+            return res.status(400).json({ success: false, message: 'اسم ملف غير صالح' });
+        }
+
+        // الرسالة التي تحمل هذه الصورة — نهاية الرابط تكفي لتحديدها
+        const message = await Message.findOne({
+            mediaUrl: { $regex: `/${filename}$` }
+        }).select('conversation').lean();
+
+        if (!message) {
+            return res.status(404).json({ success: false, message: 'الصورة غير موجودة' });
+        }
+
+        // 🔒 جوهر الحماية: الطالب طرف في المحادثة أم لا
+        const conversation = await Conversation.findOne({
+            _id: message.conversation,
+            participants: req.user._id
+        }).select('_id').lean();
+
+        if (!conversation) {
+            return res.status(403).json({ success: false, message: 'ليس لديك صلاحية لهذه الصورة' });
+        }
+
+        const filePath = path.join(MESSAGES_MEDIA_DIR, filename);
+        if (!filePath.startsWith(MESSAGES_MEDIA_DIR) || !fs.existsSync(filePath)) {
+            return res.status(404).json({ success: false, message: 'الملف غير موجود' });
+        }
+
+        // private: الوسطاء لا يخزّنون صور محادثات خاصة
+        res.setHeader('Cache-Control', 'private, max-age=86400');
+        res.sendFile(filePath);
+
+    } catch (error) {
+        logger.error('خطأ في تقديم صورة المحادثة:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 // @route   POST /api/mobile/conversations/:id/screenshot-notice
 // @desc    إعلام الطرف الآخر بأن لقطة شاشة أُخذت في المحادثة
 // @access  Private

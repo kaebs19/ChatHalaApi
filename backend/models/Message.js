@@ -187,6 +187,9 @@ messageSchema.pre('validate', function() {
     }
 });
 
+// البحث بالرابط عند تقديم الصور المحمية — بدونه فحصٌ كامل للمجموعة
+messageSchema.index({ mediaUrl: 1 });
+
 const Message = mongoose.model('Message', messageSchema);
 
 module.exports = Message;
