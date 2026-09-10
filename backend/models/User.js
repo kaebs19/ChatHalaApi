@@ -77,9 +77,9 @@ const userSchema = new mongoose.Schema({
     },
     // معرف فريد للعرض (HALA-XXXXXX)
     uniqueTag: {
+        // الفهرس الفريد معرَّف في userSchema.index أدناه مع بقية الفهارس.
+        // تعريفه هنا أيضاً كان يُنتج فهرساً مكرّراً وتحذيراً في كل إقلاع.
         type: String,
-        unique: true,
-        sparse: true,
         uppercase: true,
         trim: true
     },
