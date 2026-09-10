@@ -68,6 +68,12 @@ temp/
 # Uploads
 uploads/
 public/uploads/
+# استثناء: الصور الجاهزة جزء من التطبيق لا محتوى مستخدمين.
+# كانت خارج المستودع فضاعت من الخادم وظهرت 404 لآلاف المستخدمين.
+!backend/uploads/
+backend/uploads/*
+!backend/uploads/defaults/
+!backend/uploads/defaults/avatar_*.jpg
 
 # Cache
 .cache/
