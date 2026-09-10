@@ -207,7 +207,7 @@ router.put('/:id/ban-device', protect, adminOnly, async (req, res) => {
         }
 
         const fingerprint = user.deviceInfo
-            ? buildFingerprint(user.deviceInfo.toObject ? user.deviceInfo.toObject() : user.deviceInfo, null)
+            ? buildFingerprint(user.deviceInfo.toObject ? user.deviceInfo.toObject() : user.deviceInfo)
             : null;
 
         const existing = await BannedDevice.findOne({
@@ -267,7 +267,7 @@ router.put('/:id/ban-device', protect, adminOnly, async (req, res) => {
                 $or: linkedFilters,
                 _id: { $ne: user._id },
                 role: { $ne: 'admin' }
-            }).select('_id name');
+            }).select('_id name persistentDeviceId deviceToken fcmToken deviceInfo');
 
             for (const linkedUser of linked) {
                 await User.updateOne(
@@ -287,6 +287,29 @@ router.put('/:id/ban-device', protect, adminOnly, async (req, res) => {
                 );
                 disconnectUser(linkedUser._id.toString());
                 linkedBannedCount++;
+
+                // سجل جهاز مستقل للحساب الشقيق إن كان معرّفه يختلف عن الأصلي.
+                // بدونه كان الشقيق يُحظر كحساب فقط، ويبقى معرّف جهازه غائباً عن
+                // BannedDevice — فيستطيع التسجيل من جديد بحساب نظيف.
+                try {
+                    const linkedPid = linkedUser.persistentDeviceId;
+                    if (linkedPid && linkedPid !== user.persistentDeviceId) {
+                        const already = await BannedDevice.findOne({ persistentDeviceId: linkedPid });
+                        if (!already) {
+                            await BannedDevice.create({
+                                deviceToken: linkedUser.deviceToken || null,
+                                fcmToken: linkedUser.fcmToken || null,
+                                persistentDeviceId: linkedPid,
+                                deviceFingerprint: linkedUser.deviceInfo ? buildFingerprint(linkedUser.deviceInfo) : null,
+                                deviceInfo: linkedUser.deviceInfo || {},
+                                originalUserId: linkedUser._id,
+                                originalUserName: linkedUser.name,
+                                reason: `${reason} (حساب مرتبط بـ ${user.name})`,
+                                bannedBy: req.user._id
+                            });
+                        }
+                    }
+                } catch (e) { /* لا يوقف الحظر */ }
             }
         }
 
@@ -394,7 +417,7 @@ router.put('/:id/unban-device', protect, adminOnly, async (req, res) => {
         if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
 
         const fingerprint = user.deviceInfo
-            ? buildFingerprint(user.deviceInfo.toObject ? user.deviceInfo.toObject() : user.deviceInfo, null)
+            ? buildFingerprint(user.deviceInfo.toObject ? user.deviceInfo.toObject() : user.deviceInfo)
             : null;
 
         await BannedDevice.deleteMany({

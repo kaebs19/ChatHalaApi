@@ -49,11 +49,10 @@ const updateUserFingerprint = (user, req) => {
     if (req.body?.persistentDeviceId) {
         user.persistentDeviceId = req.body.persistentDeviceId;
     }
-    // 2) تحديث البصمة (fallback من deviceInfo + IP)
+    // 2) تحديث البصمة (fallback من deviceInfo — بلا IP كي تبقى ثابتة)
     if (user.deviceInfo && (user.deviceInfo.platform || user.deviceInfo.osVersion)) {
-        const ip = req.ip || req.connection?.remoteAddress;
         const info = user.deviceInfo.toObject ? user.deviceInfo.toObject() : user.deviceInfo;
-        const fp = buildFingerprint(info, ip);
+        const fp = buildFingerprint(info);
         if (fp) user.deviceFingerprint = fp;
     }
     // 3) تسجيل IP (للتدقيق فقط — ليس للحظر التلقائي)
@@ -124,7 +123,11 @@ const checkDeviceBanned = async (req, res) => {
             });
             return true;
         }
-    } catch (e) { /* لا نوقف التسجيل بسبب خطأ فحص */ }
+    } catch (e) {
+        // لا نوقف التسجيل بسبب خطأ فحص، لكن لا نبتلعه بصمت:
+        // فشل هذا الفحص يعني مرور جهاز محظور، ويجب أن يظهر في السجل
+        logger.error('فشل فحص حظر الجهاز — مُرِّر الطلب:', e);
+    }
     return false;
 };
 
