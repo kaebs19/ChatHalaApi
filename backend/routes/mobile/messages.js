@@ -404,6 +404,9 @@ router.post('/conversations/:conversationId/messages/image', protect, blockIfSof
 
         // 'true' نصّاً لأن multipart يرسل كل شيء كنصّ
         const viewOnce = req.body.viewOnce === 'true' || req.body.viewOnce === true;
+        const allowedDurations = [5, 10, 20, 30];
+        const parsedDuration = parseInt(req.body.viewDuration, 10);
+        const viewDuration = allowedDurations.includes(parsedDuration) ? parsedDuration : 10;
 
         const message = await Message.create({
             chatType: 'conversation',
@@ -413,6 +416,7 @@ router.post('/conversations/:conversationId/messages/image', protect, blockIfSof
             mediaUrl: mediaUrl,
             mediaSource,
             viewOnce,
+            viewDuration,
             content: caption,
             status: 'sent',
             ...captionModeration.messageFields
@@ -907,6 +911,48 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
 // @desc    إضافة أو إزالة ردّ فعل (إيموجي) على رسالة
 // @access  Private
 // ═══════════════════════════════════════════════════════════════
+// @route   POST /api/mobile/conversations/:id/screenshot-notice
+// @desc    إعلام الطرف الآخر بأن لقطة شاشة أُخذت في المحادثة
+// @access  Private
+router.post('/conversations/:id/screenshot-notice', protect, async (req, res) => {
+    try {
+        const conversation = await Conversation.findOne({
+            _id: req.params.id,
+            participants: req.user._id
+        }).select('_id participants').lean();
+
+        if (!conversation) {
+            return res.status(403).json({
+                success: false,
+                message: 'ليس لديك صلاحية لهذه المحادثة'
+            });
+        }
+
+        // رسالة نظام مرئية للطرفين — الشفافية هي الغرض، لا الإخفاء
+        const message = await Message.create({
+            chatType: 'conversation',
+            conversation: conversation._id,
+            sender: req.user._id,
+            type: 'system',
+            content: 'screenshot_taken',
+            status: 'sent'
+        });
+
+        if (global.io) {
+            global.io.to(`conversation:${conversation._id}`).emit('new-message', {
+                conversationId: conversation._id,
+                message
+            });
+        }
+
+        res.status(201).json({ success: true, data: { message } });
+
+    } catch (error) {
+        logger.error('خطأ في تنبيه لقطة الشاشة:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 // @route   PUT /api/mobile/messages/:messageId/viewed
 // @desc    فتح صورة «مرة واحدة» — يُحذف الملف نهائياً بعد الفتح
 // @access  Private

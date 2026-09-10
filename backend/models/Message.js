@@ -61,7 +61,7 @@ const messageSchema = new mongoose.Schema({
     },
     type: {
         type: String,
-        enum: ['text', 'image', 'file', 'audio', 'video'],
+        enum: ['text', 'image', 'file', 'audio', 'video', 'system'],
         default: 'text'
     },
     // صورة تُفتح مرة واحدة: يُحذف الملف من القرص فور فتحها، ولا يبقى
@@ -73,6 +73,12 @@ const messageSchema = new mongoose.Schema({
     viewedAt: {
         type: Date,
         default: null
+    },
+    // مدة العرض بالثواني بعد الفتح (5/10/20/30)
+    viewDuration: {
+        type: Number,
+        enum: [5, 10, 20, 30],
+        default: 10
     },
     // مصدر الصورة: كاميرا (لُقطت الآن) أو معرض. إشارة ثقة للمستلِم،
     // فالصورة المُلتقطة لحظتها أصعب تزويراً من صورة محفوظة.
