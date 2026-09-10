@@ -395,12 +395,19 @@ router.post('/conversations/:conversationId/messages/image', protect, blockIfSof
         const mediaUrl = `${baseUrl}/uploads/messages/${req.file.filename}`;
 
         // إنشاء الرسالة
+        // مصدر الصورة — يُعرض للمستلِم كإشارة ثقة
+        const allowedSources = ['camera', 'gallery'];
+        const mediaSource = allowedSources.includes(req.body.mediaSource)
+            ? req.body.mediaSource
+            : null;
+
         const message = await Message.create({
             chatType: 'conversation',
             conversation: conversationId,
             sender: senderId,
             type: 'image',
             mediaUrl: mediaUrl,
+            mediaSource,
             content: caption,
             status: 'sent',
             ...captionModeration.messageFields

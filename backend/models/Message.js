@@ -64,6 +64,13 @@ const messageSchema = new mongoose.Schema({
         enum: ['text', 'image', 'file', 'audio', 'video'],
         default: 'text'
     },
+    // مصدر الصورة: كاميرا (لُقطت الآن) أو معرض. إشارة ثقة للمستلِم،
+    // فالصورة المُلتقطة لحظتها أصعب تزويراً من صورة محفوظة.
+    mediaSource: {
+        type: String,
+        enum: ['camera', 'gallery', null],
+        default: null
+    },
     status: {
         type: String,
         enum: ['sent', 'delivered', 'read'],
