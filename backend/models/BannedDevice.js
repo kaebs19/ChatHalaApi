@@ -9,8 +9,9 @@ const bannedDeviceSchema = new mongoose.Schema({
     fcmToken: { type: String, default: null, index: true },
     // معرّف فريد مستمر من iOS Keychain — الأدق (يبقى بعد حذف التطبيق)
     persistentDeviceId: { type: String, default: null, index: true },
-    // بصمة مركّبة من معلومات الجهاز (platform+osVersion+appVersion+IP هاش)
-    deviceFingerprint: { type: String, default: null, index: true },
+    // ⛔ مهجور: هاش platform+osVersion+appVersion — مشترك بين آلاف الأجهزة،
+    // ولا يجوز استعماله في أي مطابقة حظر. يبقى الحقل لسجلات قديمة فقط.
+    deviceFingerprint: { type: String, default: null },
 
     deviceInfo: {
         platform: String,

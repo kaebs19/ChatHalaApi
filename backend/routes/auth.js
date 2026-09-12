@@ -34,7 +34,7 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const appleSignin = require('apple-signin-auth');
 
 // Device ban check + fingerprint
-const { isDeviceBanned, buildFingerprint } = require('../utils/deviceBan');
+const { isDeviceBanned } = require('../utils/deviceBan');
 const { isIPBanned } = require('../utils/ipBan');
 const { trackUserIP } = require('../utils/trackUserIP');
 const { enforceRegistrationRateLimit } = require('../utils/registrationRateLimit');
@@ -49,12 +49,9 @@ const updateUserFingerprint = (user, req) => {
     if (req.body?.persistentDeviceId) {
         user.persistentDeviceId = req.body.persistentDeviceId;
     }
-    // 2) تحديث البصمة (fallback من deviceInfo — بلا IP كي تبقى ثابتة)
-    if (user.deviceInfo && (user.deviceInfo.platform || user.deviceInfo.osVersion)) {
-        const info = user.deviceInfo.toObject ? user.deviceInfo.toObject() : user.deviceInfo;
-        const fp = buildFingerprint(info);
-        if (fp) user.deviceFingerprint = fp;
-    }
+    // 2) ⛔ لم نعد نخزّن deviceFingerprint: هي هاش لـ platform|osVersion|appVersion
+    //    ومشتركة بين كل الأجهزة بنفس الإصدارات، فكانت تربط حسابات لا علاقة بينها.
+    //    المعرّف المعتمد هو persistentDeviceId (ثم deviceToken/fcmToken).
     // 3) تسجيل IP (للتدقيق فقط — ليس للحظر التلقائي)
     trackUserIP(user, req);
 };
@@ -1536,6 +1533,18 @@ router.post('/refresh-token', async (req, res) => {
             return res.status(401).json({
                 success: false,
                 message: 'المستخدم غير موجود'
+            });
+        }
+
+        // إبطال التوكنات القديمة (بعد تغيير/إعادة تعيين كلمة المرور)
+        // بدون هذا الفحص كان الـ refresh token القديم يظل يولّد access tokens
+        // صالحة لثلاثين يوماً رغم تغيير كلمة المرور.
+        // التوكنات الصادرة قبل إضافة tv لا تحمله → تبقى صالحة للتوافق.
+        if (typeof decoded.tv === 'number' && decoded.tv !== (user.tokenVersion || 0)) {
+            return res.status(401).json({
+                success: false,
+                message: 'انتهت الجلسة. سجّل الدخول مرة أخرى',
+                code: 'TOKEN_REVOKED'
             });
         }
 

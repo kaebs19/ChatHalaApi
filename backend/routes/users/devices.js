@@ -9,8 +9,11 @@ const BannedDevice = require('../../models/BannedDevice');
 const BannedIP = require('../../models/BannedIP');
 const { protect, adminOnly } = require('../../middleware/auth');
 const { invalidateUsers } = require('../../utils/cache');
-const { buildFingerprint } = require('../../utils/deviceBan');
 const { logAdminAction } = require('../../utils/logAdminAction');
+
+// معرّف صالح للمطابقة (نفس تعريف utils/deviceBan): يمنع القيم الوهمية القصيرة
+// مثل "null" أو "0" من ربط حسابات لا علاقة بينها.
+const usable = (v) => typeof v === 'string' && v.trim().length >= 8;
 
 // @route   GET /api/users/banned-devices/list
 router.get('/banned-devices/list', protect, adminOnly, async (req, res) => {
@@ -39,10 +42,10 @@ router.get('/banned-devices/list', protect, adminOnly, async (req, res) => {
             }
 
             const filters = [];
-            if (pid) filters.push({ persistentDeviceId: pid });
-            if (d.deviceToken) filters.push({ deviceToken: d.deviceToken });
-            if (d.fcmToken) filters.push({ fcmToken: d.fcmToken });
-            if (d.deviceFingerprint) filters.push({ deviceFingerprint: d.deviceFingerprint });
+            if (usable(pid)) filters.push({ persistentDeviceId: pid });
+            if (usable(d.deviceToken)) filters.push({ deviceToken: d.deviceToken });
+            if (usable(d.fcmToken)) filters.push({ fcmToken: d.fcmToken });
+            // ⛔ لا مطابقة بـ deviceFingerprint — راجع utils/deviceBan.buildFingerprint
 
             if (filters.length > 0) {
                 d.linkedAccountsCount = await User.countDocuments({ $or: filters });
@@ -82,9 +85,9 @@ router.get('/banned-devices/:id/linked-accounts', protect, adminOnly, async (req
         }
 
         const filters = [];
-        if (pid) filters.push({ persistentDeviceId: pid });
-        if (device.deviceToken) filters.push({ deviceToken: device.deviceToken });
-        if (device.fcmToken) filters.push({ fcmToken: device.fcmToken });
+        if (usable(pid)) filters.push({ persistentDeviceId: pid });
+        if (usable(device.deviceToken)) filters.push({ deviceToken: device.deviceToken });
+        if (usable(device.fcmToken)) filters.push({ fcmToken: device.fcmToken });
 
         if (filters.length === 0) {
             return res.json({ success: true, count: 0, data: { device, accounts: [] } });
@@ -120,9 +123,9 @@ router.get('/:id/linked-accounts', protect, adminOnly, async (req, res) => {
 
         // أولوية: persistentDeviceId (الأدق)
         const filters = [];
-        if (user.persistentDeviceId) filters.push({ persistentDeviceId: user.persistentDeviceId });
-        if (user.deviceToken) filters.push({ deviceToken: user.deviceToken });
-        if (user.fcmToken) filters.push({ fcmToken: user.fcmToken });
+        if (usable(user.persistentDeviceId)) filters.push({ persistentDeviceId: user.persistentDeviceId });
+        if (usable(user.deviceToken)) filters.push({ deviceToken: user.deviceToken });
+        if (usable(user.fcmToken)) filters.push({ fcmToken: user.fcmToken });
 
         if (filters.length === 0) {
             return res.json({
@@ -202,20 +205,20 @@ router.put('/:id/ban-device', protect, adminOnly, async (req, res) => {
             return res.status(403).json({ success: false, message: 'لا يمكن حظر جهاز مدير' });
         }
 
-        if (!user.deviceToken && !user.fcmToken && !user.persistentDeviceId && (!user.deviceInfo || !user.deviceInfo.platform)) {
-            return res.status(400).json({ success: false, message: 'لا توجد معلومات جهاز لهذا المستخدم' });
+        // لا بدّ من معرّف فريد حقيقي. deviceInfo وحدها (platform/الإصدار) مشتركة
+        // بين آلاف الأجهزة، والحظر بناءً عليها يصيب مستخدمين أبرياء.
+        if (!usable(user.deviceToken) && !usable(user.fcmToken) && !usable(user.persistentDeviceId)) {
+            return res.status(400).json({
+                success: false,
+                message: 'لا يوجد معرّف جهاز فريد لهذا المستخدم — استخدم تعليق الحساب بدل حظر الجهاز'
+            });
         }
-
-        const fingerprint = user.deviceInfo
-            ? buildFingerprint(user.deviceInfo.toObject ? user.deviceInfo.toObject() : user.deviceInfo)
-            : null;
 
         const existing = await BannedDevice.findOne({
             $or: [
-                user.persistentDeviceId ? { persistentDeviceId: user.persistentDeviceId } : null,
-                user.deviceToken ? { deviceToken: user.deviceToken } : null,
-                user.fcmToken ? { fcmToken: user.fcmToken } : null,
-                fingerprint ? { deviceFingerprint: fingerprint } : null
+                usable(user.persistentDeviceId) ? { persistentDeviceId: user.persistentDeviceId } : null,
+                usable(user.deviceToken) ? { deviceToken: user.deviceToken } : null,
+                usable(user.fcmToken) ? { fcmToken: user.fcmToken } : null
             ].filter(Boolean)
         });
 
@@ -224,7 +227,6 @@ router.put('/:id/ban-device', protect, adminOnly, async (req, res) => {
                 deviceToken: user.deviceToken || null,
                 fcmToken: user.fcmToken || null,
                 persistentDeviceId: user.persistentDeviceId || null,
-                deviceFingerprint: fingerprint,
                 deviceInfo: user.deviceInfo || {},
                 originalUserId: user._id,
                 originalUserName: user.name,
@@ -254,12 +256,13 @@ router.put('/:id/ban-device', protect, adminOnly, async (req, res) => {
         disconnectUser(user._id.toString());
 
         // 🔒 حظر كل الحسابات الشقيقة على نفس الجهاز
-        // (نفس persistentDeviceId / deviceToken / fcmToken / deviceFingerprint)
+        // (نفس persistentDeviceId / deviceToken / fcmToken)
         const linkedFilters = [];
-        if (user.persistentDeviceId) linkedFilters.push({ persistentDeviceId: user.persistentDeviceId });
-        if (user.deviceToken) linkedFilters.push({ deviceToken: user.deviceToken });
-        if (user.fcmToken) linkedFilters.push({ fcmToken: user.fcmToken });
-        if (fingerprint) linkedFilters.push({ deviceFingerprint: fingerprint });
+        if (usable(user.persistentDeviceId)) linkedFilters.push({ persistentDeviceId: user.persistentDeviceId });
+        if (usable(user.deviceToken)) linkedFilters.push({ deviceToken: user.deviceToken });
+        if (usable(user.fcmToken)) linkedFilters.push({ fcmToken: user.fcmToken });
+        // ⛔ deviceFingerprint (platform|osVersion|appVersion) ليست معرّف جهاز:
+        // مطابقتها كانت تحظر كل من يحمل نفس إصدار iOS/التطبيق.
 
         let linkedBannedCount = 0;
         if (linkedFilters.length > 0) {
@@ -300,7 +303,6 @@ router.put('/:id/ban-device', protect, adminOnly, async (req, res) => {
                                 deviceToken: linkedUser.deviceToken || null,
                                 fcmToken: linkedUser.fcmToken || null,
                                 persistentDeviceId: linkedPid,
-                                deviceFingerprint: linkedUser.deviceInfo ? buildFingerprint(linkedUser.deviceInfo) : null,
                                 deviceInfo: linkedUser.deviceInfo || {},
                                 originalUserId: linkedUser._id,
                                 originalUserName: linkedUser.name,
@@ -353,7 +355,7 @@ router.put('/banned-devices/:id/ban-active-linked', protect, adminOnly, async (r
         if (pid) filters.push({ persistentDeviceId: pid });
         if (device.deviceToken) filters.push({ deviceToken: device.deviceToken });
         if (device.fcmToken) filters.push({ fcmToken: device.fcmToken });
-        if (device.deviceFingerprint) filters.push({ deviceFingerprint: device.deviceFingerprint });
+        // ⛔ لا مطابقة بـ deviceFingerprint
 
         if (filters.length === 0) {
             return res.json({ success: true, message: 'لا توجد معرّفات للجهاز', count: 0 });
@@ -416,16 +418,11 @@ router.put('/:id/unban-device', protect, adminOnly, async (req, res) => {
         const user = await User.findById(req.params.id);
         if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
 
-        const fingerprint = user.deviceInfo
-            ? buildFingerprint(user.deviceInfo.toObject ? user.deviceInfo.toObject() : user.deviceInfo)
-            : null;
-
         await BannedDevice.deleteMany({
             $or: [
-                user.persistentDeviceId ? { persistentDeviceId: user.persistentDeviceId } : null,
-                user.deviceToken ? { deviceToken: user.deviceToken } : null,
-                user.fcmToken ? { fcmToken: user.fcmToken } : null,
-                fingerprint ? { deviceFingerprint: fingerprint } : null,
+                usable(user.persistentDeviceId) ? { persistentDeviceId: user.persistentDeviceId } : null,
+                usable(user.deviceToken) ? { deviceToken: user.deviceToken } : null,
+                usable(user.fcmToken) ? { fcmToken: user.fcmToken } : null,
                 { originalUserId: user._id }
             ].filter(Boolean)
         });

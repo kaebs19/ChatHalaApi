@@ -1,6 +1,6 @@
 // حظر الحسابات الشقيقة لكل الأجهزة المحظورة (تشغيل لمرة واحدة)
 // يمر على كل BannedDevice، يجد كل الحسابات التي تشترك بنفس
-// persistentDeviceId / deviceToken / fcmToken / deviceFingerprint،
+// persistentDeviceId / deviceToken / fcmToken،
 // ويحظر كل حساب لم يكن محظوراً سابقاً.
 //
 // التشغيل: node scripts/banLinkedAccounts.js [--dry-run]
@@ -37,7 +37,7 @@ const DRY = process.argv.includes('--dry-run');
             if (pid) filters.push({ persistentDeviceId: pid });
             if (d.deviceToken) filters.push({ deviceToken: d.deviceToken });
             if (d.fcmToken) filters.push({ fcmToken: d.fcmToken });
-            if (d.deviceFingerprint) filters.push({ deviceFingerprint: d.deviceFingerprint });
+            // ⛔ deviceFingerprint مستبعدة — ليست معرّف جهاز (راجع utils/deviceBan)
 
             if (filters.length === 0) continue;
 

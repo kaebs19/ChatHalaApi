@@ -6,11 +6,14 @@ const BannedDevice = require('../models/BannedDevice');
 const User = require('../models/User');
 
 /**
- * بناء بصمة الجهاز من معلوماته (لا تعتمد فقط على deviceToken لأنه قد يتغير)
+ * بناء بصمة الجهاز من معلوماته.
  *
- * ⚠️ لا تدخل الـ IP في البصمة: الـ IP يتغيّر مع كل شبكة، فإدخاله كان يجعل
- * البصمة وقت الحظر (ip=null) مختلفة عن البصمة وقت الفحص (ip حقيقي) — أي
- * أن هذا المسار لم يكن يطابق أبداً.
+ * ⛔ ليست معرّفاً للجهاز: المكوّنات الثلاثة (platform|osVersion|appVersion) مشتركة
+ * بين كل من يحمل نفس إصدار iOS ونفس إصدار التطبيق — أي عشرات الآلاف من الأجهزة
+ * لهم نفس «البصمة» بالضبط. استخدامها في المطابقة كان يحظر مستخدمين لا علاقة لهم
+ * بالجهاز المحظور. تبقى الدالة للعرض/التوافق فقط، ويُمنع استعمالها في أي فلتر حظر.
+ *
+ * ⚠️ لا تدخل الـ IP فيها: الـ IP يتغيّر مع كل شبكة.
  */
 const buildFingerprint = ({ platform, osVersion, appVersion }) => {
     const raw = [platform, osVersion, appVersion].filter(Boolean).join('|');
@@ -35,13 +38,11 @@ const usable = (v) => typeof v === 'string' && v.trim().length >= 8;
  * محظور بلا سجل يُنشأ له سجل، حتى تكون الفحوصات اللاحقة أدق.
  */
 const isDeviceBanned = async ({ deviceToken, fcmToken, persistentDeviceId, deviceInfo, ip }) => {
-    const fingerprint = deviceInfo ? buildFingerprint(deviceInfo) : null;
-
+    // المعرّفات الفريدة فقط. deviceFingerprint مستبعد عمداً — راجع buildFingerprint.
     const or = [];
     if (usable(persistentDeviceId)) or.push({ persistentDeviceId });
     if (usable(deviceToken)) or.push({ deviceToken });
     if (usable(fcmToken)) or.push({ fcmToken });
-    if (usable(fingerprint)) or.push({ deviceFingerprint: fingerprint });
 
     if (or.length === 0) return null;
 
@@ -62,10 +63,6 @@ const isDeviceBanned = async ({ deviceToken, fcmToken, persistentDeviceId, devic
             banned.fcmToken = fcmToken;
             dirty = true;
         }
-        if (usable(fingerprint) && !banned.deviceFingerprint) {
-            banned.deviceFingerprint = fingerprint;
-            dirty = true;
-        }
         if (ip && banned.lastIP !== ip) {
             banned.lastIP = ip;
             dirty = true;
@@ -78,7 +75,7 @@ const isDeviceBanned = async ({ deviceToken, fcmToken, persistentDeviceId, devic
 
     // ── المصدر الثاني: حساب محظور جهازياً بنفس المعرّفات وبلا سجل جهاز ──
     const bannedUser = await User.findOne({ deviceBanned: true, $or: or })
-        .select('_id name persistentDeviceId deviceToken fcmToken deviceFingerprint deviceInfo suspendReason deviceBannedAt')
+        .select('_id name persistentDeviceId deviceToken fcmToken deviceInfo suspendReason deviceBannedAt')
         .lean();
 
     if (!bannedUser) return null;
@@ -89,7 +86,6 @@ const isDeviceBanned = async ({ deviceToken, fcmToken, persistentDeviceId, devic
             deviceToken: bannedUser.deviceToken || (usable(deviceToken) ? deviceToken : null),
             fcmToken: bannedUser.fcmToken || (usable(fcmToken) ? fcmToken : null),
             persistentDeviceId: bannedUser.persistentDeviceId || (usable(persistentDeviceId) ? persistentDeviceId : null),
-            deviceFingerprint: (bannedUser.deviceInfo ? buildFingerprint(bannedUser.deviceInfo) : null) || fingerprint,
             deviceInfo: bannedUser.deviceInfo || deviceInfo || {},
             lastIP: ip || null,
             originalUserId: bannedUser._id,

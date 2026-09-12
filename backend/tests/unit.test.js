@@ -89,3 +89,19 @@ describe('حدود الكلمات العربية (BannedWord regex)', () => {
         assert.strictEqual(/(?<![\p{L}\p{N}])سناب\s*[:@-]/iu.test('سناب: x'), true);
     });
 });
+
+describe('بصمة الجهاز ليست معرّفاً (utils/deviceBan)', () => {
+    const { buildFingerprint } = require(path.join(root, 'utils/deviceBan'));
+
+    test('جهازان مختلفان بنفس الإصدارات لهما نفس البصمة — سبب حظر الأبرياء', () => {
+        const a = buildFingerprint({ platform: 'iOS', osVersion: '18.5', appVersion: '5.0' });
+        const b = buildFingerprint({ platform: 'iOS', osVersion: '18.5', appVersion: '5.0' });
+        assert.strictEqual(a, b);
+    });
+
+    test('لا تُستعمل البصمة في أي فلتر حظر داخل الملف', () => {
+        const fs = require('fs');
+        const src = fs.readFileSync(path.join(root, 'utils/deviceBan.js'), 'utf8');
+        assert.ok(!/or\.push\(\{\s*deviceFingerprint/.test(src));
+    });
+});
