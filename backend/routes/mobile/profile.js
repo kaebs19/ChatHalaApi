@@ -9,6 +9,7 @@ const ProfileView = require('../../models/ProfileView');
 const { protect } = require('../../middleware/auth');
 const { requirePremium } = require('../../middleware/premium');
 const { getFullUrl, uploadVerificationSelfie } = require('./helpers');
+const { userUnavailable } = require('../../utils/userUnavailable');
 
 // ==========================================
 // نظام زيارات البروفايل
@@ -32,9 +33,7 @@ router.post('/profile-views', protect, async (req, res) => {
 
         // التحقق من وجود المستخدم
         const viewedUser = await User.findById(viewedUserId);
-        if (!viewedUser) {
-            return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
-        }
+        if (!viewedUser) return userUnavailable(res);
 
         // لا تسجل زيارة مكررة خلال 24 ساعة
         const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);

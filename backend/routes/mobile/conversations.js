@@ -17,6 +17,7 @@ const { getFullUrl } = require('./helpers');
 const { checkBlockBetween, blockResponse } = require('../../utils/blockCheck');
 const { moderateContent, recordContentViolations } = require('../../utils/moderateContent');
 const { getPagination } = require('../../utils/pagination');
+const { userUnavailable } = require('../../utils/userUnavailable');
 // سقف آمن للـ limit القادم من العميل (كان بلا حد: ?limit=100000)
 const safeLimit = (v) => getPagination({ limit: v }).limit;
 
@@ -50,19 +51,7 @@ router.post('/conversations/request', protect, blockIfSoftSuspended, checkCanSta
 
         // التحقق من وجود المستخدم المستهدف
         const targetUser = await User.findById(targetUserId);
-        if (!targetUser) {
-            return res.status(404).json({
-                success: false,
-                message: 'المستخدم غير موجود'
-            });
-        }
-
-        if (!targetUser.isActive) {
-            return res.status(400).json({
-                success: false,
-                message: 'المستخدم غير نشط'
-            });
-        }
+        if (!targetUser || !targetUser.isActive) return userUnavailable(res);
 
         // 🔒 فحص الحظر المتبادل قبل أي شيء
         const blockCheck = await checkBlockBetween(req.user, [targetUserId]);

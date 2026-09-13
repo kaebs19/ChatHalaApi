@@ -124,3 +124,17 @@ describe('حالة تسليم الرسالة (utils/deliveryStatus)', () => {
         assert.strictEqual(initialMessageStatus([]), 'sent');
     });
 });
+
+describe('ردّ المستخدم غير المتاح (utils/userUnavailable)', () => {
+    const { userUnavailable, USER_UNAVAILABLE_CODE } = require(path.join(root, 'utils/userUnavailable'));
+
+    test('404 برسالة الحظر وكود ثابت يعتمد عليه العميل', () => {
+        let status, body;
+        const res = { status(s) { status = s; return this; }, json(b) { body = b; return this; } };
+        userUnavailable(res);
+        assert.strictEqual(status, 404);
+        assert.strictEqual(body.success, false);
+        assert.strictEqual(body.code, USER_UNAVAILABLE_CODE);
+        assert.match(body.message, /تم حظر المستخدم/);
+    });
+});

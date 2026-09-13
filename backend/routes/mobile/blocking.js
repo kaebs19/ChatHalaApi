@@ -8,6 +8,7 @@ const User = require('../../models/User');
 const Conversation = require('../../models/Conversation');
 const { protect } = require('../../middleware/auth');
 const { getFullUrl } = require('./helpers');
+const { userUnavailable } = require('../../utils/userUnavailable');
 
 // ==========================================
 // نظام حظر المستخدمين
@@ -23,10 +24,7 @@ router.post('/users/block/:userId', protect, async (req, res) => {
         // تحقق إن المستخدم موجود
         const target = await User.findById(userId);
         if (!target) {
-            return res.status(404).json({
-                success: false,
-                message: 'المستخدم غير موجود'
-            });
+            return userUnavailable(res);
         }
 
         // لا تحظر نفسك
@@ -73,10 +71,7 @@ router.post('/users/unblock/:userId', protect, async (req, res) => {
         // تحقق إن المستخدم موجود
         const target = await User.findById(userId);
         if (!target) {
-            return res.status(404).json({
-                success: false,
-                message: 'المستخدم غير موجود'
-            });
+            return userUnavailable(res);
         }
 
         // إزالة من القائمة السوداء

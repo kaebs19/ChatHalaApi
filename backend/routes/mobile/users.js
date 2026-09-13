@@ -7,6 +7,7 @@ const logger = require('../../utils/logger');
 const User = require('../../models/User');
 const { protect } = require('../../middleware/auth');
 const { getFullUrl } = require('./helpers');
+const { userUnavailable } = require('../../utils/userUnavailable');
 
 // Helper: تنظيف المدخلات من أحرف Regex الخاصة لمنع NoSQL Injection
 function escapeRegex(str) {
@@ -369,20 +370,10 @@ router.get('/users/:id', protect, async (req, res) => {
         const user = await User.findById(id)
             .select('name profileImage birthDate gender country bio isOnline lastLogin verification.isVerified isPremium stealthMode uniqueTag fuzzyLocation interests photos isActive isSuspended deviceBanned createdAt');
 
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'المستخدم غير موجود'
-            });
-        }
+        // محذوف أو محظور أو موقوف — رسالة واحدة للمستخدم النهائي
+        if (!user) return userUnavailable(res);
 
-        // التحقق من الحظر/الإيقاف
-        if (user.deviceBanned || !user.isActive) {
-            return res.status(404).json({
-                success: false,
-                message: 'المستخدم غير متاح'
-            });
-        }
+        if (user.deviceBanned || !user.isActive) return userUnavailable(res);
 
         // التحقق من الحظر المتبادل
         if (req.user.blockedUsers && req.user.blockedUsers.some(b => b.toString() === id)) {
