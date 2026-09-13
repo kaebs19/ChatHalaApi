@@ -279,7 +279,7 @@ router.put('/conversations/:id/accept', protect, blockIfSoftSuspended, checkCanR
         const conversation = await Conversation.findById(req.params.id)
             .populate('participants', 'name deviceToken fcmToken')
             // lastMessage معرّف خام بدون هذا — والعميل يتوقّع كائناً
-            .populate('lastMessage', 'content filteredContent type sender createdAt');
+            .populate('lastMessage', 'content filteredContent type sender createdAt status');
 
         if (!conversation) {
             return res.status(404).json({
@@ -373,7 +373,7 @@ router.put('/conversations/:id/reject', protect, mongoIdParam, validate, async (
         const conversation = await Conversation.findById(req.params.id)
             .populate('participants', 'name deviceToken fcmToken')
             // lastMessage معرّف خام بدون هذا — والعميل يتوقّع كائناً
-            .populate('lastMessage', 'content filteredContent type sender createdAt');
+            .populate('lastMessage', 'content filteredContent type sender createdAt status');
 
         if (!conversation) {
             return res.status(404).json({
@@ -610,12 +610,21 @@ router.put('/conversations/:id/read', protect, mongoIdParam, validate, async (re
             }
         );
 
-        // إرسال Socket event للطرف الآخر (اختياري)
+        // إبلاغ الطرف الآخر بالقراءة.
+        // ⚠️ غرفة conversation-<id> لا ينضم إليها إلا من فتح المحادثة فعلاً،
+        // فمن كان في قائمة المحادثات لم يكن يصله شيء وتبقى علامته رمادية حتى
+        // يعيد التحميل. البث الآن لغرفة كل مشارك (user:<id>).
         if (global.io && result.modifiedCount > 0) {
-            global.io.to(`conversation-${conversationId}`).emit('messages-read', {
+            const payload = {
                 conversationId,
-                readBy: userId,
+                readBy: userId.toString(),
                 count: result.modifiedCount
+            };
+            conversation.participants.forEach(p => {
+                const pid = p.toString();
+                if (pid !== userId.toString()) {
+                    global.io.to(`user:${pid}`).emit('messages-read', payload);
+                }
             });
         }
 
@@ -681,7 +690,7 @@ router.get('/conversations/pending', protect, async (req, res) => {
             .populate('creator', 'name profileImage verification.isVerified isPremium isActive deviceBanned suspendedUntil')
             .populate('participants', 'name profileImage lastLogin isOnline isPremium verification.isVerified isActive deviceBanned suspendedUntil')
             // الرسالة الافتتاحية — تُعرض في بطاقة الطلب
-            .populate('lastMessage', 'content filteredContent type sender createdAt'))
+            .populate('lastMessage', 'content filteredContent type sender createdAt status'))
             .sort((a, b) => orderIndex.get(a._id.toString()) - orderIndex.get(b._id.toString()));
 
         const { isUserSuspended: isSusp } = require('../../utils/userStatus');

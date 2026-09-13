@@ -148,6 +148,13 @@ const messageSchema = new mongoose.Schema({
 // Indexes للبحث السريع
 messageSchema.index({ chatType: 1 });
 messageSchema.index({ conversation: 1, createdAt: -1 });
+// مسح الرسائل التي لم تُسلَّم بعد عند اتصال المستخدم (utils/deliveryStatus).
+// فهرس جزئي: يفهرس الرسائل بحالة 'sent' فقط — يتقلّص كلما سُلّمت الرسائل،
+// بدل فهرسة ستة ملايين رسالة أغلبها مُسلَّمة أو مقروءة أصلاً.
+messageSchema.index(
+    { conversation: 1, status: 1 },
+    { partialFilterExpression: { status: 'sent' } }
+);
 messageSchema.index({ room: 1, createdAt: -1 });
 messageSchema.index({ sender: 1 });
 messageSchema.index({ isDeleted: 1 });

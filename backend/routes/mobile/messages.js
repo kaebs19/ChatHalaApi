@@ -17,6 +17,7 @@ const { userStatusFields, maskInPlace, isUserSuspended } = require('../../utils/
 const { checkBlockBetween, blockResponse } = require('../../utils/blockCheck');
 const { moderateContent, recordContentViolations } = require('../../utils/moderateContent');
 const { getPagination } = require('../../utils/pagination');
+const { initialMessageStatus, markDeliveredOnSend } = require('../../utils/deliveryStatus');
 // سقف آمن للـ limit القادم من العميل (كان بلا حد: ?limit=100000)
 const safeLimit = (v) => getPagination({ limit: v }).limit;
 
@@ -115,6 +116,11 @@ router.post('/messages/send', protect, blockIfSoftSuspended, checkCanReply, asyn
             }
         }
 
+        // ✓✓ من سيستلمها: إن كان أحدهم متصلاً فهي 'delivered' فوراً
+        const recipientIds = conversation.participants
+            .map(p => (p._id || p).toString())
+            .filter(pid => pid !== req.user._id.toString());
+
         // إنشاء الرسالة (مع نتائج فحص الكلمات المحظورة)
         const message = await Message.create({
             chatType: 'conversation',
@@ -125,7 +131,7 @@ router.post('/messages/send', protect, blockIfSoftSuspended, checkCanReply, asyn
             mediaUrl: mediaUrl || null,
             mediaMetadata: mediaMetadata || null,
             replyTo: replyTo || null,
-            status: 'sent',
+            status: initialMessageStatus(recipientIds),
             filteredContent: filteredContent,
             reviewStatus: !bannedWordResult.isClean ? 'pending' : 'none',
             hasBannedWords: !bannedWordResult.isClean,
@@ -278,6 +284,14 @@ router.post('/messages/send', protect, blockIfSoftSuspended, checkCanReply, asyn
             logger.error('global.io is undefined!');
         }
 
+        // ✓✓ إن كان المستقبل متصلاً فقد وصلته الرسالة الآن — بلا انتظار
+        markDeliveredOnSend({
+            messageId: message._id,
+            senderId: req.user._id,
+            conversationId,
+            recipientIds
+        });
+
         // إرسال إشعارات للمستقبلين الـ offline فقط عبر FCM
         const recipients = conversation.participants.filter(
             p => p._id.toString() !== req.user._id.toString()
@@ -408,6 +422,11 @@ router.post('/conversations/:conversationId/messages/image', protect, blockIfSof
         const parsedDuration = parseInt(req.body.viewDuration, 10);
         const viewDuration = allowedDurations.includes(parsedDuration) ? parsedDuration : 10;
 
+        // ✓✓ من سيستلمها: إن كان أحدهم متصلاً فهي 'delivered' فوراً
+        const recipientIds = conversation.participants
+            .map(p => (p._id || p).toString())
+            .filter(pid => pid !== senderId.toString());
+
         const message = await Message.create({
             chatType: 'conversation',
             conversation: conversationId,
@@ -418,7 +437,7 @@ router.post('/conversations/:conversationId/messages/image', protect, blockIfSof
             viewOnce,
             viewDuration,
             content: caption,
-            status: 'sent',
+            status: initialMessageStatus(recipientIds),
             ...captionModeration.messageFields
         });
 
@@ -477,6 +496,13 @@ router.post('/conversations/:conversationId/messages/image', protect, blockIfSof
                         }
                     });
                 }
+            });
+
+            markDeliveredOnSend({
+                messageId: message._id,
+                senderId,
+                conversationId,
+                recipientIds
             });
         }
 
@@ -571,6 +597,11 @@ router.post('/conversations/:conversationId/messages', protect, blockIfSoftSuspe
             });
         }
 
+        // ✓✓ من سيستلمها: إن كان أحدهم متصلاً فهي 'delivered' فوراً
+        const recipientIds = conversation.participants
+            .map(p => (p._id || p).toString())
+            .filter(pid => pid !== req.user._id.toString());
+
         // إنشاء الرسالة (مع فحص الكلمات المحظورة)
         const message = await Message.create({
             chatType: 'conversation',
@@ -580,7 +611,7 @@ router.post('/conversations/:conversationId/messages', protect, blockIfSoftSuspe
             type,
             mediaUrl: mediaUrl || null,
             mediaMetadata: mediaMetadata || null,
-            status: 'sent',
+            status: initialMessageStatus(recipientIds),
             filteredContent: filteredContent,
             reviewStatus: !bannedWordResult.isClean ? 'pending' : 'none',
             hasBannedWords: !bannedWordResult.isClean,
@@ -722,6 +753,13 @@ router.post('/conversations/:conversationId/messages', protect, blockIfSoftSuspe
                 }
             });
             logger.debug('Emitted!');
+
+            markDeliveredOnSend({
+                messageId: message._id,
+                senderId: req.user._id,
+                conversationId,
+                recipientIds
+            });
         }
 
         // إرسال إشعارات للمستقبلين الـ offline فقط عبر FCM

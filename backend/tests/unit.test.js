@@ -105,3 +105,22 @@ describe('بصمة الجهاز ليست معرّفاً (utils/deviceBan)', () =
         assert.ok(!/or\.push\(\{\s*deviceFingerprint/.test(src));
     });
 });
+
+describe('حالة تسليم الرسالة (utils/deliveryStatus)', () => {
+    const { initialMessageStatus } = require(path.join(root, 'utils/deliveryStatus'));
+
+    test('مستقبل متصل → delivered فوراً (لا تحديث لاحق يسابق ردّ الـ HTTP)', () => {
+        global.connectedUsers = new Map([['u1', {}]]);
+        assert.strictEqual(initialMessageStatus(['u1']), 'delivered');
+    });
+
+    test('كل المستقبلين غير متصلين → sent', () => {
+        global.connectedUsers = new Map([['u9', {}]]);
+        assert.strictEqual(initialMessageStatus(['u1', 'u2']), 'sent');
+    });
+
+    test('بلا مستقبلين → sent', () => {
+        global.connectedUsers = new Map();
+        assert.strictEqual(initialMessageStatus([]), 'sent');
+    });
+});

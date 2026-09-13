@@ -14,6 +14,7 @@ const hpp = require('hpp');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
 const logger = require('./utils/logger');
+const { sweepDeliveredForUser } = require('./utils/deliveryStatus');
 const validateEnv = require('./config/validateEnv');
 validateEnv(); // التحقق من متغيرات البيئة قبل بدء التشغيل
 const connectDB = require('./config/database');
@@ -507,6 +508,12 @@ io.on('connection', async (socket) => {
 
     // كاش عضوية المحادثات لهذا الاتصال (يمنع استعلام DB لكل رسالة)
     socket.data.verifiedConversations = new Set();
+
+    // ✓✓ كل رسالة واردة ما زالت 'sent' وصلت جهازه الآن — يُعلَّم التسليم
+    // ويُبلَّغ مرسلوها. أول جهاز فقط: الأجهزة الأخرى لنفس المستخدم لا تضيف شيئاً.
+    if (isFirstDevice) {
+        sweepDeliveredForUser(socket.userId).catch(() => {});
+    }
 
     // إرسال حالة الاتصال للمستخدم
     socket.emit('authenticated', {
