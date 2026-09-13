@@ -80,7 +80,10 @@ const isDeviceBanSentinel = (until) =>
 
     console.log(`✅ يبقى الحظر على ${kept} حساباً (معرّف جهاز مطابق أو سجل جهاز باسمه)`);
     console.log(`🔒 حظر مباشر بلا سجل جهاز (يبقى محظوراً، ويُنشأ له سجل): ${orphanDirect.length}`);
+    const noIds = collateral.filter(u => idsOf(u).length === 0);
     console.log(`♻️  حسابات شقيقة محظورة بلا أي رابط جهاز حقيقي: ${collateral.length}`);
+    console.log(`     منها ${noIds.length} بلا أي معرّف جهاز إطلاقاً (لا يمكن إثبات ولا نفي الجهاز)،`);
+    console.log(`     و${collateral.length - noIds.length} لها معرّف فريد لا يطابق أي جهاز محظور (خطأ مؤكّد)`);
     collateral.slice(0, 15).forEach(u => console.log(`   - ${u.name} (${u._id}) — ${u.suspendReason || 'بلا سبب'}`));
     if (collateral.length > 15) console.log(`   … و${collateral.length - 15} غيرها`);
     console.log();
