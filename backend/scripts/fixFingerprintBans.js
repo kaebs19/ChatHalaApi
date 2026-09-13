@@ -7,7 +7,8 @@
 // بالجهاز المحظور. الكود صار يتجاهل البصمة؛ هذا السكربت ينظّف آثارها:
 //
 //   1) تقرير التصادم (كم حساب/سجل يتشارك نفس البصمة)
-//   2) فكّ حظر الحسابات التي لا يربطها بأي جهاز محظور معرّف فريد
+//   2) فكّ حظر «الحسابات الشقيقة» التي لا يربطها بالجهاز المحظور معرّف فريد
+//      (الحظر المباشر من الأدمن يبقى — حتى لو غاب سجل جهازه بسبب نفس العلّة)
 //   3) تفريغ حقل deviceFingerprint وإسقاط فهارسه
 //
 //   node scripts/fixFingerprintBans.js            # عرض فقط (لا يغيّر شيئاً)
@@ -24,6 +25,13 @@ const BATCH = 500;
 // نفس تعريف utils/deviceBan: معرّف صالح للمطابقة
 const usable = (v) => typeof v === 'string' && v.trim().length >= 8;
 const idsOf = (doc) => [doc.persistentDeviceId, doc.deviceToken, doc.fcmToken].filter(usable);
+
+// حظر مباشر: سجّل الأدمن تحذير device_ban على الحساب نفسه بلا إشارة إلى أنه
+// حساب «شقيق/مرتبط». هؤلاء قرار إداري مقصود ولا يجوز رفعه هنا.
+const LINKED_HINT = /حساب مرتبط|حساب شقيق|صفحة الأجهزة المحظورة/;
+const wasBannedDirectly = (u) => (u.warnings || []).some(
+    w => w.action === 'device_ban' && !LINKED_HINT.test(w.reason || '')
+);
 
 // الحظر «دائم بمعنى حظر جهاز»: التاريخ البعيد (36500 يوماً) الذي يضعه راوت الحظر
 const isDeviceBanSentinel = (until) =>
@@ -57,19 +65,22 @@ const isDeviceBanSentinel = (until) =>
     console.log(`🔐 سجلات أجهزة محظورة: ${await BannedDevice.countDocuments()} — معرّفات فريدة: ${bannedIdSet.size}\n`);
 
     // ─── 3) فحص كل حساب محظور جهازياً ────────────────────────────────
-    const collateral = [];
+    const collateral = [];   // شقيق بلا معرّف مشترك → خطأ مؤكّد
+    const orphanDirect = [];  // حظر مباشر بلا سجل جهاز → يبقى، ويُستكمل سجله
     let kept = 0;
     for await (const u of User.find({ deviceBanned: true })
-        .select('_id name persistentDeviceId deviceToken fcmToken isActive suspendedUntil suspendReason')
+        .select('_id name persistentDeviceId deviceToken fcmToken deviceInfo isActive suspendedUntil suspendReason warnings')
         .lean()) {
         if (directlyBanned.has(String(u._id))) { kept++; continue; }
         const shares = idsOf(u).some(v => bannedIdSet.has(v.trim()));
         if (shares) { kept++; continue; }
+        if (wasBannedDirectly(u)) { orphanDirect.push(u); continue; }
         collateral.push(u);
     }
 
-    console.log(`✅ يبقى الحظر على ${kept} حساباً (معرّف جهاز مطابق أو حظر مباشر)`);
-    console.log(`♻️  حسابات محظورة بلا أي رابط جهاز حقيقي: ${collateral.length}`);
+    console.log(`✅ يبقى الحظر على ${kept} حساباً (معرّف جهاز مطابق أو سجل جهاز باسمه)`);
+    console.log(`🔒 حظر مباشر بلا سجل جهاز (يبقى محظوراً، ويُنشأ له سجل): ${orphanDirect.length}`);
+    console.log(`♻️  حسابات شقيقة محظورة بلا أي رابط جهاز حقيقي: ${collateral.length}`);
     collateral.slice(0, 15).forEach(u => console.log(`   - ${u.name} (${u._id}) — ${u.suspendReason || 'بلا سبب'}`));
     if (collateral.length > 15) console.log(`   … و${collateral.length - 15} غيرها`);
     console.log();
@@ -109,6 +120,33 @@ const isDeviceBanSentinel = (until) =>
         console.log(`   ↳ ${Math.min(i + BATCH, collateral.length)}/${collateral.length}`);
     }
     console.log(`♻️  فُكّ الحظر عن ${restored} حساباً\n`);
+
+    // ─── 4ب) استكمال سجلات الأجهزة للحظر المباشر اليتيم ──────────────
+    // كان سجلها يُلغى لأن findOne طابق سجلاً آخر بالبصمة المشتركة، فبقي
+    // الجهاز نفسه قادراً على التسجيل بحساب جديد.
+    let created = 0;
+    for (const u of orphanDirect) {
+        if (idsOf(u).length === 0) continue;
+        const exists = await BannedDevice.findOne({
+            $or: idsOf(u).map(v => (
+                v === u.persistentDeviceId ? { persistentDeviceId: v }
+                    : v === u.deviceToken ? { deviceToken: v } : { fcmToken: v }
+            ))
+        }).lean();
+        if (exists) continue;
+        await BannedDevice.create({
+            deviceToken: usable(u.deviceToken) ? u.deviceToken : null,
+            fcmToken: usable(u.fcmToken) ? u.fcmToken : null,
+            persistentDeviceId: usable(u.persistentDeviceId) ? u.persistentDeviceId : null,
+            deviceInfo: u.deviceInfo || {},
+            originalUserId: u._id,
+            originalUserName: u.name,
+            reason: u.suspendReason || 'حظر الجهاز نهائياً',
+            bannedAt: u.deviceBannedAt || new Date()
+        });
+        created++;
+    }
+    console.log(`🔐 أُنشئ ${created} سجل جهاز ناقص للحظر المباشر\n`);
 
     // ─── 5) تفريغ البصمات وإسقاط الفهارس ─────────────────────────────
     const uRes = await User.updateMany({ deviceFingerprint: { $ne: null } }, { $set: { deviceFingerprint: null } });
