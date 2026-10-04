@@ -2,6 +2,7 @@
 // نظام الإعجاب والمطابقة
 
 const express = require('express');
+const mongoose = require('mongoose');
 const logger = require('../utils/logger');
 const router = express.Router();
 const Swipe = require('../models/Swipe');
@@ -133,6 +134,29 @@ router.post('/', protect, blockIfSoftSuspended, async (req, res) => {
         });
     } catch (error) {
         logger.error('خطأ في swipe:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   DELETE /api/swipes/:userId
+// @desc    إلغاء إعجاب (like/superlike) — المطابقة والمحادثة القائمة لا تُمسّ
+// @access  Private
+router.delete('/:userId', protect, async (req, res) => {
+    try {
+        const { userId } = req.params;
+        if (!mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(400).json({ success: false, message: 'معرّف غير صالح' });
+        }
+
+        const result = await Swipe.deleteOne({
+            swiper: req.user._id,
+            swiped: userId,
+            type: { $in: ['like', 'superlike'] }
+        });
+
+        res.json({ success: true, message: 'تم إلغاء الإعجاب', data: { removed: result.deletedCount > 0 } });
+    } catch (error) {
+        logger.error('خطأ في إلغاء الإعجاب:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
