@@ -80,13 +80,18 @@ router.get('/users/search', protect, async (req, res) => {
             country,     // كود الدولة: SA, AE, EG
             minAge,      // أقل عمر
             maxAge,      // أكبر عمر
-            latitude,    // خط العرض (اختياري)
-            longitude,   // خط الطول (اختياري)
             maxDistance = 50, // أقصى مسافة بالكيلومتر
             onlineOnly,  // 'true' = فقط المتصلين الآن
             completeOnly,// 'true' = فقط الملفات المكتملة (صورة + جنس + عمر + دولة)
-            verifiedOnly // 'true' = فقط الموثّقين
+            verifiedOnly,// 'true' = فقط الموثّقين
+            sort         // 'new' = الأحدث تسجيلاً أولاً · 'near' = الأقرب (شريحة «قريب مني»)
         } = req.query;
+
+        const sortNewest = sort === 'new';
+        // iOS يرسل lat/lng لا latitude/longitude — نقبلهما مع 'near' فقط كي لا يتحوّل
+        // الاكتشاف العام فجأة إلى نطاق maxDistance ويستبعد من لا موقع لهم
+        const latitude = req.query.latitude ?? (sort === 'near' ? req.query.lat : undefined);
+        const longitude = req.query.longitude ?? (sort === 'near' ? req.query.lng : undefined);
 
         // بناء الفلتر
         const filter = {
@@ -239,7 +244,7 @@ router.get('/users/search', protect, async (req, res) => {
                         distance: 1, uniqueTag: 1, fuzzyLocation: 1
                     }
                 },
-                { $sort: { isOnline: -1, distance: 1 } },
+                { $sort: sortNewest ? { createdAt: -1 } : sort === 'near' ? { distance: 1 } : { isOnline: -1, distance: 1 } },
                 { $skip: skipNum },
                 { $limit: limitNum }
             ];
@@ -292,7 +297,7 @@ router.get('/users/search', protect, async (req, res) => {
             // بدون موقع — البحث العادي
             users = await User.find(filter)
                 .select('name profileImage birthDate gender country bio isOnline lastLogin verification.isVerified isPremium stealthMode uniqueTag fuzzyLocation')
-                .sort({ isOnline: -1, lastLogin: -1 })
+                .sort(sortNewest ? { createdAt: -1 } : { isOnline: -1, lastLogin: -1 })
                 .limit(limitNum)
                 .skip(skipNum);
 
