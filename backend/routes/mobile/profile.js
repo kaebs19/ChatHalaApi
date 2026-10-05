@@ -70,15 +70,18 @@ router.post('/profile-views', protect, async (req, res) => {
         }
 
         // إرسال Socket event في الوقت الحقيقي (فقط لو الزيارة مش مخفية)
+        // هوية الزائر للمشترك فقط — «من زار بروفايلك» ميزة مدفوعة، وكان الحدث يكشفها للجميع
         if (!isHidden && global.io) {
+            const viewedIsPremium = viewedUser.isPremium && viewedUser.premiumExpiresAt
+                && viewedUser.premiumExpiresAt > new Date();
             global.io.to(`user:${viewedUserId}`).emit('profile-viewed', {
-                viewer: {
+                viewer: viewedIsPremium ? {
                     _id: req.user._id,
                     name: req.user.name,
                     profileImage: getFullUrl(req.user.profileImage),
                     isPremium: req.user.isPremium || false,
                     isVerified: req.user.verification?.isVerified || false
-                },
+                } : null,
                 createdAt: profileView.createdAt
             });
         }
