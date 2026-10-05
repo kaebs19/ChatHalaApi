@@ -82,6 +82,23 @@ router.get('/notifications', protect, async (req, res) => {
             return nObj;
         });
 
+        // الإشعارات التي أُعيد بناء مرسلها من data بلا صورة — نجلب الاسم والصورة دفعة واحدة
+        const missingIds = [...new Set(formattedNotifications
+            .filter(n => n.sender && !n.sender.profileImage && n.sender._id)
+            .map(n => n.sender._id.toString()))];
+        if (missingIds.length > 0) {
+            const senders = await User.find({ _id: { $in: missingIds } })
+                .select('name profileImage')
+                .lean();
+            const byId = new Map(senders.map(u => [u._id.toString(), u]));
+            for (const n of formattedNotifications) {
+                const u = n.sender && byId.get(n.sender._id.toString());
+                if (!u) continue;
+                n.sender.name = n.sender.name || u.name;
+                if (u.profileImage) n.sender.profileImage = getFullUrl(u.profileImage);
+            }
+        }
+
         res.status(200).json({
             success: true,
             data: {
