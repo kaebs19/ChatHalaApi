@@ -6,6 +6,7 @@ const router = express.Router();
 const logger = require('../../utils/logger');
 const User = require('../../models/User');
 const ProfileView = require('../../models/ProfileView');
+const Notification = require('../../models/Notification');
 const { protect } = require('../../middleware/auth');
 const { requirePremium } = require('../../middleware/premium');
 const { getFullUrl, uploadVerificationSelfie } = require('./helpers');
@@ -54,6 +55,19 @@ router.post('/profile-views', protect, async (req, res) => {
             viewed: viewedUserId,
             isHidden
         });
+
+        // إشعار داخل التطبيق (بلا push) — الزيارة المكررة خلال 24 ساعة لا تصل هنا أصلاً
+        if (!isHidden) {
+            Notification.create({
+                title: 'زيارة ملف',
+                body: `${req.user.name} زار ملفك`,
+                type: 'profile_view',
+                sender: viewerId,
+                targetUsers: [viewedUserId],
+                recipients: 'specific',
+                data: { type: 'profile_view', fromUserId: String(viewerId), fromName: req.user.name }
+            }).catch(e => logger.warn('تعذّر إنشاء إشعار الزيارة:', e.message));
+        }
 
         // إرسال Socket event في الوقت الحقيقي (فقط لو الزيارة مش مخفية)
         if (!isHidden && global.io) {

@@ -106,6 +106,26 @@ router.post('/', protect, blockIfSoftSuspended, async (req, res) => {
                     { type: 'system', conversationId: String(conversation._id) }, false);
             } catch (e) { /* لا يوقف */ }
         } else {
+            // إعجاب عادي → إشعار داخل التطبيق بلا push (الإعجابات كثيرة والدفع يُغرق الهاتف).
+            // مرة واحدة لكل معجب: إعادة الإعجاب بعد إلغائه لا تكرّر الإشعار.
+            if (type === 'like') {
+                try {
+                    const already = await Notification.exists({
+                        type: 'like', sender: req.user._id, targetUsers: userId
+                    });
+                    if (!already) {
+                        await Notification.create({
+                            title: 'إعجاب جديد',
+                            body: `${req.user.name} أعجب بملفك`,
+                            type: 'like',
+                            sender: req.user._id,
+                            targetUsers: [userId],
+                            recipients: 'specific',
+                            data: { type: 'like', fromUserId: String(req.user._id), fromName: req.user.name }
+                        });
+                    }
+                } catch (e) { /* لا يوقف */ }
+            }
             // لا مطابقة بعد — أرسل إشعار "إعجاب" للطرف الآخر (اختياري للـ Premium للرؤية)
             if (type === 'superlike') {
                 try {

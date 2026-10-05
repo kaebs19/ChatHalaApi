@@ -99,6 +99,23 @@ router.get('/notifications', protect, async (req, res) => {
             }
         }
 
+        // «من أعجب بي» و«من زارني» ميزتان مدفوعتان — نخفي الهوية عن غير المشترك هنا أيضاً
+        const isPremium = req.user.isPremium && req.user.premiumExpiresAt && req.user.premiumExpiresAt > new Date();
+        if (!isPremium) {
+            for (const n of formattedNotifications) {
+                if (n.type !== 'like' && n.type !== 'profile_view') continue;
+                n.sender = null;
+                n.body = n.type === 'like' ? 'شخص أعجب بملفك' : 'شخص زار ملفك';
+                if (n.data) {
+                    delete n.data.fromUserId;
+                    delete n.data.fromName;
+                    delete n.data.senderId;
+                    delete n.data.senderName;
+                }
+                n.isLocked = true;
+            }
+        }
+
         res.status(200).json({
             success: true,
             data: {
