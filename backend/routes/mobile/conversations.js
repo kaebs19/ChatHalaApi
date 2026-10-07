@@ -325,6 +325,8 @@ router.put('/conversations/:id/accept', protect, blockIfSoftSuspended, checkCanR
                 {
                     type: 'conversation_request',
                     conversationId: conversation._id.toString(),
+                    senderId: req.user._id.toString(),
+                    senderName: req.user.name,
                     action: 'accepted'
                 }
             );
@@ -403,25 +405,8 @@ router.put('/conversations/:id/reject', protect, mongoIdParam, validate, async (
         conversation.isActive = false;
         await conversation.save();
 
-        // إرسال إشعار لمنشئ المحادثة عبر FCM
-        const creator = conversation.participants.find(
-            p => p._id.toString() === conversation.creator.toString()
-        );
-
-        if (creator && creator.fcmToken) {
-            await pushNotificationService.sendNotificationToUser(
-                creator._id,
-                {
-                    title: 'طلب المحادثة',
-                    body: 'لم يتم قبول طلب المحادثة'
-                },
-                {
-                    type: 'conversation_request',
-                    conversationId: conversation._id.toString(),
-                    action: 'rejected'
-                }
-            );
-        }
+        // الرفض صامت — لا إشعار لمنشئ المحادثة (التطبيق يَعِد بذلك صراحةً).
+        // حدث الـ socket أدناه يحدّث حالة القائمة عنده فقط
 
         // إرسال عبر Socket.IO
         if (global.io) {

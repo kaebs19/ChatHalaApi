@@ -6,6 +6,7 @@ const router = express.Router();
 const logger = require('../../utils/logger');
 const User = require('../../models/User');
 const Notification = require('../../models/Notification');
+const Conversation = require('../../models/Conversation');
 const { protect } = require('../../middleware/auth');
 const { getFullUrl } = require('./helpers');
 const { getPagination } = require('../../utils/pagination');
@@ -68,6 +69,11 @@ router.get('/notifications', protect, async (req, res) => {
                     _id: nObj.data.senderId,
                     name: nObj.data.senderName || ''
                 };
+            } else if (senderId === myId) {
+                // إشعارات قديمة حُفظت بلا senderId فصار المستلم مرسلها (تظهر صورته هو).
+                // يُستبدل بالطرف الآخر في المحادثة أدناه إن وُجدت، وإلا يُحذف
+                nObj.sender = null;
+                if (nObj.data?.conversationId) nObj._resolveFromConversation = true;
             } else if (!nObj.sender && nObj.data && nObj.data.senderId) {
                 // ما فيه sender أصلاً → ننشئ من data
                 nObj.sender = {
@@ -81,6 +87,24 @@ router.get('/notifications', protect, async (req, res) => {
 
             return nObj;
         });
+
+        // المرسل المفقود في إشعارات المحادثات = الطرف الآخر في المحادثة
+        const unresolved = formattedNotifications.filter(n => n._resolveFromConversation);
+        if (unresolved.length > 0) {
+            const convIds = [...new Set(unresolved.map(n => n.data.conversationId.toString()))];
+            const convs = await Conversation.find({ _id: { $in: convIds } })
+                .select('participants')
+                .lean();
+            const otherById = new Map(convs.map(c => [
+                c._id.toString(),
+                (c.participants || []).find(p => p.toString() !== userId.toString())
+            ]));
+            for (const n of unresolved) {
+                const otherId = otherById.get(n.data.conversationId.toString());
+                if (otherId) n.sender = { _id: otherId, name: n.data.senderName || '' };
+            }
+        }
+        for (const n of formattedNotifications) delete n._resolveFromConversation;
 
         // الإشعارات التي أُعيد بناء مرسلها من data بلا صورة — نجلب الاسم والصورة دفعة واحدة
         const missingIds = [...new Set(formattedNotifications

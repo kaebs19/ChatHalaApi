@@ -37,7 +37,7 @@ const sendNotificationToUser = async (userId, notification, data = {}, saveToDb 
                 type: data.type || 'general',
                 recipients: 'specific',
                 targetUsers: [userId],
-                sender: data.senderId || userId,
+                sender: data.senderId || null,
                 status: 'sent',
                 sentAt: new Date(),
                 sentCount: 1,
@@ -236,13 +236,14 @@ const broadcastNotification = async (notification, data = {}, filter = {}) => {
  * @param {string} senderName - اسم المرسل
  * @param {string} messagePreview - معاينة الرسالة
  * @param {string} conversationId - معرف المحادثة
+ * @param {string} [senderId] - معرف المرسل (بدونه يُحفظ المستلم مرسلاً فتظهر صورته هو)
  */
 // كل رسالة خاصة كانت تُنشئ مستند Notification — كتابة إضافية على كل رسالة
 // ونمو غير محدود للـ collection. اضبط PERSIST_MESSAGE_NOTIFICATIONS=false لتعطيلها
 // (سِجل الرسائل موجود أصلاً في شاشة المحادثات).
 const PERSIST_MESSAGE_NOTIFICATIONS = process.env.PERSIST_MESSAGE_NOTIFICATIONS !== 'false';
 
-const sendNewMessageNotification = async (recipientId, senderName, messagePreview, conversationId) => {
+const sendNewMessageNotification = async (recipientId, senderName, messagePreview, conversationId, senderId) => {
     try {
         // التحقق من كتم المحادثة — الحقول المطلوبة فقط بدل المستند كاملاً
         const user = await User.findById(recipientId)
@@ -284,6 +285,7 @@ const sendNewMessageNotification = async (recipientId, senderName, messagePrevie
         const data = {
             type: 'message',
             conversationId: conversationId.toString(),
+            ...(senderId && { senderId: senderId.toString() }),
             senderName,
             subtitle: 'رسالة جديدة'   // يظهر تحت الاسم مباشرة في iOS
         };

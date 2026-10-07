@@ -320,7 +320,8 @@ router.post('/messages/send', protect, blockIfSoftSuspended, checkCanReply, asyn
                         recipient._id,
                         req.user.name,
                         pushMessage,
-                        conversationId
+                        conversationId,
+                        req.user._id
                     )
                 )
             ).then(results => {
@@ -520,7 +521,8 @@ router.post('/conversations/:conversationId/messages/image', protect, blockIfSof
                     recipient._id,
                     req.user.name,
                     '📷 أرسل صورة',
-                    conversationId
+                    conversationId,
+                    req.user._id
                 );
             }
         }
@@ -782,7 +784,8 @@ router.post('/conversations/:conversationId/messages', protect, blockIfSoftSuspe
                     recipient._id,
                     req.user.name,
                     type === 'text' ? (pushContent.length > 100 ? pushContent.substring(0, 100) + '...' : pushContent) : `أرسل ${type === 'image' ? 'صورة' : type === 'audio' ? 'رسالة صوتية' : type === 'video' ? 'فيديو' : 'ملف'}`,
-                    conversationId
+                    conversationId,
+                    req.user._id
                 );
                 logger.debug('نتيجة الإشعار:', JSON.stringify(pushResult));
             }
