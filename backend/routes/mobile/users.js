@@ -115,15 +115,13 @@ router.get('/users/search', protect, async (req, res) => {
             };
         }
 
-        // فلتر البحث (اسم / معرف / إيميل)
+        // فلتر البحث (اسم / معرف). لا بحث بالإيميل: كان يكشف من سجّل بإيميل
+        // معيّن ويسمح باستخراج القوائم بمطابقة جزئية (مثل «@gmail»)
         if (q && q.length >= 2) {
             const trimmedQ = q.trim();
             if (trimmedQ.toUpperCase().startsWith('HALA-')) {
                 // بحث بالمعرف الفريد
                 filter.uniqueTag = trimmedQ.toUpperCase();
-            } else if (trimmedQ.includes('@')) {
-                // بحث بالإيميل
-                filter.email = { $regex: escapeRegex(trimmedQ), $options: 'i' };
             } else {
                 // بحث بالاسم
                 filter.name = { $regex: escapeRegex(trimmedQ), $options: 'i' };
