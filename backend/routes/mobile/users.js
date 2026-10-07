@@ -238,9 +238,11 @@ router.get('/users/search', protect, async (req, res) => {
                 },
                 {
                     $project: {
-                        name: 1, email: 1, profileImage: 1, birthDate: 1,
+                        name: 1, profileImage: 1, birthDate: 1,
                         gender: 1, country: 1, bio: 1, isOnline: 1, lastLogin: 1,
                         isVerified: '$verification.isVerified', isPremium: 1, stealthMode: 1,
+                        // حساب رسمي (مشرف) — قيمة منطقية فقط، الدور نفسه لا يُرسَل
+                        isOfficial: { $eq: ['$role', 'admin'] },
                         distance: 1, uniqueTag: 1, fuzzyLocation: 1
                     }
                 },
@@ -296,7 +298,7 @@ router.get('/users/search', protect, async (req, res) => {
         } else {
             // بدون موقع — البحث العادي
             users = await User.find(filter)
-                .select('name profileImage birthDate gender country bio isOnline lastLogin verification.isVerified isPremium stealthMode uniqueTag fuzzyLocation')
+                .select('name profileImage birthDate gender country bio isOnline lastLogin verification.isVerified isPremium stealthMode uniqueTag fuzzyLocation role')
                 .sort(sortNewest ? { createdAt: -1 } : { isOnline: -1, lastLogin: -1 })
                 .limit(limitNum)
                 .skip(skipNum);
@@ -315,6 +317,8 @@ router.get('/users/search', protect, async (req, res) => {
                 userObj.profileImage = getFullUrl(userObj.profileImage);
                 userObj.isVerified = userObj.verification?.isVerified || false;
                 delete userObj.verification;
+                userObj.isOfficial = userObj.role === 'admin';
+                delete userObj.role;
                 userObj.distance = null;
                 userObj.distanceLabel = null;
                 // إضافة الموقع المموّه
@@ -373,7 +377,7 @@ router.get('/users/:id', protect, async (req, res) => {
         }
 
         const user = await User.findById(id)
-            .select('name profileImage birthDate gender country bio isOnline lastLogin verification.isVerified isPremium stealthMode uniqueTag fuzzyLocation interests photos isActive isSuspended deviceBanned createdAt');
+            .select('name profileImage birthDate gender country bio isOnline lastLogin verification.isVerified isPremium stealthMode uniqueTag fuzzyLocation interests photos isActive isSuspended deviceBanned createdAt role');
 
         // محذوف أو محظور أو موقوف — رسالة واحدة للمستخدم النهائي
         if (!user) return userUnavailable(res);
@@ -401,6 +405,7 @@ router.get('/users/:id', protect, async (req, res) => {
             isOnline: userObj.isOnline,
             lastLogin: userObj.stealthMode ? null : userObj.lastLogin,
             isVerified: userObj.verification?.isVerified || false,
+            isOfficial: userObj.role === 'admin',
             isPremium: userObj.isPremium || false,
             uniqueTag: userObj.uniqueTag,
             interests: userObj.interests || [],
