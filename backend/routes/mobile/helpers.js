@@ -45,6 +45,21 @@ const uploadMessageImage = multer({
     }
 });
 
+// رسائل صوتية — AAC داخل m4a من iOS، 30 ثانية ≈ 250KB فالسقف 2MB واسع
+const uploadMessageAudio = multer({
+    storage: messageStorage,
+    limits: { fileSize: 2 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        const extOk = /^\.(m4a|aac|mp4)$/i.test(path.extname(file.originalname));
+        const mimeOk = /^audio\/(mp4|m4a|x-m4a|aac|mpeg)$/i.test(file.mimetype);
+        if (extOk && mimeOk) {
+            cb(null, true);
+        } else {
+            cb(new Error('صيغة الصوت غير مدعومة'));
+        }
+    }
+});
+
 // إعداد multer لرفع لقطات شاشة البلاغات (Report Evidence)
 const reportsUploadDir = path.join(__dirname, '..', '..', 'uploads', 'reports');
 if (!fs.existsSync(reportsUploadDir)) {
@@ -110,6 +125,7 @@ const uploadVerificationSelfie = multer({
 module.exports = {
     getFullUrl,
     uploadMessageImage,
+    uploadMessageAudio,
     uploadVerificationSelfie,
     uploadReportEvidence
 };

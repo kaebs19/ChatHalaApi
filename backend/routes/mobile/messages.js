@@ -12,7 +12,7 @@ const BannedWord = require('../../models/BannedWord');
 const { protect } = require('../../middleware/auth');
 const { checkCanReply, blockIfSoftSuspended } = require('../../middleware/checkRestriction');
 const pushNotificationService = require('../../services/pushNotificationService');
-const { uploadMessageImage, getFullUrl } = require('./helpers');
+const { uploadMessageImage, uploadMessageAudio, getFullUrl } = require('./helpers');
 const { userStatusFields, maskInPlace, isUserSuspended } = require('../../utils/userStatus');
 const { checkBlockBetween, blockResponse } = require('../../utils/blockCheck');
 const { moderateContent, recordContentViolations } = require('../../utils/moderateContent');
@@ -539,6 +539,156 @@ router.post('/conversations/:conversationId/messages/image', protect, blockIfSof
         if (req.file && fs.existsSync(req.file.path)) {
             fs.unlink(req.file.path, (err) => { if (err) logger.error('File cleanup error:', err); });
         }
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
+        });
+    }
+});
+
+// @route   POST /api/mobile/conversations/:conversationId/messages/audio
+// @desc    رسالة صوتية — في المحادثات المقبولة فقط، حتى 30 ثانية
+// @access  Private
+// الصوت لا يمرّ على فلتر الكلمات والحسابات الخارجية، لذا لا يُسمح به في طلب
+// محادثة من غريب: الطلب يبقى نصّاً قابلاً للفحص.
+const MAX_AUDIO_SECONDS = 30;
+
+router.post('/conversations/:conversationId/messages/audio', protect, blockIfSoftSuspended, checkCanReply, uploadMessageAudio.single('audio'), async (req, res) => {
+    const cleanup = () => {
+        if (req.file) fs.unlink(req.file.path, (err) => { if (err) logger.error('File cleanup error:', err); });
+    };
+    try {
+        const { conversationId } = req.params;
+        const senderId = req.user._id;
+
+        if (!req.file) {
+            return res.status(400).json({ success: false, message: 'لم يتم رفع تسجيل صوتي' });
+        }
+
+        const conversation = await Conversation.findById(conversationId)
+            .populate('participants', 'name fcmToken');
+
+        if (!conversation) {
+            cleanup();
+            return res.status(404).json({ success: false, message: 'المحادثة غير موجودة' });
+        }
+
+        const isParticipant = conversation.participants.some(
+            p => p._id.toString() === senderId.toString()
+        );
+        if (!isParticipant) {
+            cleanup();
+            return res.status(403).json({ success: false, message: 'ليس لديك صلاحية لهذه المحادثة' });
+        }
+
+        if (conversation.status !== 'accepted' || conversation.isActive === false) {
+            cleanup();
+            return res.status(403).json({
+                success: false,
+                message: 'الرسائل الصوتية متاحة بعد قبول المحادثة'
+            });
+        }
+
+        // 🔒 فحص الحظر المتبادل
+        const audioBlockCheck = await checkBlockBetween(
+            req.user,
+            conversation.participants
+                .filter(p => p._id.toString() !== senderId.toString())
+                .map(p => p._id)
+        );
+        if (audioBlockCheck.blocked) {
+            cleanup();
+            return blockResponse(res, audioBlockCheck.direction);
+        }
+
+        // المدة يرسلها التطبيق (يعرفها من المسجّل) — تُحصر في المدى المسموح
+        const parsed = parseFloat(req.body.duration);
+        const mediaDuration = Number.isFinite(parsed)
+            ? Math.min(Math.max(Math.round(parsed), 1), MAX_AUDIO_SECONDS)
+            : null;
+
+        const baseUrl = process.env.BASE_URL || 'https://halachat.khalafiati.io';
+        const mediaUrl = `${baseUrl}/uploads/messages/${req.file.filename}`;
+
+        const recipientIds = conversation.participants
+            .map(p => (p._id || p).toString())
+            .filter(pid => pid !== senderId.toString());
+
+        const message = await Message.create({
+            chatType: 'conversation',
+            conversation: conversationId,
+            sender: senderId,
+            type: 'audio',
+            mediaUrl,
+            mediaDuration,
+            content: '',
+            status: initialMessageStatus(recipientIds)
+        });
+
+        conversation.lastMessage = message._id;
+        await conversation.save();
+
+        const populatedMessage = await Message.findById(message._id)
+            .populate('sender', 'name profileImage isPremium verification.isVerified isActive deviceBanned suspendedUntil');
+
+        const audioMsgObj = populatedMessage.toObject();
+        maskInPlace(audioMsgObj);
+        if (audioMsgObj.sender && !audioMsgObj.sender.isSuspended) audioMsgObj.sender.profileImage = getFullUrl(audioMsgObj.sender.profileImage);
+        if (audioMsgObj.mediaUrl) audioMsgObj.mediaUrl = getFullUrl(audioMsgObj.mediaUrl);
+
+        if (global.io) {
+            conversation.participants.forEach(p => {
+                const pid = p._id.toString();
+                if (pid !== senderId.toString()) {
+                    global.io.to(`user:${pid}`).emit('new-message', {
+                        message: audioMsgObj,
+                        conversationId
+                    });
+                    global.io.to(`user:${pid}`).emit('conversation-updated', {
+                        conversationId,
+                        lastMessage: {
+                            content: audioMsgObj.content,
+                            type: audioMsgObj.type,
+                            sender: senderId,
+                            createdAt: audioMsgObj.createdAt
+                        }
+                    });
+                }
+            });
+
+            markDeliveredOnSend({
+                messageId: message._id,
+                senderId,
+                conversationId,
+                recipientIds
+            });
+        }
+
+        for (const recipient of conversation.participants) {
+            const recipientId = recipient._id.toString();
+            if (recipientId === senderId.toString()) continue;
+            const isOnline = global.connectedUsers && global.connectedUsers.has(recipientId);
+            if (!isOnline) {
+                await pushNotificationService.sendNewMessageNotification(
+                    recipient._id,
+                    req.user.name,
+                    '🎤 رسالة صوتية',
+                    conversationId,
+                    req.user._id
+                );
+            }
+        }
+
+        res.status(201).json({
+            success: true,
+            message: 'تم إرسال الرسالة الصوتية',
+            data: { message: audioMsgObj }
+        });
+
+    } catch (error) {
+        logger.error('خطأ في إرسال الرسالة الصوتية:', error);
+        if (req.file && fs.existsSync(req.file.path)) cleanup();
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',

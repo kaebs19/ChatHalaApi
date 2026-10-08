@@ -662,7 +662,7 @@ router.get('/conversations/pending', protect, async (req, res) => {
 
         const conversations = (await Conversation.find({ _id: { $in: orderedIds } })
             .populate('creator', 'name profileImage verification.isVerified isPremium isActive deviceBanned suspendedUntil')
-            .populate('participants', 'name profileImage lastLogin isOnline isPremium verification.isVerified isActive deviceBanned suspendedUntil')
+            .populate('participants', 'name profileImage lastLogin isOnline isPremium verification.isVerified isActive deviceBanned suspendedUntil role')
             // الرسالة الافتتاحية — تُعرض في بطاقة الطلب
             .populate('lastMessage', 'content filteredContent type sender createdAt status'))
             .sort((a, b) => orderIndex.get(a._id.toString()) - orderIndex.get(b._id.toString()));
@@ -706,8 +706,9 @@ router.get('/conversations/pending', protect, async (req, res) => {
                             };
                         }
                     } catch (e) {}
-                    const { isActive, deviceBanned, suspendedUntil, ...rest } = p;
-                    return { ...rest, profileImage: getFullUrl(p.profileImage) };
+                    const { isActive, deviceBanned, suspendedUntil, role, ...rest } = p;
+                    // حساب رسمي (مشرف) — قيمة منطقية فقط، الدور نفسه لا يُرسَل
+                    return { ...rest, isOfficial: role === 'admin', profileImage: getFullUrl(p.profileImage) };
                 });
             }
             return convObj;
@@ -758,7 +759,7 @@ router.get('/conversations', protect, async (req, res) => {
         };
 
         const conversations = await Conversation.find(baseQuery)
-            .populate('participants', 'name profileImage lastLogin isOnline isPremium verification.isVerified isActive deviceBanned suspendedUntil')
+            .populate('participants', 'name profileImage lastLogin isOnline isPremium verification.isVerified isActive deviceBanned suspendedUntil role')
             .populate('lastMessage')
             .sort({ updatedAt: -1 })
             .limit(safeLimit(limit))
@@ -789,7 +790,7 @@ router.get('/conversations', protect, async (req, res) => {
             ...conv,
             participants: conv.participants ? conv.participants.map(p => {
                 // نحتفظ بكل الحقول (كي لا يفشل decode على iOS) ونعدّل فقط المرئية
-                const { isActive, deviceBanned, suspendedUntil, ...rest } = p;
+                const { isActive, deviceBanned, suspendedUntil, role, ...rest } = p;
                 try {
                     if (isSuspHelper(p)) {
                         return {
@@ -801,7 +802,7 @@ router.get('/conversations', protect, async (req, res) => {
                         };
                     }
                 } catch (e) {}
-                return { ...rest, profileImage: getFullUrl(p.profileImage) };
+                return { ...rest, isOfficial: role === 'admin', profileImage: getFullUrl(p.profileImage) };
             }) : conv.participants,
             unreadCount: unreadMap.get(conv._id.toString()) || 0
         }));

@@ -64,6 +64,13 @@ const messageSchema = new mongoose.Schema({
         enum: ['text', 'image', 'file', 'audio', 'video', 'system'],
         default: 'text'
     },
+    // مدة الرسالة الصوتية بالثواني (1–30)
+    mediaDuration: {
+        type: Number,
+        min: 0,
+        max: 30,
+        default: null
+    },
     // صورة تُفتح مرة واحدة: يُحذف الملف من القرص فور فتحها، ولا يبقى
     // منها إلا سجلّ أنها أُرسلت وفُتحت.
     viewOnce: {
