@@ -18,6 +18,7 @@ const { checkBlockBetween, blockResponse } = require('../../utils/blockCheck');
 const { moderateContent, recordContentViolations } = require('../../utils/moderateContent');
 const { getPagination } = require('../../utils/pagination');
 const { initialMessageStatus, markDeliveredOnSend } = require('../../utils/deliveryStatus');
+const { pushUnlessForeground } = require('../../utils/pushGate');
 // سقف آمن للـ limit القادم من العميل (كان بلا حد: ?limit=100000)
 const safeLimit = (v) => getPagination({ limit: v }).limit;
 
@@ -305,32 +306,17 @@ router.post('/messages/send', protect, blockIfSoftSuspended, checkCanReply, asyn
             ? (pushContent.length > 100 ? pushContent.substring(0, 100) + '...' : pushContent)
             : `أرسل ${type === 'image' ? 'صورة' : type === 'audio' ? 'رسالة صوتية' : type === 'video' ? 'فيديو' : 'ملف'}`;
 
-        const offlineRecipients = recipients.filter(r => {
-            const recipientId = r._id.toString();
-            const isOnline = global.connectedUsers && global.connectedUsers.has(recipientId);
-            if (isOnline) logger.debug(`${r.name} متصل بالسوكت - لا حاجة لـ Push`);
-            return !isOnline;
-        });
-
         // Fire-and-forget: لا نوقف الرد حتى ترسل الإشعارات
-        if (offlineRecipients.length > 0) {
-            Promise.allSettled(
-                offlineRecipients.map(recipient =>
-                    pushNotificationService.sendNewMessageNotification(
-                        recipient._id,
-                        req.user.name,
-                        pushMessage,
-                        conversationId,
-                        req.user._id
-                    )
+        for (const recipient of recipients) {
+            pushUnlessForeground(recipient._id, () =>
+                pushNotificationService.sendNewMessageNotification(
+                    recipient._id,
+                    req.user.name,
+                    pushMessage,
+                    conversationId,
+                    req.user._id
                 )
-            ).then(results => {
-                results.forEach((r, i) => {
-                    if (r.status === 'rejected') {
-                        logger.error(`فشل إشعار ${offlineRecipients[i].name}:`, r.reason);
-                    }
-                });
-            }).catch(err => logger.error('خطأ في إرسال الإشعارات:', err));
+            );
         }
 
         res.status(201).json({
@@ -407,7 +393,7 @@ router.post('/conversations/:conversationId/messages/image', protect, blockIfSof
         const captionModeration = await moderateContent(caption, 'text');
 
         // رابط الصورة
-        const baseUrl = process.env.BASE_URL || 'https://halachat.khalafiati.io';
+        const baseUrl = process.env.BASE_URL || 'https://dardashat.chathala.com';
         const mediaUrl = `${baseUrl}/uploads/messages/${req.file.filename}`;
 
         // إنشاء الرسالة
@@ -513,18 +499,15 @@ router.post('/conversations/:conversationId/messages/image', protect, blockIfSof
         );
 
         for (const recipient of recipients) {
-            const recipientId = recipient._id.toString();
-            const isOnline = global.connectedUsers && global.connectedUsers.has(recipientId);
-
-            if (!isOnline) {
-                await pushNotificationService.sendNewMessageNotification(
+            pushUnlessForeground(recipient._id, () =>
+                pushNotificationService.sendNewMessageNotification(
                     recipient._id,
                     req.user.name,
                     '📷 أرسل صورة',
                     conversationId,
                     req.user._id
-                );
-            }
+                )
+            );
         }
 
         res.status(201).json({
@@ -608,7 +591,7 @@ router.post('/conversations/:conversationId/messages/audio', protect, blockIfSof
             ? Math.min(Math.max(Math.round(parsed), 1), MAX_AUDIO_SECONDS)
             : null;
 
-        const baseUrl = process.env.BASE_URL || 'https://halachat.khalafiati.io';
+        const baseUrl = process.env.BASE_URL || 'https://dardashat.chathala.com';
         const mediaUrl = `${baseUrl}/uploads/messages/${req.file.filename}`;
 
         const recipientIds = conversation.participants
@@ -666,18 +649,16 @@ router.post('/conversations/:conversationId/messages/audio', protect, blockIfSof
         }
 
         for (const recipient of conversation.participants) {
-            const recipientId = recipient._id.toString();
-            if (recipientId === senderId.toString()) continue;
-            const isOnline = global.connectedUsers && global.connectedUsers.has(recipientId);
-            if (!isOnline) {
-                await pushNotificationService.sendNewMessageNotification(
+            if (recipient._id.toString() === senderId.toString()) continue;
+            pushUnlessForeground(recipient._id, () =>
+                pushNotificationService.sendNewMessageNotification(
                     recipient._id,
                     req.user.name,
                     '🎤 رسالة صوتية',
                     conversationId,
                     req.user._id
-                );
-            }
+                )
+            );
         }
 
         res.status(201).json({
@@ -923,22 +904,15 @@ router.post('/conversations/:conversationId/messages', protect, blockIfSoftSuspe
 
         const pushContent = filteredContent || content;
         for (const recipient of recipients) {
-            const recipientId = recipient._id.toString();
-            const isOnline = global.connectedUsers && global.connectedUsers.has(recipientId);
-
-            if (isOnline) {
-                logger.debug(`${recipient.name} متصل بالسوكت - لا حاجة لـ Push`);
-            } else {
-                logger.debug(`${recipient.name} غير متصل - إرسال Push Notification`);
-                const pushResult = await pushNotificationService.sendNewMessageNotification(
+            pushUnlessForeground(recipient._id, () =>
+                pushNotificationService.sendNewMessageNotification(
                     recipient._id,
                     req.user.name,
                     type === 'text' ? (pushContent.length > 100 ? pushContent.substring(0, 100) + '...' : pushContent) : `أرسل ${type === 'image' ? 'صورة' : type === 'audio' ? 'رسالة صوتية' : type === 'video' ? 'فيديو' : 'ملف'}`,
                     conversationId,
                     req.user._id
-                );
-                logger.debug('نتيجة الإشعار:', JSON.stringify(pushResult));
-            }
+                )
+            );
         }
 
         res.status(201).json({

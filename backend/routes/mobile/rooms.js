@@ -607,7 +607,7 @@ router.post('/rooms/:id/messages/image', protect, blockIfSoftSuspended, uploadMe
         }
 
         // رابط الصورة
-        const mediaUrl = `${process.env.BASE_URL || 'https://halachat.khalafiati.io'}/uploads/messages/${req.file.filename}`;
+        const mediaUrl = `${process.env.BASE_URL || 'https://dardashat.chathala.com'}/uploads/messages/${req.file.filename}`;
 
         // إنشاء الرسالة
         const message = new Message({

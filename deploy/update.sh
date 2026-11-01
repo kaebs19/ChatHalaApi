@@ -1,13 +1,13 @@
 #!/bin/bash
 # ==============================================
-# HalaChat - Update Script
+# Dardashat - Update Script
 # سكربت تحديث التطبيق على السيرفر
 #
 # الاستخدام:
-#   bash /var/www/HalaChat/deploy/update.sh           # تحديث كامل (backend + frontend)
-#   bash /var/www/HalaChat/deploy/update.sh backend   # تحديث backend فقط
-#   bash /var/www/HalaChat/deploy/update.sh frontend  # تحديث frontend فقط
-#   bash /var/www/HalaChat/deploy/update.sh check     # فحص فقط بدون تحديث
+#   bash /var/www/dardashat/deploy/update.sh           # تحديث كامل (backend + frontend)
+#   bash /var/www/dardashat/deploy/update.sh backend   # تحديث backend فقط
+#   bash /var/www/dardashat/deploy/update.sh frontend  # تحديث frontend فقط
+#   bash /var/www/dardashat/deploy/update.sh check     # فحص فقط بدون تحديث
 #
 # ملاحظة: البناء يتم محلياً ويُرفع على GitHub
 #         السيرفر لا يستطيع البناء بسبب نقص الذاكرة
@@ -23,12 +23,16 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-APP_DIR="/var/www/HalaChat"
+APP_DIR="/var/www/dardashat"
+# Contabo: الافتراضي في nvm هو 24، ودردشات يعمل على 20
+export NVM_DIR=/root/.nvm
+. "$NVM_DIR/nvm.sh"
+nvm use 20.20.2 >/dev/null
 UPDATE_TYPE="${1:-all}"
 
 echo ""
 echo -e "${CYAN}=============================================="
-echo "   HalaChat - Update Script"
+echo "   Dardashat - Update Script"
 echo "==============================================${NC}"
 echo ""
 
@@ -62,7 +66,7 @@ if [ "$UPDATE_TYPE" = "check" ]; then
     echo ""
 
     echo -e "${CYAN}── مسار nginx ──${NC}"
-    grep -E "root |alias " /etc/nginx/sites-enabled/halachat 2>/dev/null || echo "ملف nginx غير موجود"
+    grep -E "root |alias " /etc/nginx/sites-enabled/dardashat 2>/dev/null || echo "ملف nginx غير موجود"
     echo ""
 
     echo -e "${CYAN}── هل يوجد تحديثات جديدة؟ ──${NC}"
@@ -115,7 +119,7 @@ done)
 if [ -n "$CONFLICTS" ]; then
     echo -e "${YELLOW}[CLEAN]${NC} تنظيف ملفات untracked متعارضة:"
     echo "$CONFLICTS" | sed 's/^/  /'
-    BACKUP_DIR="/tmp/halachat-untracked-$(date +%Y%m%d-%H%M%S)"
+    BACKUP_DIR="/tmp/dardashat-untracked-$(date +%Y%m%d-%H%M%S)"
     mkdir -p "$BACKUP_DIR"
     echo "$CONFLICTS" | while read f; do
         [ -n "$f" ] && mkdir -p "$BACKUP_DIR/$(dirname "$f")" && mv "$f" "$BACKUP_DIR/$f"
@@ -179,12 +183,12 @@ fi
 # ------------------------------------------
 if [ "$UPDATE_TYPE" = "all" ] || [ "$UPDATE_TYPE" = "backend" ]; then
     echo -e "\n${BLUE}[4/4]${NC} إعادة تشغيل Backend..."
-    pm2 restart halachat-api
+    pm2 restart dardashat-api
     sleep 2
 
     # التحقق من أن التطبيق يعمل
-    STATUS=$(pm2 jq 'halachat-api' 2>/dev/null | grep -o '"status":"[^"]*"' | head -1 || echo "")
-    if pm2 show halachat-api | grep -q "online"; then
+    STATUS=$(pm2 jq 'dardashat-api' 2>/dev/null | grep -o '"status":"[^"]*"' | head -1 || echo "")
+    if pm2 show dardashat-api | grep -q "online"; then
         echo -e "${GREEN}[OK]${NC} Backend يعمل بنجاح"
     else
         echo -e "${RED}[WARNING]${NC} تحقق من حالة Backend:"

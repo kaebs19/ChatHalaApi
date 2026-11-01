@@ -244,7 +244,7 @@ router.get('/users/search', protect, async (req, res) => {
                         distance: 1, uniqueTag: 1, fuzzyLocation: 1
                     }
                 },
-                { $sort: sortNewest ? { createdAt: -1 } : sort === 'near' ? { distance: 1 } : { isOnline: -1, distance: 1 } },
+                { $sort: sortNewest ? { createdAt: -1 } : sort === 'near' ? { distance: 1 } : { isPremium: -1, isOnline: -1, lastLogin: -1, distance: 1 } },
                 { $skip: skipNum },
                 { $limit: limitNum }
             ];
@@ -297,7 +297,7 @@ router.get('/users/search', protect, async (req, res) => {
             // بدون موقع — البحث العادي
             users = await User.find(filter)
                 .select('name profileImage birthDate gender country bio isOnline lastLogin verification.isVerified isPremium stealthMode uniqueTag fuzzyLocation role')
-                .sort(sortNewest ? { createdAt: -1 } : { isOnline: -1, lastLogin: -1 })
+                .sort(sortNewest ? { createdAt: -1 } : { isPremium: -1, isOnline: -1, lastLogin: -1 })
                 .limit(limitNum)
                 .skip(skipNum);
 

@@ -32,7 +32,7 @@ connectDB();
 const getFullUrl = (imgPath) => {
     if (!imgPath) return null;
     if (imgPath.startsWith('http')) return imgPath;
-    const baseUrl = process.env.BASE_URL || 'https://halachat.khalafiati.io';
+    const baseUrl = process.env.BASE_URL || 'https://dardashat.chathala.com';
     return `${baseUrl}${imgPath}`;
 };
 
@@ -508,6 +508,9 @@ io.on('connection', async (socket) => {
 
     // كاش عضوية المحادثات لهذا الاتصال (يمنع استعلام DB لكل رسالة)
     socket.data.verifiedConversations = new Set();
+
+    // الإصدارات الحديثة تجيب على presence-probe — انظر utils/pushGate.js
+    socket.data.supportsPresenceProbe = socket.handshake.auth?.presenceProbe === true;
 
     // ✓✓ كل رسالة واردة ما زالت 'sent' وصلت جهازه الآن — يُعلَّم التسليم
     // ويُبلَّغ مرسلوها. أول جهاز فقط: الأجهزة الأخرى لنفس المستخدم لا تضيف شيئاً.

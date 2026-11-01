@@ -10,7 +10,7 @@ const crypto = require('crypto');
 const getFullUrl = (filePath) => {
     if (!filePath) return null;
     if (filePath.startsWith('http')) return filePath;
-    const baseUrl = process.env.BASE_URL || 'https://halachat.khalafiati.io';
+    const baseUrl = process.env.BASE_URL || 'https://dardashat.chathala.com';
     return `${baseUrl}${filePath}`;
 };
 

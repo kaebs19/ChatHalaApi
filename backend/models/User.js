@@ -319,6 +319,11 @@ userSchema.pre('save', async function() {
 
 // دالة للتحقق من كلمة المرور
 userSchema.methods.comparePassword = async function(candidatePassword) {
+    // حسابات Google/Apple بلا كلمة مرور — bcrypt يرمي خطأً على undefined
+    if (!this.password) {
+        return false;
+    }
+
     try {
         return await bcrypt.compare(candidatePassword, this.password);
     } catch (error) {
@@ -389,6 +394,7 @@ userSchema.methods.resetLoginAttempts = function() {
 userSchema.index({ name: 'text' });
 userSchema.index({ gender: 1, country: 1 });
 userSchema.index({ isOnline: -1, lastLogin: -1 });
+userSchema.index({ isPremium: -1, isOnline: -1, lastLogin: -1 });
 // email index already defined as unique in schema
 userSchema.index({ location: '2dsphere' });
 userSchema.index({ isPremium: 1 });

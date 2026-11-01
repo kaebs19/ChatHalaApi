@@ -1,10 +1,11 @@
-// PM2 Ecosystem Configuration for HalaChat
+// PM2 Ecosystem Configuration for Dardashat
 module.exports = {
     apps: [
         {
-            name: 'halachat-api',
+            name: 'dardashat-api',
             script: './backend/server.js',
-            cwd: '/var/www/HalaChat',
+            cwd: '/var/www/dardashat',
+            interpreter: '/root/.nvm/versions/node/v20.20.2/bin/node',
             // Socket.IO يحتاج حالة مشتركة بين العمليات:
             //   بدون REDIS_URL  → عملية واحدة (fork) — الوضع الحالي
             //   مع REDIS_URL    → cluster على كل النوى
@@ -16,12 +17,12 @@ module.exports = {
             max_memory_restart: '800M', // زيادة الحد لمنع إعادة التشغيل المتكرر
             env: {
                 NODE_ENV: 'production',
-                PORT: 5001,
+                PORT: 5005,
                 // ضع REDIS_URL هنا (أو في البيئة) لتفعيل cluster mode
                 ...(process.env.REDIS_URL ? { REDIS_URL: process.env.REDIS_URL } : {})
             },
-            error_file: '/var/log/halachat/api-error.log',
-            out_file: '/var/log/halachat/api-out.log',
+            error_file: '/var/log/dardashat/api-error.log',
+            out_file: '/var/log/dardashat/api-out.log',
             log_date_format: 'YYYY-MM-DD HH:mm:ss',
             merge_logs: true,
             autorestart: true,

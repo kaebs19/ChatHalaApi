@@ -161,7 +161,7 @@ Authorization: Bearer <token>
                 "viewer": {
                     "_id": "xxx",
                     "name": "سارة",
-                    "profileImage": "https://halachat.khalafiati.io/uploads/...",
+                    "profileImage": "https://dardashat.chathala.com/uploads/...",
                     "country": "KW",
                     "isVerified": false
                 },

@@ -13,7 +13,7 @@
     "cleanup:dry": "node cleanupOldMessages.js --dry-run",
     "cleanup:rooms": "node cleanupOldMessages.js --rooms-only",
     "cleanup:private": "node cleanupOldMessages.js --private-only",
-    "test": "node --test tests/unit.test.js",
+    "test": "node --test tests/unit.test.js tests/pushGate.test.js",
     "test:integration": "node --test tests/integration.test.js",
     "test:all": "node --test tests/unit.test.js tests/integration.test.js"
   },
@@ -45,6 +45,7 @@
     "validator": "^13.15.26"
   },
   "devDependencies": {
-    "nodemon": "^3.1.11"
+    "nodemon": "^3.1.11",
+    "socket.io-client": "^4.8.3"
   }
 }

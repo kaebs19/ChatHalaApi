@@ -14,7 +14,7 @@ try {
     logger.warn('⚠️  حزم Swagger غير مثبّتة — تم تعطيل /api-docs');
 }
 
-const BASE_URL = process.env.BASE_URL || 'https://halachat.khalafiati.io';
+const BASE_URL = process.env.BASE_URL || 'https://dardashat.chathala.com';
 
 const swaggerDefinition = {
     openapi: '3.0.0',
