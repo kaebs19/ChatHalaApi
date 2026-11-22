@@ -13,9 +13,9 @@ require('dotenv').config();
 const mongoose = require('mongoose');
 const logger = require('../utils/logger');
 
-const OLD = ['HalaChat', 'ChatHala', 'هلا شات', 'شات هلا', 'دردشات', 'Dardashat'];
+const OLD = ['HalaChat', 'ChatHala', 'هلا شات', 'شات هلا', 'دردشات', 'Dardashat', 'Dardasha Haya'];
 const NEW_AR = 'دردشة هيا';
-const NEW_EN = 'Dardasha Haya';
+const NEW_EN = 'Haya Chat';
 
 // الحقول النصية التي يراها المستخدم
 const FIELDS = ['appName', 'privacyPolicy', 'termsOfService', 'aboutApp'];
@@ -24,7 +24,7 @@ function rename(text) {
     if (typeof text !== 'string') return text;
     let out = text;
     out = out.replace(/هلا شات|شات هلا|دردشات(?! هيا)/g, NEW_AR);
-    out = out.replace(/HalaChat|ChatHala|Dardashat(?![a-z])/g, NEW_EN);
+    out = out.replace(/HalaChat|ChatHala|Dardashat(?![a-z])|Dardasha Haya/g, NEW_EN);
     return out;
 }
 

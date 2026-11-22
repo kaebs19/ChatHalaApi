@@ -19,11 +19,11 @@ const BASE_URL = process.env.BASE_URL || 'https://dardashat.chathala.com';
 const swaggerDefinition = {
     openapi: '3.0.0',
     info: {
-        title: 'Dardasha Haya API Documentation',
+        title: 'Haya Chat API Documentation',
         version: '2.1.0',
-        description: 'API documentation for Dardasha Haya Dashboard & Mobile Application. Includes admin dashboard endpoints and mobile client endpoints.',
+        description: 'API documentation for Haya Chat Dashboard & Mobile Application. Includes admin dashboard endpoints and mobile client endpoints.',
         contact: {
-            name: 'Dardasha Haya Support',
+            name: 'Haya Chat Support',
             url: BASE_URL
         }
     },
@@ -1929,7 +1929,7 @@ function setupSwagger(app) {
     // Swagger UI
     app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
         customCss: '.swagger-ui .topbar { display: none }',
-        customSiteTitle: 'Dardasha Haya API Docs',
+        customSiteTitle: 'Haya Chat API Docs',
         swaggerOptions: {
             persistAuthorization: true,
             docExpansion: 'none',

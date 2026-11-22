@@ -66,7 +66,7 @@ const PRESET_CATEGORIES = [
             'ادمن', 'مدير', 'مشرف', 'دعم فني', 'خدمة العملاء', 'رسمي', 'موظف',
             'admin', 'moderator', 'support', 'official', 'staff', 'manager',
             'halachat', 'dardashat', 'هلا شات', 'شات هلا', 'دردشات', 'شات دردشات',
-            'dardasha haya', 'dardashahaya', 'دردشة هيا', 'دردشه هيا'
+            'dardasha haya', 'dardashahaya', 'haya chat', 'hayachat', 'دردشة هيا', 'دردشه هيا'
         ]
     }
 ];
