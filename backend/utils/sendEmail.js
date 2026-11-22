@@ -77,7 +77,7 @@ const sendEmail = async (options) => {
 
         // إعدادات الرسالة
         const mailOptions = {
-            from: `${process.env.EMAIL_FROM_NAME || 'Dardashat'} <${process.env.EMAIL_USER}>`,
+            from: `${process.env.EMAIL_FROM_NAME || 'Dardasha Haya'} <${process.env.EMAIL_USER}>`,
             to: options.email,
             subject: options.subject,
             text: options.message,

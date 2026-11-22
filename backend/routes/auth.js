@@ -891,7 +891,7 @@ router.post('/forgot-password', async (req, res) => {
         try {
             await sendEmail({
                 email: user.email,
-                subject: 'إعادة تعيين كلمة المرور - دردشات',
+                subject: 'إعادة تعيين كلمة المرور - دردشة هيا',
                 message: `رمز إعادة تعيين كلمة المرور الخاص بك هو: ${resetToken}\n\nهذا الرمز صالح لمدة 10 دقائق.`,
                 html: message
             });

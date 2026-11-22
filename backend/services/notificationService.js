@@ -339,7 +339,7 @@ class NotificationService {
     // إنشاء إشعار من نموذج
     createNotificationPayload(data) {
         return {
-            title: data.title || 'دردشات',
+            title: data.title || 'دردشة هيا',
             body: data.body || '',
             type: data.type || 'general',
             badge: data.badge || 1,

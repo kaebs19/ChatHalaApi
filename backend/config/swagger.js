@@ -19,11 +19,11 @@ const BASE_URL = process.env.BASE_URL || 'https://dardashat.chathala.com';
 const swaggerDefinition = {
     openapi: '3.0.0',
     info: {
-        title: 'Dardashat API Documentation',
+        title: 'Dardasha Haya API Documentation',
         version: '2.1.0',
-        description: 'API documentation for Dardashat Dashboard & Mobile Application. Includes admin dashboard endpoints and mobile client endpoints.',
+        description: 'API documentation for Dardasha Haya Dashboard & Mobile Application. Includes admin dashboard endpoints and mobile client endpoints.',
         contact: {
-            name: 'Dardashat Support',
+            name: 'Dardasha Haya Support',
             url: BASE_URL
         }
     },
@@ -297,7 +297,7 @@ const swaggerDefinition = {
             Settings: {
                 type: 'object',
                 properties: {
-                    appName: { type: 'string', example: 'دردشات' },
+                    appName: { type: 'string', example: 'دردشة هيا' },
                     appVersion: { type: 'string', example: '2.1' },
                     appLogo: { type: 'string' },
                     privacyPolicy: { type: 'string' },
@@ -1929,7 +1929,7 @@ function setupSwagger(app) {
     // Swagger UI
     app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
         customCss: '.swagger-ui .topbar { display: none }',
-        customSiteTitle: 'Dardashat API Docs',
+        customSiteTitle: 'Dardasha Haya API Docs',
         swaggerOptions: {
             persistAuthorization: true,
             docExpansion: 'none',
